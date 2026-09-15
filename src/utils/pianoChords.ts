@@ -1,71 +1,55 @@
-import { FLATS, SHARPS, getNoteIndex, normalizeStep, parseChordSymbol } from './chordTransposer';
-import { isExtensionInterval, resolveChordQuality } from './chordQuality';
+import {
+  FLATS,
+  LETTERS,
+  SHARPS,
+  getNoteIndex,
+  normalizeStep,
+  parseChordSymbol,
+  spellPitchClass,
+} from './chordTransposer';
+import { resolveChordQuality } from './chordQuality';
 
 /**
  * Piano chord engine.
  *
- * Chords are never stored per song: a chord symbol (already transposed by the
- * existing transposer) is turned into notes on the fly, so piano diagrams and
- * inversions follow transposition automatically, exactly like the guitar ones.
+ * Chords are never stored per song: a chord symbol (already transposed and
+ * spelled for its key) is turned into notes on the fly.
  *
- * Parsing and chromatic tables come from chordTransposer, and what a suffix
- * means comes from chordQuality, so guitar, piano and transposition can never
- * disagree about what a chord is.
+ * Two things are kept apart on purpose:
+ * - the sound of a note is its pitch class (0-11), which decides which key
+ *   lights up on the keyboard;
+ * - the name of a note comes from its interval above the root, which decides
+ *   the label. The third of Ab is C, the fifth of Eb is Bb, the third of C#
+ *   is E#: same keys as D#, A# and F, but spelled as the chord requires.
  */
-
-const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-/** Pitch class of each natural letter. */
-const LETTER_PITCH_CLASSES = [0, 2, 4, 5, 7, 9, 11];
-
-// Deliberately no double accidentals. D# major is strictly D#-F##-A#, but a
-// double sharp is unreadable for a parish choir, so such notes fall back to a
-// plain name (D#-G-A#). The key to press is identical either way.
-const ACCIDENTALS: Record<number, string> = {
-  [-1]: 'b',
-  0: '',
-  1: '#',
-};
-
-/**
- * Names a pitch class using a specific letter, e.g. pitch class 3 written on
- * the letter E gives "Eb", written on D it gives "D#". Returns null when that
- * letter would need a double accidental.
- */
-function spellNote(pitchClass: number, letterIndex: number): string | null {
-  const letter = LETTERS[letterIndex];
-  const natural = LETTER_PITCH_CLASSES[letterIndex];
-
-  // Distance from the natural note, folded into -5..6 so that, say, C against
-  // B reads as -1 (Cb) rather than +11.
-  let offset = normalizeStep(pitchClass - natural);
-  if (offset > 6) offset -= 12;
-
-  const accidental = ACCIDENTALS[offset];
-  return accidental === undefined ? null : `${letter}${accidental}`;
-}
 
 export interface PianoChordTone {
   pitchClass: number;
   name: string;
-  /** Letter steps above the root: 0 root, 2 third, 4 fifth, 6 seventh. */
+  /** Letter steps above the root: 0 root, 2 third, 4 fifth, 6 seventh, 1 ninth/second. */
   degree: number;
-  /** An added colour tone (9th, 6th) that never goes in the bass of an inversion. */
-  isExtension: boolean;
+  /** Semitones above the root, before any octave placement. */
+  semitones: number;
+}
+
+export interface PianoBass {
+  pitchClass: number;
+  /** As written after the slash */
+  name: string;
+  /** D/F#: yes, F# is in D. C/Bb: no, Bb is added below the chord. */
+  isChordTone: boolean;
 }
 
 export interface PianoChord {
   /** The chord symbol as displayed, e.g. "D/F#" */
   symbol: string;
-  /** Pitch classes (0-11) that make up the chord, in root-position order */
-  pitchClasses: number[];
-  /** Note names in the chord's own spelling, e.g. ["D", "F#", "A"] */
-  noteNames: string[];
-  /** Every tone with its role in the chord, in root-position order */
+  root: PianoChordTone;
+  /** Chord tones in root-position order: root, third, fifth, seventh, then additions */
   tones: PianoChordTone[];
-  /** Pitch class of the slash bass note, if any */
-  bassPitchClass: number | null;
-  /** Bass note name, e.g. "F#" */
-  bassName: string | null;
+  pitchClasses: number[];
+  noteNames: string[];
+  /** The note written after a slash, if any */
+  bass: PianoBass | null;
   /** True when the exact extension wasn't known and a triad was assumed */
   approximate: boolean;
 }
@@ -78,130 +62,174 @@ export function getPianoChord(chord: string): PianoChord | null {
   const parsed = parseChordSymbol(chord);
   if (!parsed) return null;
 
-  const rootIndex = getNoteIndex(parsed.root);
-  if (rootIndex === null) return null;
+  const rootPitchClass = getNoteIndex(parsed.root);
+  if (rootPitchClass === null) return null;
 
   const { intervals, approximate } = resolveChordQuality(parsed.suffix);
+  const rootLetter = LETTERS.indexOf(parsed.root[0]);
+  // Only reached if a name would need three accidentals, which no chord built
+  // on a single-accidental root does; kept so a name is never missing.
+  const fallbackNames = parsed.root.includes('b') ? FLATS : SHARPS;
 
-  const rootLetterIndex = LETTERS.indexOf(parsed.root[0]);
-  // A chord written with a flat root is spelled with flats, otherwise sharps.
-  // Only used where the interval spelling itself doesn't settle the question.
-  const fallbackScale = parsed.root.includes('b') ? FLATS : SHARPS;
-
-  // Each note is named from its *interval*, not from a fixed chromatic table:
-  // the third of Cm is two letters above C, so it comes out Eb, not D#.
   const tones: PianoChordTone[] = intervals.map((interval) => {
-    const pitchClass = normalizeStep(rootIndex + interval.semitones);
-    const letterIndex = (rootLetterIndex + interval.degree) % LETTERS.length;
+    const pitchClass = normalizeStep(rootPitchClass + interval.semitones);
     return {
       pitchClass,
-      name: spellNote(pitchClass, letterIndex) ?? fallbackScale[pitchClass],
+      // Double accidentals are kept when the chord requires them (D# major
+      // is D# F## A#): the spelling follows the interval, not convenience.
+      name:
+        spellPitchClass(pitchClass, (rootLetter + interval.degree) % LETTERS.length, 2) ??
+        fallbackNames[pitchClass],
       degree: interval.degree,
-      isExtension: isExtensionInterval(interval, intervals),
+      semitones: interval.semitones,
     };
   });
 
-  const bassPitchClass = parsed.bass ? getNoteIndex(parsed.bass) : null;
+  let bass: PianoBass | null = null;
+  if (parsed.bass) {
+    const bassPitchClass = getNoteIndex(parsed.bass);
+    if (bassPitchClass === null) return null;
+    bass = {
+      pitchClass: bassPitchClass,
+      name: parsed.bass,
+      isChordTone: tones.some((tone) => tone.pitchClass === bassPitchClass),
+    };
+  }
 
   return {
     symbol: chord.trim(),
+    root: tones[0],
+    tones,
     pitchClasses: tones.map((tone) => tone.pitchClass),
     noteNames: tones.map((tone) => tone.name),
-    tones,
-    bassPitchClass,
-    bassName: parsed.bass,
+    bass,
     approximate,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Voicings and inversions
+// Voicings: notes placed in real octaves
 // ---------------------------------------------------------------------------
-
-export type VoicedNoteRole = 'root' | 'tone' | 'bass';
 
 export interface VoicedNote {
   /**
-   * Semitones above the C that starts the lowest octave of the voicing. Unlike
-   * a pitch class this keeps octaves apart, which is what makes E-G-C
-   * (first inversion) look different from C-E-G.
+   * Semitones above the C at the left edge of the keyboard: octave * 12 +
+   * pitch class. This is what keeps E-G-C (first inversion) different from
+   * C-E-G: the C of the inversion is at 12, above the G at 7.
    */
   position: number;
+  /** 0 for the lowest octave shown; displayed as octave + 4 (C4, E4, G4, C5…) */
+  octave: number;
   pitchClass: number;
   name: string;
-  role: VoicedNoteRole;
+  isRoot: boolean;
+  /** The note written after a slash */
+  isBass: boolean;
 }
 
 export interface PianoVoicing {
+  /** 0 = root position */
   inversion: number;
   label: string;
-  /** Every note to press, lowest first. A slash chord's bass comes first. */
+  /** Lowest to highest, no pitch class repeated */
   notes: VoicedNote[];
 }
 
-/** How many inversions a chord has: one per tone that can sit in the bass. */
-export function getInversionCount(chord: PianoChord): number {
-  return chord.tones.filter((tone) => !tone.isExtension).length;
+/** Octave number used in labels: the lowest octave shown is octave 4. */
+export const DISPLAY_OCTAVE_OFFSET = 4;
+
+/**
+ * How many distinct voicings a chord offers. Every chord tone can be the bass,
+ * so a triad has 3 (root position and 2 inversions), a seventh chord 4, a
+ * ninth chord 5. A slash chord has exactly one: its bass is already written.
+ */
+export function getVoicingCount(chord: PianoChord): number {
+  return chord.bass ? 1 : chord.tones.length;
 }
 
 export function getInversionLabel(inversion: number): string {
   return inversion === 0 ? 'Fundamental' : `${inversion}ª inversión`;
 }
 
-/** Smallest position above `floor` that has the given pitch class. */
-function nextPositionAbove(pitchClass: number, floor: number): number {
-  let position = pitchClass;
-  while (position <= floor) position += 12;
-  return position;
+function placeNote(
+  chord: PianoChord,
+  pitchClass: number,
+  name: string,
+  position: number,
+  isBass: boolean
+): VoicedNote {
+  return {
+    position,
+    octave: Math.floor(position / 12),
+    pitchClass,
+    name,
+    isRoot: pitchClass === chord.root.pitchClass,
+    isBass,
+  };
+}
+
+/** Other notes stacked closely above a bass note, lowest first. */
+function stackAbove(bassPitchClass: number, tones: PianoChordTone[]): Array<{ tone: PianoChordTone; position: number }> {
+  return tones
+    .map((tone) => ({ tone, position: bassPitchClass + normalizeStep(tone.pitchClass - bassPitchClass) }))
+    .sort((a, b) => a.position - b.position);
 }
 
 /**
- * Builds the notes for one inversion, computed from the chord tones rather
- * than stored: inversion n puts the n-th chord tone lowest and stacks the rest
- * closely above it. Colour tones (9th, 6th) go on top. For a slash chord the
- * written bass is played below, and the right hand sits above it.
+ * The notes of one voicing, in ascending order with real octaves.
+ *
+ * - Root position keeps the chord as written, each tone above the previous
+ *   one: Cadd9 is C E G D, with the D above the G.
+ * - Inversion n puts the n-th chord tone in the bass and stacks the others
+ *   closely above it: Cmaj7 in 3rd inversion is B C E G.
+ * - A slash chord puts the written bass lowest. When the bass is also a chord
+ *   tone it is not repeated above: D/F# is F# A D. When it isn't (C/Bb) it is
+ *   added below the chord: Bb C E G.
+ *
+ * The lowest note always sits in the first octave of the keyboard.
  */
-export function getPianoVoicing(chord: PianoChord, inversion: number): PianoVoicing {
-  const chordTones = chord.tones.filter((tone) => !tone.isExtension);
-  const extensions = chord.tones.filter((tone) => tone.isExtension);
-  const safeInversion = Math.max(0, Math.min(inversion, chordTones.length - 1));
-
-  const ordered = [
-    ...chordTones.slice(safeInversion),
-    ...chordTones.slice(0, safeInversion),
-    ...extensions,
-  ];
-
-  const rootPitchClass = chord.tones[0].pitchClass;
-  const rightHand: VoicedNote[] = [];
-  let floor = -1;
-  for (const tone of ordered) {
-    const position = nextPositionAbove(tone.pitchClass, floor);
-    rightHand.push({
-      position,
-      pitchClass: tone.pitchClass,
-      name: tone.name,
-      role: tone.pitchClass === rootPitchClass ? 'root' : 'tone',
-    });
-    floor = position;
+export function getPianoVoicing(chord: PianoChord, inversion = 0): PianoVoicing {
+  if (chord.bass) {
+    const bass = chord.bass;
+    const upper = chord.tones.filter((tone) => tone.pitchClass !== bass.pitchClass);
+    return {
+      inversion: 0,
+      label: `Bajo en ${bass.name}`,
+      notes: [
+        placeNote(chord, bass.pitchClass, bass.name, bass.pitchClass, true),
+        ...stackAbove(bass.pitchClass, upper).map(({ tone, position }) =>
+          placeNote(chord, tone.pitchClass, tone.name, position, false)
+        ),
+      ],
+    };
   }
 
-  if (chord.bassPitchClass === null || chord.bassName === null) {
-    return { inversion: safeInversion, label: getInversionLabel(safeInversion), notes: rightHand };
+  const safeInversion = Math.min(Math.max(Math.trunc(inversion), 0), chord.tones.length - 1);
+
+  if (safeInversion === 0) {
+    let previous = -1;
+    return {
+      inversion: 0,
+      label: getInversionLabel(0),
+      notes: chord.tones.map((tone) => {
+        let position = tone.pitchClass;
+        while (position <= previous) position += 12;
+        previous = position;
+        return placeNote(chord, tone.pitchClass, tone.name, position, false);
+      }),
+    };
   }
 
-  // Slash chord: the bass goes in the lowest octave and the right hand is
-  // lifted, whole octaves at a time, until it sits entirely above it.
-  const bassPosition = chord.bassPitchClass;
-  let lift = 0;
-  while (rightHand[0].position + lift <= bassPosition) lift += 12;
-
+  const bassTone = chord.tones[safeInversion];
+  const others = chord.tones.filter((_, index) => index !== safeInversion);
   return {
     inversion: safeInversion,
     label: getInversionLabel(safeInversion),
     notes: [
-      { position: bassPosition, pitchClass: chord.bassPitchClass, name: chord.bassName, role: 'bass' },
-      ...rightHand.map((note) => ({ ...note, position: note.position + lift })),
+      placeNote(chord, bassTone.pitchClass, bassTone.name, bassTone.pitchClass, false),
+      ...stackAbove(bassTone.pitchClass, others).map(({ tone, position }) =>
+        placeNote(chord, tone.pitchClass, tone.name, position, false)
+      ),
     ],
   };
 }

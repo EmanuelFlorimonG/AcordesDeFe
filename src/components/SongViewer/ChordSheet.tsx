@@ -1,42 +1,52 @@
 import React from 'react';
-import type { ParsedLine, SectionHeader } from '../../types/song';
-import { parseSongSections } from '../../utils/chordParser';
-import { isRefrainSection } from '../../utils/songSections';
+import type { ParsedLine, SectionHeader, ViewSettings } from '../../types/song';
+import { groupIntoWords, parseSongSections } from '../../utils/chordParser';
+import {
+  isChordOnlyLine,
+  isRefrainSection,
+  isSectionShown,
+  songHasChords,
+} from '../../utils/songSections';
+
+type FontSize = ViewSettings['fontSize'];
+
+/**
+ * "page": the song page. "stage": rehearsal mode, read from a music stand at
+ * arm's length, so everything is larger and sections are spaced further apart.
+ */
+export type ChordSheetVariant = 'page' | 'stage';
 
 interface ChordSheetProps {
   content: string;
-  fontSize: 'sm' | 'base' | 'lg' | 'xl';
+  fontSize: FontSize;
   twoColumns: boolean;
   showChords: boolean;
   onChordClick?: (chord: string) => void;
+  variant?: ChordSheetVariant;
 }
 
-// Dynamic text size classes
-const SIZE_CLASSES = {
-  sm: { text: 'text-sm', chord: 'text-xs', lineGap: 'my-1' },
-  base: { text: 'text-base', chord: 'text-sm', lineGap: 'my-1.5' },
-  lg: { text: 'text-lg', chord: 'text-base', lineGap: 'my-2' },
-  xl: { text: 'text-xl', chord: 'text-lg', lineGap: 'my-2.5' },
-} as const;
-
-type SizeClasses = (typeof SIZE_CLASSES)[keyof typeof SIZE_CLASSES];
-
-/** A line of chords with no words under them, like an intro: "G  D  Em  C". */
-function isChordOnlyLine(line: ParsedLine): boolean {
-  return (
-    line.type === 'chords-lyrics' &&
-    Boolean(line.segments?.some((segment) => segment.chord)) &&
-    Boolean(line.segments?.every((segment) => !segment.lyric.trim()))
-  );
+interface SizeClasses {
+  text: string;
+  chord: string;
+  lineGap: string;
+  chordRowGap: string;
 }
 
-function hasWords(lines: ParsedLine[]): boolean {
-  return lines.some(
-    (line) =>
-      line.type === 'comment' ||
-      (line.type === 'chords-lyrics' && line.segments?.some((segment) => segment.lyric.trim()))
-  );
-}
+const PAGE_SIZE_CLASSES: Record<FontSize, SizeClasses> = {
+  sm: { text: 'text-sm', chord: 'text-xs', lineGap: 'my-1', chordRowGap: 'gap-x-5' },
+  base: { text: 'text-base', chord: 'text-sm', lineGap: 'my-1.5', chordRowGap: 'gap-x-5' },
+  lg: { text: 'text-lg', chord: 'text-base', lineGap: 'my-2', chordRowGap: 'gap-x-5' },
+  xl: { text: 'text-xl', chord: 'text-lg', lineGap: 'my-2.5', chordRowGap: 'gap-x-5' },
+};
+
+// Chords stay a step smaller than the words, so the lyric remains the main
+// thing to read. Phones get one step less than tablets and up.
+const STAGE_SIZE_CLASSES: Record<FontSize, SizeClasses> = {
+  sm: { text: 'text-lg sm:text-xl', chord: 'text-sm sm:text-base', lineGap: 'my-1.5', chordRowGap: 'gap-x-6' },
+  base: { text: 'text-xl sm:text-2xl', chord: 'text-base sm:text-lg', lineGap: 'my-2', chordRowGap: 'gap-x-7' },
+  lg: { text: 'text-2xl sm:text-3xl', chord: 'text-lg sm:text-xl', lineGap: 'my-2.5', chordRowGap: 'gap-x-8' },
+  xl: { text: 'text-3xl sm:text-4xl', chord: 'text-xl sm:text-2xl', lineGap: 'my-3', chordRowGap: 'gap-x-9' },
+};
 
 /**
  * Lyric text with the songbook's repeat marks ("//sung twice//") kept but
@@ -63,24 +73,27 @@ const ChordButton: React.FC<{
   <button
     type="button"
     onClick={() => onChordClick?.(chord)}
-    className={`font-mono font-bold text-blue-600 dark:text-sky-400 print:text-blue-800 hover:text-blue-800 dark:hover:text-sky-300 hover:underline transition-colors select-none text-left tracking-tight cursor-pointer ${sizeClass}`}
+    className={`font-mono font-bold text-blue-600 dark:text-sky-400 print:text-blue-800 hover:text-blue-800 dark:hover:text-sky-300 hover:underline transition-colors select-none text-left tracking-tight cursor-pointer whitespace-nowrap ${sizeClass}`}
     title={`Ver diagrama de ${chord}`}
   >
     {chord}
   </button>
 );
 
-const SectionHeading: React.FC<{ header: SectionHeader; isRepeat: boolean }> = ({
-  header,
-  isRepeat,
-}) => {
+const SectionHeading: React.FC<{
+  header: SectionHeader;
+  isRepeat: boolean;
+  isStage: boolean;
+}> = ({ header, isRepeat, isStage }) => {
   const isRefrain = isRefrainSection(header.kind);
   return (
-    <div className="flex items-center gap-2.5 mb-2.5 [break-after:avoid]">
+    <div
+      className={`flex items-center [break-after:avoid] ${isStage ? 'gap-3 mb-3 sm:mb-4' : 'gap-2.5 mb-2.5'}`}
+    >
       <h3
-        className={`shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-          isRefrain ? 'text-blue-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'
-        }`}
+        className={`shrink-0 font-semibold uppercase ${
+          isStage ? 'text-xs sm:text-[13px] tracking-[0.18em]' : 'text-[11px] tracking-[0.14em]'
+        } ${isRefrain ? 'text-blue-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'}`}
       >
         {header.label}
       </h3>
@@ -105,11 +118,12 @@ function renderLine(
   line: ParsedLine,
   key: number,
   sizes: SizeClasses,
-  showChords: boolean,
+  renderChords: boolean,
+  isStage: boolean,
   onChordClick?: (chord: string) => void
 ): React.ReactNode {
   if (line.type === 'empty') {
-    return <div key={key} className="h-3 w-full" />;
+    return <div key={key} className={`${isStage ? 'h-5' : 'h-3'} w-full`} />;
   }
 
   if (line.type === 'comment') {
@@ -124,9 +138,12 @@ function renderLine(
   }
 
   if (isChordOnlyLine(line)) {
-    if (!showChords) return null;
+    if (!renderChords) return null;
     return (
-      <div key={key} className={`flex flex-wrap items-center gap-x-5 gap-y-1 ${sizes.lineGap} break-inside-avoid`}>
+      <div
+        key={key}
+        className={`flex flex-wrap items-center gap-y-1 ${sizes.chordRowGap} ${sizes.lineGap} break-inside-avoid`}
+      >
         {line.segments?.map((segment, segIdx) =>
           segment.chord ? (
             <ChordButton key={segIdx} chord={segment.chord} sizeClass={sizes.chord} onChordClick={onChordClick} />
@@ -137,7 +154,7 @@ function renderLine(
   }
 
   // Lyrics-only line (chords hidden)
-  if (!showChords) {
+  if (!renderChords) {
     const text = line.segments?.map((segment) => segment.lyric).join('') ?? '';
     return (
       <p
@@ -149,31 +166,39 @@ function renderLine(
     );
   }
 
-  // Chords + Lyrics Line
+  // Chords + Lyrics Line: a row of whole words that wraps only between words.
   return (
     <div
       key={key}
-      className={`flex flex-wrap items-end ${sizes.lineGap} break-inside-avoid leading-none min-h-[2.5rem]`}
+      className={`flex flex-wrap items-end ${sizes.lineGap} break-inside-avoid leading-none ${
+        isStage ? '' : 'min-h-[2.5rem]'
+      }`}
     >
-      {line.segments?.map((segment, segIdx) => (
-        <span key={segIdx} className="inline-flex flex-col justify-end align-bottom mr-0.5 max-w-full group">
-          {/* Chord display row */}
-          {segment.chord ? (
-            <ChordButton chord={segment.chord} sizeClass={sizes.chord} onChordClick={onChordClick} />
-          ) : (
-            <span className={`font-mono font-bold select-none opacity-0 ${sizes.chord}`} aria-hidden="true">
-              &nbsp;
-            </span>
-          )}
+      {groupIntoWords(line.segments ?? []).map((word, wordIndex) => (
+        // A word is one unbreakable unit, however many chords sit inside it.
+        <span key={wordIndex} data-lyric-word="" className="inline-flex items-end max-w-full">
+          {word.map((piece, pieceIndex) => (
+            <span key={pieceIndex} className="inline-flex flex-col justify-end">
+              {/* Chord display row: the chord sits above the start of its syllable */}
+              {piece.chord ? (
+                <span className="pr-1.5">
+                  <ChordButton chord={piece.chord} sizeClass={sizes.chord} onChordClick={onChordClick} />
+                </span>
+              ) : (
+                <span className={`font-mono font-bold select-none opacity-0 ${sizes.chord}`} aria-hidden="true">
+                  &nbsp;
+                </span>
+              )}
 
-          {/* Lyrics row */}
-          <span
-            // pre-wrap keeps the spacing that aligns chords, but still lets a
-            // long line wrap on a narrow screen instead of overflowing.
-            className={`font-lyric text-slate-900 dark:text-slate-100 print:text-slate-900 tracking-normal whitespace-pre-wrap pb-0.5 ${sizes.text}`}
-          >
-            {segment.lyric ? renderLyricText(segment.lyric) : ' '}
-          </span>
+              {/* Lyrics row. Each piece is at most one word plus its spaces,
+                  so keeping its spacing exact never forces an overflow. */}
+              <span
+                className={`font-lyric text-slate-900 dark:text-slate-100 print:text-slate-900 tracking-normal whitespace-pre pb-0.5 ${sizes.text}`}
+              >
+                {piece.text ? renderLyricText(piece.text) : ' '}
+              </span>
+            </span>
+          ))}
         </span>
       ))}
     </div>
@@ -186,19 +211,15 @@ export const ChordSheet: React.FC<ChordSheetProps> = ({
   twoColumns,
   showChords,
   onChordClick,
+  variant = 'page',
 }) => {
   const sections = React.useMemo(() => parseSongSections(content), [content]);
-  const sizes = SIZE_CLASSES[fontSize];
+  const isStage = variant === 'stage';
+  const sizes = (isStage ? STAGE_SIZE_CLASSES : PAGE_SIZE_CLASSES)[fontSize];
 
   // A song with no chords yet reads as plain lyrics, instead of reserving an
   // empty chord row above every line.
-  const hasAnyChord = React.useMemo(
-    () =>
-      sections.some((section) =>
-        section.lines.some((line) => line.segments?.some((segment) => segment.chord))
-      ),
-    [sections]
-  );
+  const hasAnyChord = React.useMemo(() => songHasChords(sections), [sections]);
   const renderChords = showChords && hasAnyChord;
 
   return (
@@ -208,8 +229,7 @@ export const ChordSheet: React.FC<ChordSheetProps> = ({
       }`}
     >
       {sections.map((section) => {
-        // With chords hidden, a purely instrumental section has nothing to show.
-        if (!renderChords && section.lines.length > 0 && !hasWords(section.lines)) return null;
+        if (!isSectionShown(section, renderChords)) return null;
 
         const isRefrain = section.header ? isRefrainSection(section.header.kind) : false;
 
@@ -218,20 +238,28 @@ export const ChordSheet: React.FC<ChordSheetProps> = ({
             key={section.id}
             data-section-id={section.id}
             data-section-kind={section.header?.kind}
-            className="mt-8 first:mt-0"
+            className={isStage ? 'mt-10 sm:mt-14 first:mt-0' : 'mt-8 first:mt-0'}
           >
             {section.header && (
-              <SectionHeading header={section.header} isRepeat={Boolean(section.repeatOf)} />
+              <SectionHeading
+                header={section.header}
+                isRepeat={Boolean(section.repeatOf)}
+                isStage={isStage}
+              />
             )}
 
             {section.lines.length > 0 && (
               <div
                 className={
-                  isRefrain ? 'border-l-2 border-blue-100 dark:border-blue-500/25 pl-3 sm:pl-4' : undefined
+                  isRefrain
+                    ? isStage
+                      ? 'border-l-[3px] border-blue-100 dark:border-blue-500/25 pl-4 sm:pl-6'
+                      : 'border-l-2 border-blue-100 dark:border-blue-500/25 pl-3 sm:pl-4'
+                    : undefined
                 }
               >
                 {section.lines.map((line, index) =>
-                  renderLine(line, index, sizes, renderChords, onChordClick)
+                  renderLine(line, index, sizes, renderChords, isStage, onChordClick)
                 )}
               </div>
             )}

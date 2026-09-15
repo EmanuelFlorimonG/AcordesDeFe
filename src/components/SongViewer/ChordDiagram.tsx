@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ChordPosition } from '../../types/song';
 import { getDefaultGuitarPosition } from '../../utils/guitarChords';
+import { parseChordSymbol } from '../../utils/chordTransposer';
 
 interface ChordDiagramProps {
   chord: string;
@@ -31,11 +32,20 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
     lg: { width: 130, height: 160, dotRadius: 7, fontSize: 14 },
   }[size];
 
+  // The note after the slash, spelled as written (E# stays E#).
+  const bassName = parseChordSymbol(chord)?.bass ?? null;
+  const bassLabel = bassName && (
+    <span className="text-[10px] text-slate-500 mt-0.5">
+      Bajo: <span className="font-mono font-semibold text-slate-700">{bassName}</span>
+    </span>
+  );
+
   if (!fingering) {
     return (
       <div className="flex flex-col items-center justify-center p-2 rounded-lg bg-slate-50 dark:bg-dark-800 border border-slate-200 dark:border-dark-700 text-center min-w-[90px]">
         <span className="font-semibold text-slate-700 dark:text-slate-200 font-mono text-sm">{chord}</span>
-        <span className="text-[10px] text-slate-400 mt-1">Sin diagrama</span>
+        <span className="text-[10px] text-slate-400 mt-1">Posición no disponible</span>
+        {bassLabel}
       </div>
     );
   }
@@ -52,8 +62,11 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
 
   // SVG grid settings
   const paddingX = 18;
+  // A shape that starts above the nut is labelled "5fr" on the left; extra room
+  // there keeps the label clear of a dot on the lowest string.
+  const paddingLeft = baseFret > 1 ? paddingX + 8 : paddingX;
   const paddingTop = 28;
-  const gridWidth = dimensions.width - paddingX * 2;
+  const gridWidth = dimensions.width - paddingLeft - paddingX;
   const gridHeight = dimensions.height - paddingTop - 18;
   const stringSpacing = gridWidth / 5;
   const fretSpacing = gridHeight / NUM_FRETS;
@@ -76,12 +89,12 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
         {/* Base fret indicator if not starting at fret 1 */}
         {baseFret > 1 && (
           <text
-            x={paddingX - 10}
+            x={paddingLeft - dimensions.dotRadius - 3}
             y={paddingTop + fretSpacing * 0.75}
             fill="#64748b"
             fontSize="10"
             fontWeight="600"
-            textAnchor="middle"
+            textAnchor="end"
             className="font-mono"
           >
             {baseFret}fr
@@ -91,9 +104,9 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
         {/* Nut (thick bar at top if baseFret == 1) */}
         {baseFret === 1 ? (
           <line
-            x1={paddingX}
+            x1={paddingLeft}
             y1={paddingTop}
-            x2={paddingX + gridWidth}
+            x2={paddingLeft + gridWidth}
             y2={paddingTop}
             stroke="#0f172a"
             strokeWidth="3.5"
@@ -101,9 +114,9 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
           />
         ) : (
           <line
-            x1={paddingX}
+            x1={paddingLeft}
             y1={paddingTop}
-            x2={paddingX + gridWidth}
+            x2={paddingLeft + gridWidth}
             y2={paddingTop}
             stroke="#94a3b8"
             strokeWidth="1.5"
@@ -114,9 +127,9 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
         {Array.from({ length: NUM_FRETS }).map((_, i) => (
           <line
             key={`fret-${i}`}
-            x1={paddingX}
+            x1={paddingLeft}
             y1={paddingTop + (i + 1) * fretSpacing}
-            x2={paddingX + gridWidth}
+            x2={paddingLeft + gridWidth}
             y2={paddingTop + (i + 1) * fretSpacing}
             stroke="#cbd5e1"
             strokeWidth="1.2"
@@ -125,7 +138,7 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
 
         {/* Vertical string lines (6 strings) */}
         {Array.from({ length: 6 }).map((_, i) => {
-          const x = paddingX + i * stringSpacing;
+          const x = paddingLeft + i * stringSpacing;
           const fretVal = frets[i];
           const isMuted = fretVal === -1;
           const isOpen = fretVal === 0;
@@ -170,17 +183,23 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
           );
         })}
 
-        {/* Barre indicators */}
+        {/* Barre indicators, drawn only across the strings the finger covers */}
         {barres.map((fret, idx) => {
           const relativeFret = toRelativeFret(fret);
           if (relativeFret < 1 || relativeFret > NUM_FRETS) return null;
+          const atFret = frets.flatMap((stringFret, string) => (stringFret === fret ? [string] : []));
+          const byIndexFinger = atFret.filter((string) => fingers[string] === 1);
+          const covered = byIndexFinger.length > 1 ? byIndexFinger : atFret;
+          if (covered.length === 0) return null;
+          const fromX = paddingLeft + Math.min(...covered) * stringSpacing;
+          const toX = paddingLeft + Math.max(...covered) * stringSpacing;
           const y = paddingTop + (relativeFret - 0.5) * fretSpacing;
           return (
             <rect
               key={`barre-${idx}`}
-              x={paddingX - 2}
+              x={fromX - dimensions.dotRadius}
               y={y - dimensions.dotRadius}
-              width={gridWidth + 4}
+              width={toX - fromX + dimensions.dotRadius * 2}
               height={dimensions.dotRadius * 2}
               rx={dimensions.dotRadius}
               fill="#2563eb"
@@ -192,7 +211,7 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
         {/* Fretted Notes (Dots) */}
         {frets.map((fret, strIdx) => {
           if (fret <= 0) return null;
-          const x = paddingX + strIdx * stringSpacing;
+          const x = paddingLeft + strIdx * stringSpacing;
           const relativeFret = toRelativeFret(fret);
           if (relativeFret < 1 || relativeFret > NUM_FRETS) return null;
 
@@ -225,6 +244,8 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
           );
         })}
       </svg>
+
+      {bassLabel}
 
       {approximate && (
         <span

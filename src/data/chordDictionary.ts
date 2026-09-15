@@ -1,4 +1,5 @@
 import type { ChordPosition } from '../types/song';
+import { getNoteIndex, parseChordSymbol } from '../utils/chordTransposer';
 
 // Standard 6-string guitar chord fingerings [E, A, D, G, B, e]
 // -1 means string muted (X), 0 means open string (O), 1..12 is fret
@@ -139,9 +140,36 @@ export const CHORD_VARIATIONS: Record<string, CuratedVariation[]> = {
   ],
 };
 
+/**
+ * Same chord, whatever the spelling: "Gbm" and "F#m" have the same root pitch,
+ * quality and bass, so they share a fingering. Chords are respelled for their
+ * key when transposing, and a flat spelling must not lose the fingering its
+ * sharp twin has.
+ */
+function isSameChord(a: string, b: string): boolean {
+  const first = parseChordSymbol(a);
+  const second = parseChordSymbol(b);
+  if (!first || !second || first.suffix !== second.suffix) return false;
+  if (getNoteIndex(first.root) !== getNoteIndex(second.root)) return false;
+  if (first.bass === null || second.bass === null) return first.bass === second.bass;
+  return getNoteIndex(first.bass) === getNoteIndex(second.bass);
+}
+
+function findChordEntry<T>(table: Record<string, T>, chord: string): T | undefined {
+  const clean = chord.trim();
+  if (table[clean]) return table[clean];
+  const name = Object.keys(table).find((candidate) => isSameChord(candidate, clean));
+  return name ? table[name] : undefined;
+}
+
 /** True when the dictionary has this exact chord, not a simplified stand-in. */
 export function hasExactFingering(chord: string): boolean {
-  return Boolean(chord && CHORD_DATABASE[chord.trim()]);
+  return Boolean(chord && findChordEntry(CHORD_DATABASE, chord));
+}
+
+/** Hand-picked alternatives for a chord, under any spelling. */
+export function getCuratedVariations(chord: string): CuratedVariation[] {
+  return (chord && findChordEntry(CHORD_VARIATIONS, chord)) || [];
 }
 
 /**
@@ -151,29 +179,26 @@ export function getChordFingering(chord: string): ChordPosition | null {
   if (!chord) return null;
   const clean = chord.trim();
 
-  // 1. Direct match
-  if (CHORD_DATABASE[clean]) {
-    return CHORD_DATABASE[clean];
-  }
+  // 1. Direct match (any spelling)
+  const exact = findChordEntry(CHORD_DATABASE, clean);
+  if (exact) return exact;
 
   // 2. Try matching root note for slash chords if full chord not found (e.g. "E/G#" -> "E")
   if (clean.includes('/')) {
     const [rootPart] = clean.split('/');
-    if (CHORD_DATABASE[rootPart]) {
-      return CHORD_DATABASE[rootPart];
-    }
+    const withoutBass = findChordEntry(CHORD_DATABASE, rootPart);
+    if (withoutBass) return withoutBass;
   }
 
-  // 3. Try removing extra complex extensions (e.g. "Am9" -> "Am7" -> "Am")
-  const match = clean.match(/^([A-G][#b]?)(m|maj|sus|dim|aug)?/);
+  // 3. Fall back to the underlying triad (e.g. "Am9" -> "Am", "Cmaj9" -> "C").
+  // "maj" is tested before "m", so a major seventh never falls back to minor.
+  const match = clean.match(/^([A-G][#b]?)(maj|min|m|sus|dim|aug)?/);
   if (match) {
-    const simplified = match[1] + (match[2] === 'm' ? 'm' : '');
-    if (CHORD_DATABASE[simplified]) {
-      return CHORD_DATABASE[simplified];
-    }
-    if (CHORD_DATABASE[match[1]]) {
-      return CHORD_DATABASE[match[1]];
-    }
+    const isMinor = match[2] === 'm' || match[2] === 'min';
+    const triad = findChordEntry(CHORD_DATABASE, match[1] + (isMinor ? 'm' : ''));
+    if (triad) return triad;
+    const rootOnly = findChordEntry(CHORD_DATABASE, match[1]);
+    if (rootOnly) return rootOnly;
   }
 
   return null;

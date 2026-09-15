@@ -165,16 +165,14 @@ export function resolveChordQuality(rawSuffix: string): ChordQuality {
   return { key: fallback, intervals: QUALITY_INTERVALS[fallback], approximate: true };
 }
 
-/**
- * Whether an interval colours the chord rather than defining it. An added
- * ninth or a sixth isn't used as the bass of an inversion: C6 with A in the
- * bass is heard as Am7, not as "C6, third inversion".
- */
-export function isExtensionInterval(interval: Interval, intervals: Interval[]): boolean {
-  if (interval.degree === 5) return true;
-  if (interval.degree === 1) {
-    // In sus2 the second *replaces* the third, so there it is a chord tone.
-    return intervals.some((other) => other.degree === 2);
-  }
-  return false;
+/** Every quality the engine knows, e.g. for exhaustive tests. */
+export const SUPPORTED_QUALITIES = Object.keys(QUALITY_INTERVALS) as QualityKey[];
+
+export function getQualityIntervals(key: QualityKey): Interval[] {
+  return QUALITY_INTERVALS[key];
+}
+
+/** Qualities built on a minor third: the tonic of a minor key. */
+export function isMinorQuality(key: QualityKey): boolean {
+  return QUALITY_INTERVALS[key].some((interval) => interval.semitones === 3 && interval.degree === 2);
 }

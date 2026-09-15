@@ -1,18 +1,78 @@
 import type { ChordLineSegment, ParsedLine, SongSection } from '../types/song';
-import { isChordSymbol, transposeChord } from './chordTransposer';
+import {
+  isChordSymbol,
+  normalizeStep,
+  parseChordSymbol,
+  transposeChordBetweenKeys,
+  transposeKey,
+} from './chordTransposer';
+import { isMinorQuality, resolveChordQuality } from './chordQuality';
 import { groupIntoSections, parseSectionHeader } from './songSections';
 
 /**
- * Transposes all bracketed chords in the song content string.
- * Example: "[G]Dios está a[D]quí" with +2 becomes "[A]Dios está a[E]quí"
+ * Transposes all bracketed chords in the song content string, spelled for the
+ * key they land in. From G up a semitone: [G] [D/F#] [Em] become [Ab] [Eb/G]
+ * [Fm], never [G#] [D#/G] [Fm].
+ *
+ * `originalKey` is the key the song is written in. Without it, the first chord
+ * stands in for the key.
  */
-export function transposeSongContent(content: string, steps: number): string {
-  if (steps === 0) return content;
+export function transposeSongContent(content: string, steps: number, originalKey?: string): string {
+  if (normalizeStep(steps) === 0) return content;
+
+  const fromKey = originalKey || inferKeyFromContent(content);
+  if (!fromKey) return content;
+  const toKey = transposeKey(fromKey, steps);
 
   return content.replace(/\[([A-G][b#]?[^\]]*)\]/g, (match, chord: string) =>
     // Labels such as [Estribillo] start with a note letter but aren't chords.
-    isChordSymbol(chord) ? `[${transposeChord(chord.trim(), steps)}]` : match
+    isChordSymbol(chord) ? `[${transposeChordBetweenKeys(chord.trim(), fromKey, toKey)}]` : match
   );
+}
+
+/**
+ * A key for a song that doesn't state one: songs almost always open on their
+ * tonic, so the first chord (major or minor) is taken as the key.
+ */
+export function inferKeyFromContent(content: string): string | null {
+  const first = extractUniqueChords(content)[0];
+  const parsed = first ? parseChordSymbol(first) : null;
+  if (!parsed) return null;
+  const quality = resolveChordQuality(parsed.suffix);
+  return `${parsed.root}${isMinorQuality(quality.key) ? 'm' : ''}`;
+}
+
+export interface LyricPiece {
+  chord?: string;
+  text: string;
+}
+
+/**
+ * Splits a chord-and-lyric line into words that must never break across
+ * lines. A chord that falls inside a word ("en[G/B]séñame") stays part of
+ * that word, so the whole word wraps together and the chord keeps its
+ * syllable. Lines can only wrap where the lyric itself has a space.
+ */
+export function groupIntoWords(segments: ChordLineSegment[]): LyricPiece[][] {
+  const words: LyricPiece[][] = [];
+  let current: LyricPiece[] = [];
+
+  for (const segment of segments) {
+    const tokens = segment.lyric.match(/\s+|\S+\s*/g) ?? [''];
+    tokens.forEach((text, index) => {
+      const piece: LyricPiece = index === 0 && segment.chord ? { chord: segment.chord, text } : { text };
+      const previous = current[current.length - 1];
+      const startsNewWord = previous !== undefined && (/\s$/.test(previous.text) || /^\s/.test(text));
+      if (startsNewWord) {
+        words.push(current);
+        current = [];
+      }
+      current.push(piece);
+    });
+  }
+
+  if (current.length > 0) words.push(current);
+  return words;
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Instrument, Playlist, Song, ViewSettings } from '../../types/song';
 import { normalizeStep, transposeKey } from '../../utils/chordTransposer';
 import { transposeSongContent, extractUniqueChords, stripChords } from '../../utils/chordParser';
@@ -8,13 +8,14 @@ import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useMetronome } from '../../hooks/useMetronome';
 import { ChordSheet } from './ChordSheet';
 import { ChordDetailModal } from './ChordDetailModal';
-import { FloatingControls } from './FloatingControls';
 import { InstrumentChordDiagram } from './InstrumentChordDiagram';
 import { InstrumentToggle } from './InstrumentToggle';
-import { MetronomeControl } from './MetronomeControl';
 import { SongInfoChips, type SongKeyInfo } from './SongInfoChips';
 import { TransposeMenu } from './TransposeMenu';
 import { SongRowMenu } from '../Dashboard/SongRowMenu';
+import { RehearsalMode } from '../Rehearsal/RehearsalMode';
+import type { RehearsalKeyControls } from '../Rehearsal/RehearsalHeader';
+import type { CompactPlayerState } from '../Player/MiniPlayer';
 import {
   ArrowLeft,
   Heart,
@@ -24,7 +25,7 @@ import {
   Piano,
   Share2,
   Printer,
-  Maximize2,
+  MicVocal,
 } from 'lucide-react';
 
 type SongTab = 'letra' | 'diagramas' | 'recursos';
@@ -38,6 +39,39 @@ interface SongViewerProps {
   onToggleInPlaylist: (playlistId: string, songId: string) => void;
   onCreatePlaylist: (name: string, songId: string) => void;
   onShare: (song: Song) => void;
+  /** Rehearsal mode is owned by App, so it can survive moving between songs. */
+  isRehearsing: boolean;
+  onRehearsalChange: (active: boolean) => void;
+  /** State of the app's single YouTube player, for rehearsal mode's compact controls */
+  player: CompactPlayerState | null;
+}
+
+// The key a song was left in stays for the rest of the browser session, so
+// going back to a song during a rehearsal finds it as it was. Only for this
+// tab: next time the song opens in its original key again.
+const SESSION_KEY_PREFIX = 'genesaret_song_key:';
+
+interface SessionKey {
+  transposeSteps: number;
+  capoFret: number;
+}
+
+function readSessionKey(songId: string): SessionKey | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY_PREFIX + songId);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<SessionKey>;
+    const { transposeSteps, capoFret } = value;
+    const isValid =
+      Number.isInteger(transposeSteps) &&
+      Number.isInteger(capoFret) &&
+      Math.abs(transposeSteps as number) <= 11 &&
+      (capoFret as number) >= 0 &&
+      (capoFret as number) <= 11;
+    return isValid ? { transposeSteps: transposeSteps as number, capoFret: capoFret as number } : null;
+  } catch {
+    return null;
+  }
 }
 
 export const SongViewer: React.FC<SongViewerProps> = ({
@@ -49,29 +83,42 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   onToggleInPlaylist,
   onCreatePlaylist,
   onShare,
+  isRehearsing,
+  onRehearsalChange,
+  player,
 }) => {
-  const [settings, setSettings] = useState<ViewSettings>({
-    fontSize: 'base',
-    showChords: true,
-    twoColumns: false,
-    autoScrollSpeed: 2,
-    isAutoScrolling: false,
-    transposeSteps: 0,
-    capoFret: song.recommendedCapo || 0,
+  const [settings, setSettings] = useState<ViewSettings>(() => {
+    const sessionKey = readSessionKey(song.id);
+    return {
+      fontSize: 'base',
+      showChords: true,
+      twoColumns: false,
+      transposeSteps: sessionKey?.transposeSteps ?? 0,
+      capoFret: sessionKey?.capoFret ?? (song.recommendedCapo || 0),
+    };
   });
 
   const [copied, setCopied] = useState(false);
   const [copiedLyricsOnly, setCopiedLyricsOnly] = useState(false);
   const [selectedChordModal, setSelectedChordModal] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SongTab>('letra');
-  const [presentationMode, setPresentationMode] = useState(false);
   // Remembered across songs and sessions: whoever plays piano shouldn't have
   // to switch away from guitar on every song they open.
   const [instrument, setInstrument] = useLocalStorage<Instrument>(
     'genesaret_instrument',
     'guitarra'
   );
-  const scrollIntervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        SESSION_KEY_PREFIX + song.id,
+        JSON.stringify({ transposeSteps: settings.transposeSteps, capoFret: settings.capoFret })
+      );
+    } catch {
+      // storage unavailable (private mode): the key simply isn't remembered
+    }
+  }, [song.id, settings.transposeSteps, settings.capoFret]);
 
   const controls = useTransposeControls(settings, setSettings, song.recommendedCapo || 0);
   // Independent of the YouTube player: neither one starts or stops the other.
@@ -93,49 +140,28 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   const pianoCapoOffset = isPiano ? settings.capoFret : 0;
 
   const transposedContent = useMemo(() => {
-    return transposeSongContent(song.content, settings.transposeSteps + pianoCapoOffset);
-  }, [song.content, settings.transposeSteps, pianoCapoOffset]);
+    return transposeSongContent(
+      song.content,
+      settings.transposeSteps + pianoCapoOffset,
+      song.originalKey
+    );
+  }, [song.content, song.originalKey, settings.transposeSteps, pianoCapoOffset]);
 
   const currentChords = useMemo(() => {
     return extractUniqueChords(transposedContent);
   }, [transposedContent]);
 
+  // Computed from the original key in one step (not from currentKey), so the
+  // name matches exactly what the transposed chords are spelled in.
   const soundingKeyWithCapo = useMemo(() => {
     if (settings.capoFret === 0) return null;
-    return transposeKey(currentKey, settings.capoFret);
-  }, [currentKey, settings.capoFret]);
+    return transposeKey(song.originalKey ?? '', settings.transposeSteps + settings.capoFret);
+  }, [song.originalKey, settings.transposeSteps, settings.capoFret]);
 
   /** The key the chords on screen are written in, for whichever instrument. */
   const displayedKey = isPiano ? soundingKeyWithCapo ?? currentKey : currentKey;
 
   const categoryStyle = getCategoryStyle(song.categories[0]);
-
-  useEffect(() => {
-    if (settings.isAutoScrolling) {
-      const stepMs = 50;
-      const pixelsPerStep = settings.autoScrollSpeed * 0.75;
-
-      scrollIntervalRef.current = window.setInterval(() => {
-        const atBottom =
-          window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 50;
-
-        if (atBottom) {
-          setSettings((prev) => ({ ...prev, isAutoScrolling: false }));
-        } else {
-          window.scrollBy({ top: pixelsPerStep, behavior: 'auto' });
-        }
-      }, stepMs);
-    } else if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
-    }
-
-    return () => {
-      if (scrollIntervalRef.current) {
-        clearInterval(scrollIntervalRef.current);
-      }
-    };
-  }, [settings.isAutoScrolling, settings.autoScrollSpeed]);
 
   const handleCopyContent = () => {
     navigator.clipboard.writeText(transposedContent);
@@ -174,6 +200,16 @@ export const SongViewer: React.FC<SongViewerProps> = ({
     isPiano,
   ]);
 
+  const rehearsalKeyControls: RehearsalKeyControls | null = hasKey
+    ? {
+        displayedKey,
+        soundingKey: !isPiano ? soundingKeyWithCapo : null,
+        isModified: controls.isModified,
+        onTranspose: controls.handleTranspose,
+        onReset: controls.handleResetTranspose,
+      }
+    : null;
+
   const closeChordModal = useCallback(() => setSelectedChordModal(null), []);
 
   const chordModal = selectedChordModal && (
@@ -184,50 +220,6 @@ export const SongViewer: React.FC<SongViewerProps> = ({
       onClose={closeChordModal}
     />
   );
-
-  if (presentationMode) {
-    return (
-      <div className="fixed inset-0 z-40 bg-white dark:bg-dark-950 overflow-y-auto pb-32 pt-6 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {song.title}
-            </h1>
-            {hasKey && (
-              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{displayedKey}</span>
-            )}
-          </div>
-          <ChordSheet
-            content={transposedContent}
-            fontSize={settings.fontSize}
-            twoColumns={settings.twoColumns}
-            showChords={settings.showChords}
-            onChordClick={(chord) => setSelectedChordModal(chord)}
-          />
-        </div>
-
-        <FloatingControls
-          settings={settings}
-          onUpdateSettings={setSettings}
-          currentKey={displayedKey}
-          isModified={controls.isModified}
-          onExitPresentation={() => setPresentationMode(false)}
-          onTranspose={controls.handleTranspose}
-          onCapoChange={controls.handleCapoChange}
-          onResetTranspose={controls.handleResetTranspose}
-          onFontSizeChange={controls.handleFontSizeChange}
-          onToggleAutoScroll={controls.toggleAutoScroll}
-          onChangeScrollSpeed={controls.changeScrollSpeed}
-          onToggleShowChords={() =>
-            setSettings((prev) => ({ ...prev, showChords: !prev.showChords }))
-          }
-          metronomeSlot={<MetronomeControl metronome={metronome} variant="dock" />}
-        />
-
-        {chordModal}
-      </div>
-    );
-  }
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6 pb-10">
@@ -273,6 +265,15 @@ export const SongViewer: React.FC<SongViewerProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 print:hidden">
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={() => onRehearsalChange(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 hover:border-blue-700 transition-colors"
+            title="Letra grande, auto-scroll y controles para tocar"
+          >
+            <MicVocal className="w-4 h-4" />
+            <span>Modo ensayo</span>
+          </button>
+
+          <button
             onClick={() => onToggleFavorite(song.id)}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-colors ${
               isFavorite
@@ -298,14 +299,6 @@ export const SongViewer: React.FC<SongViewerProps> = ({
           >
             <Printer className="w-4 h-4" />
             <span>Imprimir</span>
-          </button>
-
-          <button
-            onClick={() => setPresentationMode(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors"
-          >
-            <Maximize2 className="w-4 h-4" />
-            <span>Modo presentación</span>
           </button>
 
           <SongRowMenu
@@ -546,8 +539,27 @@ export const SongViewer: React.FC<SongViewerProps> = ({
         </aside>
       </div>
 
-      {/* Chord detail: positions (guitar) or inversions (piano) */}
-      {chordModal}
+      {isRehearsing ? (
+        <RehearsalMode
+          song={song}
+          content={transposedContent}
+          showChords={settings.showChords}
+          keyControls={rehearsalKeyControls}
+          capoFret={isPiano ? null : settings.capoFret}
+          instrument={hasChords ? instrument : null}
+          onInstrumentChange={setInstrument}
+          metronome={metronome}
+          player={player}
+          onChordClick={setSelectedChordModal}
+          isChordModalOpen={Boolean(selectedChordModal)}
+          // Rendered inside the rehearsal layer, which sits above this page.
+          chordModal={chordModal}
+          onExit={() => onRehearsalChange(false)}
+        />
+      ) : (
+        /* Chord detail: positions (guitar) or inversions (piano) */
+        chordModal
+      )}
     </div>
   );
 };

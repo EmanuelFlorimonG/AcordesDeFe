@@ -44,6 +44,51 @@ export function isRefrainSection(kind: SectionKind): boolean {
   return kind === 'coro';
 }
 
+/** A line of chords with no words under them, like an intro: "G  D  Em  C". */
+export function isChordOnlyLine(line: ParsedLine): boolean {
+  return (
+    line.type === 'chords-lyrics' &&
+    Boolean(line.segments?.some((segment) => segment.chord)) &&
+    Boolean(line.segments?.every((segment) => !segment.lyric.trim()))
+  );
+}
+
+export function sectionHasWords(section: SongSection): boolean {
+  return section.lines.some(
+    (line) =>
+      line.type === 'comment' ||
+      (line.type === 'chords-lyrics' && Boolean(line.segments?.some((segment) => segment.lyric.trim())))
+  );
+}
+
+export function songHasChords(sections: SongSection[]): boolean {
+  return sections.some((section) =>
+    section.lines.some((line) => line.segments?.some((segment) => segment.chord))
+  );
+}
+
+/**
+ * Whether the chord sheet draws a section. With chords hidden, a purely
+ * instrumental section (an intro of chords only) has nothing to show.
+ */
+export function isSectionShown(section: SongSection, renderChords: boolean): boolean {
+  return renderChords || section.lines.length === 0 || sectionHasWords(section);
+}
+
+/** Short name for compact navigation: "V1", "Coro", "Pre-coro", "Puente"… */
+export function getSectionShortLabel(header: SectionHeader): string {
+  switch (header.kind) {
+    case 'verso':
+      return header.number !== undefined ? `V${header.number}` : 'Verso';
+    case 'precoro':
+      return 'Pre-coro';
+    case 'postcoro':
+      return 'Post-coro';
+    default:
+      return header.label;
+  }
+}
+
 const TERMINATOR = /\s*(?::|\.{2,}|…)\s*$/;
 const REPEAT = /\s*(?:[([]\s*(?:x|×)\s*(\d+)\s*[)\]]|(?:x|×)(\d+)|\((bis)\))\s*$/i;
 

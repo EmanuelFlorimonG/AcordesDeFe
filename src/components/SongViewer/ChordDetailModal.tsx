@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Guitar, Piano, X } from 'lucide-react';
 import type { Instrument } from '../../types/song';
 import { getGuitarPositions } from '../../utils/guitarChords';
-import { getInversionCount, getInversionLabel, getPianoChord } from '../../utils/pianoChords';
+import { getInversionLabel, getPianoChord, getVoicingCount } from '../../utils/pianoChords';
 import { ChordDiagram } from './ChordDiagram';
 import { PianoChordDiagram } from './PianoChordDiagram';
 
@@ -79,7 +79,8 @@ export const ChordDetailModal: React.FC<ChordDetailModalProps> = ({ chord, instr
   let caption: string | null = null;
 
   if (isPiano) {
-    const count = pianoChord ? getInversionCount(pianoChord) : 0;
+    // One option per chord tone; a slash chord has a single voicing.
+    const count = pianoChord ? getVoicingCount(pianoChord) : 0;
     options = Array.from({ length: count }, (_, index) => ({
       id: index,
       label: index === 0 ? 'Fundamental' : `${index}ª inv.`,

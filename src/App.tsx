@@ -12,6 +12,7 @@ import { PlaylistsView } from './components/Dashboard/PlaylistsView';
 import { SongViewer } from './components/SongViewer/SongViewer';
 import { PlayerBar } from './components/Player/PlayerBar';
 import { YouTubeAudioPlayer, type YouTubeAudioPlayerHandle } from './components/Player/YouTubeAudioPlayer';
+import type { CompactPlayerState } from './components/Player/MiniPlayer';
 import { PrivacyPolicy } from './components/Legal/PrivacyPolicy';
 import { TermsConditions } from './components/Legal/TermsConditions';
 import { About } from './components/Pages/About';
@@ -52,6 +53,13 @@ export function App() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const youtubePlayerRef = useRef<YouTubeAudioPlayerHandle>(null);
+  // The element that actually scrolls. The app shell is a fixed-height flex
+  // layout, so the window itself never scrolls.
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Lives here rather than in the song viewer so rehearsal mode can stay open
+  // while moving from one song to the next (setlists).
+  const [isRehearsing, setIsRehearsing] = useState(false);
 
   // The hash-change listener below is registered once; it reads this ref
   // instead of `lastOpenedSongId` directly to avoid acting on a stale value.
@@ -84,7 +92,9 @@ export function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = decodeURIComponent(window.location.hash);
-      window.scrollTo({ top: 0 });
+      // Every page starts at the top. window.scrollTo would do nothing here.
+      scrollContainerRef.current?.scrollTo({ top: 0 });
+      if (!hash.startsWith('#/song/')) setIsRehearsing(false);
 
       if (hash === '#/privacidad') {
         setPage('privacy');
@@ -287,6 +297,21 @@ export function App() {
     setCurrentTime(seconds);
   };
 
+  // Compact controls for rehearsal mode. They drive the same single player as
+  // the PlayerBar; no second player exists.
+  const compactPlayer: CompactPlayerState | null = lastOpenedSong
+    ? {
+        song: lastOpenedSong,
+        isPlaying: isPlayerPlaying,
+        hasVideo: Boolean(lastOpenedSong.youtubeId),
+        isReady: isPlayerReady,
+        error: playerError,
+        onTogglePlay: () => setIsPlayerPlaying((v) => !v),
+        onNext: handlePlayerNext,
+        onPrev: handlePlayerPrev,
+      }
+    : null;
+
   const renderContent = () => {
     switch (page) {
       case 'privacy':
@@ -312,6 +337,9 @@ export function App() {
             onToggleInPlaylist={handleToggleInPlaylist}
             onCreatePlaylist={handleCreatePlaylist}
             onShare={handleShareSong}
+            isRehearsing={isRehearsing}
+            onRehearsalChange={setIsRehearsing}
+            player={compactPlayer}
           />
         ) : null;
       default:
@@ -377,9 +405,15 @@ export function App() {
   };
 
   const showPlayerBar = Boolean(lastOpenedSong);
+  const rehearsalActive = isRehearsing && page === 'song' && Boolean(activeSong);
 
   return (
-    <div className="h-screen flex bg-white dark:bg-dark-950 text-[#10203A] dark:text-slate-100 font-sans overflow-hidden">
+    <div
+      // While rehearsing, the app underneath can't be reached by keyboard or
+      // screen reader; rehearsal mode itself is portalled outside this element.
+      inert={rehearsalActive}
+      className="h-screen flex bg-white dark:bg-dark-950 text-[#10203A] dark:text-slate-100 font-sans overflow-hidden"
+    >
       <Sidebar
         activeSection={sidebarActiveSection}
         onNavigate={handleSidebarNavigate}
@@ -401,7 +435,7 @@ export function App() {
           inputRef={searchInputRef}
         />
 
-        <div className="flex-grow min-h-0 overflow-y-auto flex flex-col">
+        <div ref={scrollContainerRef} className="flex-grow min-h-0 overflow-y-auto flex flex-col">
           <main className="flex-grow flex flex-col">{renderContent()}</main>
           <Footer
             onNavigate={(hash) => {
@@ -428,6 +462,8 @@ export function App() {
                 setIsPlayerPlaying(false);
               }}
             />
+            {/* Rehearsal mode shows its own compact controls for this player. */}
+            {!rehearsalActive && (
             <PlayerBar
               song={lastOpenedSong}
               isPlaying={isPlayerPlaying}
@@ -447,6 +483,7 @@ export function App() {
               volume={volume}
               onVolumeChange={setVolume}
             />
+            )}
           </>
         )}
       </div>

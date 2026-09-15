@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Metronome, Minus, Pause, Play, Plus, RotateCcw, X } from 'lucide-react';
+import { Minus, Pause, Play, Plus, RotateCcw, X } from 'lucide-react';
 import type { MetronomeControls } from '../../hooks/useMetronome';
 import { MAX_BPM, MIN_BPM } from '../../utils/metronomeEngine';
 import { BANNER_CHIP_CLASS, BANNER_CHIP_LABEL_CLASS, BANNER_CHIP_VALUE_CLASS } from './infoChip';
 
 interface MetronomeControlProps {
   metronome: MetronomeControls;
-  /** "banner": chip on the song header. "dock": block in the presentation dock. */
-  variant?: 'banner' | 'dock';
+  /**
+   * "banner": chip on the coloured song header.
+   * "panel": full controls on a light surface (rehearsal mode panels).
+   */
+  variant?: 'banner' | 'panel';
 }
 
 const HOLD_DELAY_MS = 400;
@@ -54,7 +57,8 @@ function useHoldRepeat(action: () => void, disabled: boolean) {
   };
 }
 
-const BeatDots: React.FC<{ metronome: MetronomeControls }> = ({ metronome }) => {
+/** One dot per click of the bar; the first is larger, the one being heard lights up. */
+const BeatDots: React.FC<{ metronome: MetronomeControls; tone: 'onColor' | 'light' }> = ({ metronome, tone }) => {
   const { meter, currentPulse, isRunning } = metronome;
   return (
     <span className="flex items-center gap-1 px-1" aria-hidden="true">
@@ -63,11 +67,21 @@ const BeatDots: React.FC<{ metronome: MetronomeControls }> = ({ metronome }) => 
         const size = level === 'accent' ? 'w-2 h-2' : level === 'beat' ? 'w-1.5 h-1.5' : 'w-1 h-1';
         // In 6/8 and similar, a small gap shows the groups of three.
         const groupGap = meter.isCompound && index > 0 && index % 3 === 0 ? 'ml-1' : '';
+        const color =
+          tone === 'onColor'
+            ? isActive
+              ? 'bg-white'
+              : 'bg-white/35'
+            : isActive
+              ? 'bg-blue-600 dark:bg-sky-400'
+              : 'bg-slate-300 dark:bg-dark-600';
         return (
           <span
             key={index}
-            className={`rounded-full transition-[transform,background-color] duration-75 ${size} ${groupGap} ${
-              isActive ? 'bg-white scale-125' : 'bg-white/35'
+            data-beat={index}
+            data-active={isActive ? 'true' : undefined}
+            className={`rounded-full transition-[transform,background-color] duration-75 ${size} ${groupGap} ${color} ${
+              isActive ? 'scale-125' : ''
             }`}
           />
         );
@@ -79,67 +93,78 @@ const BeatDots: React.FC<{ metronome: MetronomeControls }> = ({ metronome }) => 
 const bannerIconButton =
   'w-6 h-6 flex items-center justify-center rounded-md text-white hover:bg-white/20 transition-colors disabled:opacity-40 disabled:hover:bg-transparent touch-manipulation';
 
-const dockButton =
-  'w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-md border transition-colors disabled:opacity-40 touch-manipulation';
+const panelStepButton =
+  'w-11 h-11 flex items-center justify-center rounded-lg text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-dark-700 hover:text-slate-900 dark:hover:text-white transition-colors disabled:opacity-30 disabled:hover:bg-transparent touch-manipulation';
 
 export const MetronomeControl: React.FC<MetronomeControlProps> = ({ metronome, variant = 'banner' }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { isSupported, isRunning, bpm, songBpm, isBpmModified, meter, currentPulse } = metronome;
+  const { isSupported, isRunning, bpm, songBpm, isBpmModified, meter } = metronome;
 
   const slower = useHoldRepeat(() => metronome.changeBpm(-1), bpm <= MIN_BPM);
   const faster = useHoldRepeat(() => metronome.changeBpm(1), bpm >= MAX_BPM);
 
   const unsupportedTitle = 'Tu navegador no permite reproducir el metrónomo';
 
-  if (variant === 'dock') {
+  if (variant === 'panel') {
     return (
-      <div className="flex items-center bg-slate-50 dark:bg-dark-800 p-1 rounded-md border border-slate-200 dark:border-dark-700">
-        <button
-          type="button"
-          onClick={metronome.toggle}
-          disabled={!isSupported}
-          aria-pressed={isRunning}
-          title={!isSupported ? unsupportedTitle : isRunning ? 'Pausar metrónomo' : 'Iniciar metrónomo'}
-          className={`${dockButton} ${
-            isRunning
-              ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700'
-              : 'bg-white dark:bg-dark-900 border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-dark-800'
-          }`}
-        >
-          <Metronome className="w-4 h-4" />
-        </button>
-        <button
-          type="button"
-          {...slower}
-          disabled={bpm <= MIN_BPM}
-          title="Más lento"
-          className={`${dockButton} ml-1 bg-white dark:bg-dark-900 border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-dark-800`}
-        >
-          <Minus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        </button>
-        <div className="flex flex-col items-center px-1 sm:px-2 min-w-[45px] sm:min-w-[56px]">
-          <span className="flex items-center gap-1 text-[9px] text-slate-500 dark:text-slate-400 font-bold tracking-wider uppercase">
-            <span
-              aria-hidden="true"
-              className={`w-1.5 h-1.5 rounded-full transition-colors duration-75 ${
-                isRunning && currentPulse === 0 ? 'bg-blue-600 dark:bg-sky-400' : 'bg-slate-300 dark:bg-dark-600'
-              }`}
-            />
-            BPM
-          </span>
-          <span className="text-xs sm:text-sm font-bold font-mono text-blue-600 dark:text-blue-400 tabular-nums">
-            {bpm}
-          </span>
+      <div role="group" aria-label="Metrónomo" className="w-[17.5rem] max-w-full space-y-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={metronome.toggle}
+            disabled={!isSupported}
+            aria-pressed={isRunning}
+            title={!isSupported ? unsupportedTitle : isRunning ? 'Pausar metrónomo' : 'Iniciar metrónomo'}
+            className={`h-11 w-11 shrink-0 flex items-center justify-center rounded-xl transition-colors disabled:opacity-40 touch-manipulation ${
+              isRunning
+                ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-sky-300 ring-1 ring-inset ring-blue-200 dark:ring-blue-500/30'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            {isRunning ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
+          </button>
+
+          <div
+            role="group"
+            aria-label="Tempo"
+            className="flex flex-1 items-center justify-between rounded-xl border border-slate-200 dark:border-dark-700 bg-slate-50/80 dark:bg-dark-800/60 p-0.5"
+          >
+            <button type="button" {...slower} disabled={bpm <= MIN_BPM} title="Más lento" aria-label="Más lento" className={panelStepButton}>
+              <Minus className="w-4 h-4" />
+            </button>
+            <span className="flex items-baseline gap-1 tabular-nums" aria-live="polite">
+              <span data-metronome-bpm="" className="font-mono text-lg font-bold text-slate-900 dark:text-white">
+                {bpm}
+              </span>
+              <span className="text-xs text-slate-400">BPM</span>
+            </span>
+            <button type="button" {...faster} disabled={bpm >= MAX_BPM} title="Más rápido" aria-label="Más rápido" className={panelStepButton}>
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          {...faster}
-          disabled={bpm >= MAX_BPM}
-          title="Más rápido"
-          className={`${dockButton} bg-white dark:bg-dark-900 border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-dark-800`}
-        >
-          <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        </button>
+
+        <div className="flex min-h-[1.75rem] items-center justify-between gap-3">
+          <span className="flex items-center gap-2" title={meter.isAssumed ? 'Compás supuesto: 4/4' : `Compás ${meter.label}`}>
+            <BeatDots metronome={metronome} tone="light" />
+            <span className="font-mono text-xs text-slate-400">{meter.label}</span>
+          </span>
+          {isBpmModified ? (
+            <button
+              type="button"
+              onClick={metronome.resetBpm}
+              title={`Volver a ${songBpm} BPM, el tempo de la canción`}
+              className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-xs font-semibold text-blue-600 dark:text-sky-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              {songBpm} BPM
+            </button>
+          ) : (
+            <span className="text-xs text-slate-400">
+              {songBpm !== null ? 'Tempo de la canción' : 'Tempo sugerido'}
+            </span>
+          )}
+        </div>
       </div>
     );
   }
@@ -201,7 +226,7 @@ export const MetronomeControl: React.FC<MetronomeControlProps> = ({ metronome, v
 
       <span aria-hidden="true" className="w-px h-4 bg-white/20 mx-0.5" />
 
-      <BeatDots metronome={metronome} />
+      <BeatDots metronome={metronome} tone="onColor" />
 
       {isBpmModified && (
         <button

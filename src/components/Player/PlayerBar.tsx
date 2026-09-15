@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Song } from '../../types/song';
 import { CoverTile } from '../Dashboard/CoverTile';
+import { getPlayButtonState } from '../../utils/playerStatus';
 import { Play, Pause, SkipBack, SkipForward, Heart, Volume2, VolumeX, ListMusic } from 'lucide-react';
 
 interface PlayerBarProps {
@@ -49,14 +50,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   volume,
   onVolumeChange,
 }) => {
-  const playDisabled = !hasVideo || (!isPlayerReady && !playerError);
-  const playTitle = !hasVideo
-    ? 'Audio no disponible'
-    : playDisabled
-      ? 'Cargando reproductor…'
-      : isPlaying
-        ? 'Pausar'
-        : 'Reproducir';
+  const { disabled: playDisabled, title: playTitle } = getPlayButtonState({
+    hasVideo,
+    isReady: isPlayerReady,
+    error: playerError,
+    isPlaying,
+  });
 
   return (
     <div className="sticky bottom-0 z-30 border-t border-slate-200 dark:border-dark-800 bg-white dark:bg-dark-950 px-3 sm:px-5 py-2.5 flex items-center gap-3 sm:gap-5 print:hidden">

@@ -109,8 +109,6 @@ export interface ViewSettings {
   fontSize: 'sm' | 'base' | 'lg' | 'xl';
   showChords: boolean;
   twoColumns: boolean;
-  autoScrollSpeed: number; // 1 to 5
-  isAutoScrolling: boolean;
   transposeSteps: number; // -11 to +11 semitones
   capoFret: number; // 0 to 7
 }
