@@ -54,7 +54,7 @@ export const Hero: React.FC<HeroProps> = ({ onFocusSearch, onGoToFavorites, onGo
 
       <div className="relative">
         <span className="text-[11px] font-bold text-blue-300 tracking-wider uppercase mb-3 block">
-          Ministerio
+          Ministerio Acordes de Fe
         </span>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-2">
           Tu cancionero
