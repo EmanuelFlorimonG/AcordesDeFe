@@ -3,6 +3,7 @@ import type { Playlist, Song } from '../../types/song';
 import { Heart, Music, ChevronRight, Gauge } from 'lucide-react';
 import { CoverTile } from './CoverTile';
 import { SongRowMenu } from './SongRowMenu';
+import { LiturgicalSeasonChips } from '../Liturgy/LiturgicalSeasonChips';
 
 interface SongCardProps {
   song: Song;
@@ -59,9 +60,12 @@ export const SongCard: React.FC<SongCardProps> = ({
           </div>
         </div>
 
-        <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-500/20">
-          {song.categories[0]}
-        </span>
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-500/20">
+            {song.categories[0]}
+          </span>
+          <LiturgicalSeasonChips song={song} size="sm" compact />
+        </div>
 
         <h3 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors line-clamp-1 mt-2.5">
           {song.title}

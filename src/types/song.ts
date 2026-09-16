@@ -1,3 +1,5 @@
+import type { LiturgicalSeasonId } from '../data/liturgicalSeasons';
+
 // Open-ended: categories are driven by song data (see categoryStyle.ts for
 // the known liturgical/style categories), plus the 'Todas' and 'Favoritas'
 // sentinel values used by the dashboard filters.
@@ -87,6 +89,11 @@ export interface Song {
   /** Strumming or rhythm pattern, written freely, e.g. "↓ ↓↑ ↑↓↑" */
   rhythmPattern?: string;
   categories: string[];
+  /**
+   * Liturgical seasons the song suits, independent of its categories. Absent
+   * or empty means not classified yet. Read it through getSongSeasons().
+   */
+  liturgicalSeasons?: LiturgicalSeasonId[];
   tags: string[];
   content: string; // Bracket notation [G] or standard chord/lyric lines
   chordsUsed: string[];

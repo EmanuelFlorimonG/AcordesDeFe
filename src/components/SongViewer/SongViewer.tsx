@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import type { Instrument, Playlist, Song, ViewSettings } from '../../types/song';
+import type { SetlistPlayback } from '../../types/setlist';
 import { normalizeStep, transposeKey } from '../../utils/chordTransposer';
 import { transposeSongContent, extractUniqueChords, stripChords } from '../../utils/chordParser';
 import { getCategoryStyle } from '../../utils/categoryStyle';
@@ -13,19 +14,24 @@ import { InstrumentToggle } from './InstrumentToggle';
 import { SongInfoChips, type SongKeyInfo } from './SongInfoChips';
 import { TransposeMenu } from './TransposeMenu';
 import { SongRowMenu } from '../Dashboard/SongRowMenu';
+import { LiturgicalSeasonChips } from '../Liturgy/LiturgicalSeasonChips';
 import { RehearsalMode } from '../Rehearsal/RehearsalMode';
 import type { RehearsalKeyControls } from '../Rehearsal/RehearsalHeader';
 import type { CompactPlayerState } from '../Player/MiniPlayer';
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Heart,
   Copy,
   Check,
   Guitar,
+  ListOrdered,
   Piano,
   Share2,
   Printer,
   MicVocal,
+  StickyNote,
 } from 'lucide-react';
 
 type SongTab = 'letra' | 'diagramas' | 'recursos';
@@ -44,6 +50,11 @@ interface SongViewerProps {
   onRehearsalChange: (active: boolean) => void;
   /** State of the app's single YouTube player, for rehearsal mode's compact controls */
   player: CompactPlayerState | null;
+  /**
+   * Set when the song was opened from a setlist. The key, capo, moment and
+   * note shown then belong to that occasion, and are saved back to it.
+   */
+  setlist?: SetlistPlayback | null;
 }
 
 // The key a song was left in stays for the rest of the browser session, so
@@ -86,17 +97,49 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   isRehearsing,
   onRehearsalChange,
   player,
+  setlist,
 }) => {
-  const [settings, setSettings] = useState<ViewSettings>(() => {
-    const sessionKey = readSessionKey(song.id);
+  const [localSettings, setLocalSettings] = useState<ViewSettings>(() => {
+    // Opened from a setlist, the song starts in that setlist's key, not in
+    // whatever key it was last left in elsewhere.
+    const sessionKey = setlist ? null : readSessionKey(song.id);
     return {
       fontSize: 'base',
       showChords: true,
       twoColumns: false,
-      transposeSteps: sessionKey?.transposeSteps ?? 0,
-      capoFret: sessionKey?.capoFret ?? (song.recommendedCapo || 0),
+      transposeSteps: setlist ? setlist.item.transposeSteps : sessionKey?.transposeSteps ?? 0,
+      capoFret: setlist ? setlist.item.capoFret : sessionKey?.capoFret ?? (song.recommendedCapo || 0),
     };
   });
+
+  // In a setlist the key and capo belong to the setlist, so they are read from
+  // it and written back to it: leaving the song and returning finds them, and
+  // the song itself is never modified.
+  const settings: ViewSettings = setlist
+    ? { ...localSettings, transposeSteps: setlist.item.transposeSteps, capoFret: setlist.item.capoFret }
+    : localSettings;
+
+  const settingsRef = useRef(settings);
+  const saveSetlistKeyRef = useRef(setlist?.onKeySettingsChange);
+  useLayoutEffect(() => {
+    settingsRef.current = settings;
+    saveSetlistKeyRef.current = setlist?.onKeySettingsChange;
+  });
+
+  const setSettings = useCallback<React.Dispatch<React.SetStateAction<ViewSettings>>>((action) => {
+    const saveSetlistKey = saveSetlistKeyRef.current;
+    if (!saveSetlistKey) {
+      setLocalSettings(action);
+      return;
+    }
+    const previous = settingsRef.current;
+    const next = typeof action === 'function' ? action(previous) : action;
+    if (next === previous) return;
+    setLocalSettings((current) => ({ ...current, ...next }));
+    if (next.transposeSteps !== previous.transposeSteps || next.capoFret !== previous.capoFret) {
+      saveSetlistKey({ transposeSteps: next.transposeSteps, capoFret: next.capoFret });
+    }
+  }, []);
 
   const [copied, setCopied] = useState(false);
   const [copiedLyricsOnly, setCopiedLyricsOnly] = useState(false);
@@ -109,7 +152,11 @@ export const SongViewer: React.FC<SongViewerProps> = ({
     'guitarra'
   );
 
+  const isInSetlist = Boolean(setlist);
   useEffect(() => {
+    // A setlist keeps its own key, and must not overwrite the one the song has
+    // when it is opened normally from the songbook.
+    if (isInSetlist) return;
     try {
       sessionStorage.setItem(
         SESSION_KEY_PREFIX + song.id,
@@ -118,7 +165,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
     } catch {
       // storage unavailable (private mode): the key simply isn't remembered
     }
-  }, [song.id, settings.transposeSteps, settings.capoFret]);
+  }, [song.id, settings.transposeSteps, settings.capoFret, isInSetlist]);
 
   const controls = useTransposeControls(settings, setSettings, song.recommendedCapo || 0);
   // Independent of the YouTube player: neither one starts or stops the other.
@@ -226,21 +273,94 @@ export const SongViewer: React.FC<SongViewerProps> = ({
       {/* Top navigation */}
       <div className="flex items-center justify-between gap-4 mb-5 print:hidden">
         <button
-          onClick={onBack}
+          onClick={setlist ? setlist.onBackToSetlist : onBack}
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-medium">Volver al cancionero</span>
+          <span className="text-sm font-medium">{setlist ? 'Volver al Setlist' : 'Volver al cancionero'}</span>
         </button>
       </div>
+
+      {/* Opened from a setlist: say so, and say with which settings. */}
+      {setlist && (
+        <div className="mb-5 rounded-xl border border-[#D6E4FF] dark:border-blue-500/20 bg-[#F5F8FF] dark:bg-blue-500/5 px-4 py-3 print:hidden">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+            <ListOrdered className="w-4 h-4 shrink-0 text-[#2464ED]" />
+            <p className="min-w-0 truncate text-sm font-bold text-[#10203A] dark:text-white">
+              {setlist.setlistName}
+            </p>
+            <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
+              {setlist.position} / {setlist.total}
+            </span>
+            {setlist.item.moment && (
+              <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-white dark:bg-blue-500/10 text-[10px] font-bold uppercase tracking-[0.1em] text-[#2464ED] dark:text-sky-400">
+                {setlist.item.moment}
+              </span>
+            )}
+
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setlist.previous?.onSelect()}
+                disabled={!setlist.previous}
+                title={setlist.previous ? `Anterior: ${setlist.previous.title}` : 'Es la primera del Setlist'}
+                aria-label={setlist.previous ? `Anterior: ${setlist.previous.title}` : 'Es la primera del Setlist'}
+                className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-dark-800 hover:text-[#2464ED] transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setlist.next?.onSelect()}
+                disabled={!setlist.next}
+                title={setlist.next ? `Siguiente: ${setlist.next.title}` : 'Es la última del Setlist'}
+                aria-label={setlist.next ? `Siguiente: ${setlist.next.title}` : 'Es la última del Setlist'}
+                className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-dark-800 hover:text-[#2464ED] transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <span>
+              Configuración de este Setlist
+              {hasKey && (
+                <>
+                  : tono <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">{displayedKey}</span>
+                  {!isPiano && settings.capoFret > 0 && ` · cejilla ${settings.capoFret}`}
+                  {controls.isModified && ` · el original es ${song.originalKey}`}
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={setlist.onViewOriginal}
+              className="font-semibold text-[#2464ED] dark:text-sky-400 hover:underline"
+            >
+              Ver la canción original
+            </button>
+          </div>
+
+          {setlist.item.notes && (
+            <p className="mt-2 flex items-start gap-2 text-sm leading-relaxed whitespace-pre-line text-slate-600 dark:text-slate-300">
+              <StickyNote className="w-4 h-4 mt-0.5 shrink-0 text-slate-400 dark:text-slate-500" />
+              {setlist.item.notes}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Header banner */}
       <div
         className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${categoryStyle.from} ${categoryStyle.to} px-6 sm:px-8 py-7 sm:py-9 mb-5 print:hidden`}
       >
-        <span className="inline-block px-2.5 py-1 rounded-md text-xs font-bold bg-white/15 text-white mb-3">
-          {song.categories[0]}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          <span className="inline-block px-2.5 py-1 rounded-md text-xs font-bold bg-white/15 text-white">
+            {song.categories[0]}
+          </span>
+          <LiturgicalSeasonChips song={song} size="md" variant="onColor" />
+        </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">{song.title}</h1>
         {(song.artist || song.year) && (
           <p className="text-base sm:text-lg font-medium text-white/80 mt-1">
@@ -555,6 +675,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
           // Rendered inside the rehearsal layer, which sits above this page.
           chordModal={chordModal}
           onExit={() => onRehearsalChange(false)}
+          setlist={setlist}
         />
       ) : (
         /* Chord detail: positions (guitar) or inversions (piano) */

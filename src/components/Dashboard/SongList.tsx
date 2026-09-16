@@ -3,6 +3,7 @@ import type { Playlist, Song } from '../../types/song';
 import { Heart } from 'lucide-react';
 import { CoverTile } from './CoverTile';
 import { SongRowMenu } from './SongRowMenu';
+import { LiturgicalSeasonChips } from '../Liturgy/LiturgicalSeasonChips';
 
 interface SongListProps {
   songs: Song[];
@@ -61,9 +62,12 @@ export const SongList: React.FC<SongListProps> = ({
             <CoverTile category={song.categories[0]} size="sm" className="mr-4" />
 
             <div className="flex-grow min-w-0 pr-4">
-              <span className="inline-block px-1.5 py-0.5 bg-[#EAF1FF] dark:bg-blue-500/10 text-[#2464ED] text-[9px] font-bold rounded mb-1.5 capitalize tracking-wide">
-                {song.categories[0] || 'Canción'}
-              </span>
+              <div className="flex flex-wrap items-center gap-1 mb-1.5">
+                <span className="inline-block px-1.5 py-0.5 bg-[#EAF1FF] dark:bg-blue-500/10 text-[#2464ED] text-[9px] font-bold rounded capitalize tracking-wide">
+                  {song.categories[0] || 'Canción'}
+                </span>
+                <LiturgicalSeasonChips song={song} size="xs" compact />
+              </div>
               <h3 className="text-sm font-bold text-[#10203A] dark:text-white truncate leading-tight mb-0.5">
                 {song.title}
               </h3>

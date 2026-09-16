@@ -1,6 +1,7 @@
 import React from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, EyeOff, Metronome, RotateCcw } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, EyeOff, Flag, Metronome, RotateCcw } from 'lucide-react';
 import type { Instrument, Song } from '../../types/song';
+import type { SetlistPlayback } from '../../types/setlist';
 import type { MetronomeControls } from '../../hooks/useMetronome';
 import { InstrumentToggle } from '../SongViewer/InstrumentToggle';
 import { MetronomeControl } from '../SongViewer/MetronomeControl';
@@ -30,16 +31,16 @@ interface RehearsalHeaderProps {
   onToggleMetronome: () => void;
   onEnterCleanScreen: () => void;
   onExit: () => void;
-  /** Ready for setlists: shown only when provided. */
-  previousSong?: Song | null;
-  nextSong?: Song | null;
-  onNavigateSong?: (song: Song) => void;
+  /** Set while rehearsing a setlist: moving through it and where we are in it */
+  setlist?: SetlistPlayback | null;
+  /** Called from the last song, where there is no next one */
+  onFinishSetlist?: () => void;
   /** Section navigation, rendered as the header's second row */
   children?: React.ReactNode;
 }
 
 const quietButton =
-  'flex items-center justify-center gap-1.5 h-10 px-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-dark-800 hover:text-slate-900 dark:hover:text-white transition-colors touch-manipulation';
+  'flex items-center justify-center gap-1.5 h-10 px-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-dark-800 hover:text-slate-900 dark:hover:text-white transition-colors touch-manipulation disabled:opacity-25 disabled:hover:bg-transparent';
 
 export const RehearsalHeader: React.FC<RehearsalHeaderProps> = ({
   song,
@@ -52,14 +53,34 @@ export const RehearsalHeader: React.FC<RehearsalHeaderProps> = ({
   onToggleMetronome,
   onEnterCleanScreen,
   onExit,
-  previousSong,
-  nextSong,
-  onNavigateSong,
+  setlist,
+  onFinishSetlist,
   children,
 }) => {
-  // "G · suena A · 72 BPM · 4/4 · Capo 2". The key moves into the stepper
-  // once there is room for it, so it isn't shown twice.
+  // "3 / 8 · COMUNIÓN · G · suena A · 72 BPM · 4/4 · Capo 2". The key moves
+  // into the stepper once there is room for it, so it isn't shown twice.
   const info: Array<{ key: string; node: React.ReactNode; className?: string }> = [];
+  if (setlist) {
+    info.push({
+      key: 'progreso',
+      node: (
+        <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+          {setlist.position} / {setlist.total}
+        </span>
+      ),
+    });
+    if (setlist.item.moment) {
+      info.push({
+        key: 'momento',
+        node: (
+          <span className="font-semibold uppercase tracking-[0.1em] text-[#2464ED] dark:text-sky-400">
+            {setlist.item.moment}
+          </span>
+        ),
+      });
+    }
+    if (!setlist.next) info.push({ key: 'ultima', node: 'última' });
+  }
   if (keyControls) {
     info.push({
       key: 'tono',
@@ -86,11 +107,19 @@ export const RehearsalHeader: React.FC<RehearsalHeaderProps> = ({
         </button>
         <span aria-hidden="true" className="hidden sm:block w-px h-6 bg-slate-200 dark:bg-dark-700" />
 
-        {previousSong && onNavigateSong && (
+        {setlist && (
           <button
             type="button"
-            onClick={() => onNavigateSong(previousSong)}
-            title={`Canción anterior: ${previousSong.title}`}
+            onClick={() => setlist.previous?.onSelect()}
+            disabled={!setlist.previous}
+            title={
+              setlist.previous
+                ? `Canción anterior: ${setlist.previous.title}`
+                : 'Es la primera canción del Setlist'
+            }
+            aria-label={
+              setlist.previous ? `Canción anterior: ${setlist.previous.title}` : 'Es la primera canción del Setlist'
+            }
             className={quietButton}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -107,11 +136,15 @@ export const RehearsalHeader: React.FC<RehearsalHeaderProps> = ({
           {info.length > 0 && (
             <p className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-slate-500 dark:text-slate-400 [@media(max-height:480px)]:hidden">
               {info.map((item, index) => (
+                // The separator lives inside its item, so hiding the item on
+                // wide screens hides its separator with it.
                 <span key={item.key} className={`flex items-center gap-1.5 ${item.className ?? ''}`}>
                   {index > 0 && (
                     <span
                       aria-hidden="true"
-                      className={`text-slate-300 dark:text-dark-600 ${index === 1 && keyControls ? 'md:hidden' : ''}`}
+                      className={`text-slate-300 dark:text-dark-600 ${
+                        index === 1 && info[0].className?.includes('md:hidden') ? 'md:hidden' : ''
+                      }`}
                     >
                       ·
                     </span>
@@ -123,16 +156,28 @@ export const RehearsalHeader: React.FC<RehearsalHeaderProps> = ({
           )}
         </div>
 
-        {nextSong && onNavigateSong && (
-          <button
-            type="button"
-            onClick={() => onNavigateSong(nextSong)}
-            title={`Canción siguiente: ${nextSong.title}`}
-            className={quietButton}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        )}
+        {setlist &&
+          (setlist.next ? (
+            <button
+              type="button"
+              onClick={setlist.next.onSelect}
+              title={`Canción siguiente: ${setlist.next.title}`}
+              aria-label={`Canción siguiente: ${setlist.next.title}`}
+              className={quietButton}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onFinishSetlist}
+              title="Última canción: terminar el Setlist"
+              className={quietButton}
+            >
+              <Flag className="w-4 h-4" />
+              <span className="hidden sm:inline">Fin</span>
+            </button>
+          ))}
 
         {/* On phones these live in the dock instead. */}
         <div className="hidden md:flex items-center gap-2">

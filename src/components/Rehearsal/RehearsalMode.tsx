@@ -1,12 +1,14 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye } from 'lucide-react';
+import { ChevronRight, Eye, Flag } from 'lucide-react';
 import type { Instrument, Song, ViewSettings } from '../../types/song';
+import type { SetlistPlayback } from '../../types/setlist';
 import type { MetronomeControls } from '../../hooks/useMetronome';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { AUTO_SCROLL_SPEEDS, DEFAULT_AUTO_SCROLL_SPEED, useAutoScroll } from '../../hooks/useAutoScroll';
 import { useRehearsalShortcuts } from '../../hooks/useRehearsalShortcuts';
 import { parseSongSections } from '../../utils/chordParser';
+import { formatSongCount } from '../../utils/setlists';
 import { getSectionShortLabel, isSectionShown, songHasChords } from '../../utils/songSections';
 import { ChordSheet } from '../SongViewer/ChordSheet';
 import type { CompactPlayerState } from '../Player/MiniPlayer';
@@ -59,10 +61,8 @@ export interface RehearsalModeProps {
   /** The existing chord detail modal, rendered inside this layer */
   chordModal: React.ReactNode;
   onExit: () => void;
-  /** Ready for setlists: not wired to anything yet. */
-  previousSong?: Song | null;
-  nextSong?: Song | null;
-  onNavigateSong?: (song: Song) => void;
+  /** Set while rehearsing a setlist: where this song sits in it, and how to move on. */
+  setlist?: SetlistPlayback | null;
 }
 
 /**
@@ -85,9 +85,7 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
   isChordModalOpen,
   chordModal,
   onExit,
-  previousSong,
-  nextSong,
-  onNavigateSong,
+  setlist,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +105,8 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
     : DEFAULT_AUTO_SCROLL_SPEED;
 
   const [isCleanScreen, setIsCleanScreen] = useState(false);
+  // Shown on reaching the end of the last song of a setlist.
+  const [isSetlistFinished, setIsSetlistFinished] = useState(false);
   const [openPanel, setOpenPanel] = useState<OpenPanel | null>(null);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 
@@ -244,7 +244,8 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
 
   // Esc steps back one level at a time: panel, then clean screen, then exit.
   const handleEscape = () => {
-    if (openPanel) setOpenPanel(null);
+    if (isSetlistFinished) setIsSetlistFinished(false);
+    else if (openPanel) setOpenPanel(null);
     else if (isCleanScreen) exitCleanScreen();
     else onExit();
   };
@@ -302,9 +303,8 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
           }
           onEnterCleanScreen={enterCleanScreen}
           onExit={onExit}
-          previousSong={previousSong}
-          nextSong={nextSong}
-          onNavigateSong={onNavigateSong}
+          setlist={setlist}
+          onFinishSetlist={() => setIsSetlistFinished(true)}
         >
           <SectionNavigator items={navItems} activeId={activeSectionId} onSelect={scrollToSection} />
         </RehearsalHeader>
@@ -321,6 +321,12 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
             isCleanScreen ? 'pb-24' : 'pb-48'
           }`}
         >
+          {setlist?.item.notes && (
+            <p className="mb-7 border-l-2 border-[#2464ED]/60 pl-3.5 text-sm sm:text-base leading-relaxed whitespace-pre-line text-slate-600 dark:text-slate-300">
+              {setlist.item.notes}
+            </p>
+          )}
+
           <ChordSheet
             variant="stage"
             content={content}
@@ -329,14 +335,57 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
             showChords={showChords}
             onChordClick={onChordClick}
           />
-          <div
-            aria-hidden="true"
-            className="mt-16 flex items-center justify-center gap-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300 dark:text-dark-600"
-          >
-            <span className="h-px w-10 bg-current" />
-            Fin
-            <span className="h-px w-10 bg-current" />
-          </div>
+
+          {setlist ? (
+            <div className="mt-14 flex flex-col items-center gap-3 text-center">
+              <span aria-hidden="true" className="h-px w-16 bg-slate-200 dark:bg-dark-700" />
+              {setlist.next ? (
+                <>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                    Siguiente
+                  </p>
+                  <button
+                    type="button"
+                    onClick={setlist.next.onSelect}
+                    className="inline-flex items-center gap-2 h-11 px-4 rounded-xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:border-[#2464ED] hover:text-[#2464ED] dark:hover:text-sky-400 transition-colors touch-manipulation"
+                  >
+                    {setlist.next.moment && (
+                      <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#2464ED] dark:text-sky-400">
+                        {setlist.next.moment}
+                      </span>
+                    )}
+                    <span className="truncate max-w-[14rem]">{setlist.next.title}</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                    Fin del Setlist
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {setlist.setlistName} · {formatSongCount(setlist.total)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={setlist.onBackToSetlist}
+                    className="inline-flex items-center gap-2 h-11 px-4 rounded-xl bg-[#2464ED] text-sm font-semibold text-white hover:bg-[#1D56D6] transition-colors touch-manipulation"
+                  >
+                    Volver al Setlist
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <div
+              aria-hidden="true"
+              className="mt-16 flex items-center justify-center gap-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300 dark:text-dark-600"
+            >
+              <span className="h-px w-10 bg-current" />
+              Fin
+              <span className="h-px w-10 bg-current" />
+            </div>
+          )}
         </div>
       </div>
 
@@ -387,6 +436,42 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
           openPanel={openPanel === 'header-metronome' ? null : openPanel}
           onOpenPanelChange={setOpenPanel}
         />
+      )}
+
+      {isSetlistFinished && setlist && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Fin del Setlist"
+          className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-white/85 dark:bg-dark-950/90 backdrop-blur-sm animate-fade-in"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 p-6 text-center shadow-2xl animate-dialog-in">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-xl bg-[#EAF1FF] dark:bg-blue-500/10 flex items-center justify-center">
+              <Flag className="w-6 h-6 text-[#2464ED]" />
+            </div>
+            <h2 className="text-lg font-bold text-[#10203A] dark:text-white">Fin del Setlist</h2>
+            <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
+              {setlist.setlistName} · {formatSongCount(setlist.total)}. Esta era la última.
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                type="button"
+                autoFocus
+                onClick={setlist.onBackToSetlist}
+                className="h-11 rounded-lg bg-[#2464ED] text-sm font-semibold text-white hover:bg-[#1D56D6] transition-colors touch-manipulation"
+              >
+                Volver al Setlist
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSetlistFinished(false)}
+                className="h-11 rounded-lg border border-slate-200 dark:border-dark-700 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors touch-manipulation"
+              >
+                Quedarme en esta canción
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {chordModal}

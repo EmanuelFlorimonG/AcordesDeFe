@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Playlist, Song, SongCategory } from './types/song';
+import type { Setlist, SetlistDetails, SetlistItem, SetlistPlayback } from './types/setlist';
 import { MOCK_SONGS } from './data/mockSongs';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { useSetlists } from './hooks/useSetlists';
+import { useSongDurations } from './hooks/useSongDurations';
+import { getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
+import { SetlistsView } from './components/Setlists/SetlistsView';
+import { SetlistDetail } from './components/Setlists/SetlistDetail';
+import { setlistHash, setlistSongHash } from './components/Setlists/ui';
 import { Sidebar, type SidebarSection } from './components/Layout/Sidebar';
 import { Topbar } from './components/Layout/Topbar';
 import { Footer } from './components/Layout/Footer';
@@ -19,6 +26,12 @@ import { About } from './components/Pages/About';
 import { Contact } from './components/Pages/Contact';
 
 type AppPage = 'app' | 'song' | 'privacy' | 'terms' | 'about' | 'contact';
+
+const SONGS_BY_ID = new Map(MOCK_SONGS.map((song) => [song.id, song]));
+/** A song opened as part of a setlist: #/setlist/<setlist>/song/<entry> */
+const SETLIST_SONG_ROUTE = /^#\/setlist\/([^/]+)\/song\/([^/]+)$/;
+/** An entry can only be opened while its song is still in the songbook. */
+const isPlayableItem = (item: SetlistItem) => SONGS_BY_ID.has(item.songId);
 
 export function App() {
   const [page, setPage] = useState<AppPage>('app');
@@ -61,6 +74,21 @@ export function App() {
   // while moving from one song to the next (setlists).
   const [isRehearsing, setIsRehearsing] = useState(false);
 
+  const setlists = useSetlists();
+  // Song lengths, as reported by the player while actually playing.
+  const { durations, recordDuration } = useSongDurations();
+  /** Null on the list of setlists, an id on one setlist's page. */
+  const [openSetlistId, setOpenSetlistId] = useState<string | null>(null);
+  /** Set while a song is open as part of a setlist, instead of on its own. */
+  const [setlistSongRoute, setSetlistSongRoute] = useState<{ setlistId: string; itemId: string } | null>(null);
+
+  // Like lastOpenedSongIdRef: the routing listener is registered once and
+  // reads the setlists from here rather than closing over a stale copy.
+  const setlistsRef = useRef(setlists.setlists);
+  useEffect(() => {
+    setlistsRef.current = setlists.setlists;
+  }, [setlists.setlists]);
+
   // The hash-change listener below is registered once; it reads this ref
   // instead of `lastOpenedSongId` directly to avoid acting on a stale value.
   const lastOpenedSongIdRef = useRef(lastOpenedSongId);
@@ -94,7 +122,10 @@ export function App() {
       const hash = decodeURIComponent(window.location.hash);
       // Every page starts at the top. window.scrollTo would do nothing here.
       scrollContainerRef.current?.scrollTo({ top: 0 });
-      if (!hash.startsWith('#/song/')) setIsRehearsing(false);
+      const setlistSongMatch = hash.match(SETLIST_SONG_ROUTE);
+      // Rehearsal mode survives moving between songs, including along a setlist.
+      if (!hash.startsWith('#/song/') && !setlistSongMatch) setIsRehearsing(false);
+      setSetlistSongRoute(null);
 
       if (hash === '#/privacidad') {
         setPage('privacy');
@@ -128,6 +159,42 @@ export function App() {
           setPage('song');
           return;
         }
+      }
+      if (setlistSongMatch) {
+        const [, setlistId, itemId] = setlistSongMatch;
+        const setlist = setlistsRef.current.find((candidate) => candidate.id === setlistId);
+        const item = setlist?.items.find((candidate) => candidate.id === itemId);
+        const itemSong = item && SONGS_BY_ID.get(item.songId);
+        setOpenSetlistId(setlistId);
+        if (itemSong) {
+          setActiveSong(itemSong);
+          setSetlistSongRoute({ setlistId, itemId });
+          if (itemSong.id !== lastOpenedSongIdRef.current) {
+            resetPlaybackProgress();
+            setLastOpenedSongId(itemSong.id);
+            setIsPlayerPlaying(false);
+          }
+          setPage('song');
+          return;
+        }
+        // The setlist, the entry or the song is gone: show the setlist itself
+        // rather than an empty song page.
+        setIsRehearsing(false);
+        setPage('app');
+        setSection('setlists');
+        return;
+      }
+      if (hash === '#/setlists') {
+        setPage('app');
+        setSection('setlists');
+        setOpenSetlistId(null);
+        return;
+      }
+      if (hash.startsWith('#/setlist/')) {
+        setPage('app');
+        setSection('setlists');
+        setOpenSetlistId(hash.replace('#/setlist/', ''));
+        return;
       }
       if (hash === '#/favoritas') {
         setPage('app');
@@ -253,10 +320,82 @@ export function App() {
   const sidebarActiveSection: SidebarSection =
     section === 'cancionero' && selectedCategory === 'Favoritas' ? 'favoritas' : section;
 
+  const openSetlist = openSetlistId ? setlists.getSetlist(openSetlistId) : null;
+  const activeSetlist = setlistSongRoute ? setlists.getSetlist(setlistSongRoute.setlistId) : null;
+
+  /**
+   * Everything the song viewer and rehearsal mode need to show a song as part
+   * of a setlist: its settings for that day, and how to move along the list.
+   */
+  const setlistPlayback: SetlistPlayback | null = (() => {
+    if (!setlistSongRoute || !activeSetlist) return null;
+    const position = getSetlistPosition(activeSetlist, setlistSongRoute.itemId, isPlayableItem);
+    if (!position) return null;
+    const stepTo = (item: SetlistItem) => ({
+      title: SONGS_BY_ID.get(item.songId)?.title ?? '',
+      moment: item.moment,
+      onSelect: () => navigateTo(setlistSongHash(activeSetlist.id, item.id)),
+    });
+    return {
+      setlistId: activeSetlist.id,
+      setlistName: activeSetlist.name,
+      item: position.item,
+      position: position.index + 1,
+      total: position.total,
+      previous: position.previous ? stepTo(position.previous) : null,
+      next: position.next ? stepTo(position.next) : null,
+      onBackToSetlist: () => {
+        setIsRehearsing(false);
+        navigateTo(setlistHash(activeSetlist.id));
+      },
+      onViewOriginal: () => {
+        setIsRehearsing(false);
+        navigateTo(`#/song/${position.item.songId}`);
+      },
+      onKeySettingsChange: (keySettings) =>
+        setlists.updateItem(activeSetlist.id, position.item.id, keySettings),
+    };
+  })();
+
+  /** The song on screen: from the setlist when there is one, else the plain route. */
+  const viewerSong = setlistPlayback ? SONGS_BY_ID.get(setlistPlayback.item.songId) ?? null : activeSong;
+
+  const handleCreateSetlist = (details: SetlistDetails) => {
+    const created = setlists.create(details);
+    navigateTo(setlistHash(created.id));
+  };
+
+  const handleStartRehearsal = (setlist: Setlist) => {
+    const first = getFirstPlayableItem(setlist, isPlayableItem);
+    if (!first) return;
+    setIsRehearsing(true);
+    navigateTo(setlistSongHash(setlist.id, first.id));
+  };
+
+  // While a song of a setlist is open, the player follows the setlist and
+  // stops at its end; everywhere else it cycles through the songbook.
+  const setlistQueue: Song[] | null = setlistPlayback && activeSetlist
+    ? activeSetlist.items
+        .map((item) => SONGS_BY_ID.get(item.songId))
+        .filter((song): song is Song => Boolean(song))
+    : null;
+
+  const queueIndex = (): number => {
+    if (!lastOpenedSong) return -1;
+    // The song being read is the reliable position, since a setlist may hold
+    // the same song twice.
+    if (setlistQueue && setlistPlayback && viewerSong?.id === lastOpenedSong.id) {
+      return setlistPlayback.position - 1;
+    }
+    return (setlistQueue ?? MOCK_SONGS).findIndex((song) => song.id === lastOpenedSong.id);
+  };
+
   const handlePlayerNext = () => {
     if (!lastOpenedSong) return;
-    const idx = MOCK_SONGS.findIndex((s) => s.id === lastOpenedSong.id);
-    const next = MOCK_SONGS[(idx + 1) % MOCK_SONGS.length];
+    const queue = setlistQueue ?? MOCK_SONGS;
+    const index = queueIndex();
+    const next = setlistQueue ? queue[index + 1] : queue[(index + 1) % queue.length];
+    if (!next || next.id === lastOpenedSong.id) return;
     resetPlaybackProgress();
     setLastOpenedSongId(next.id);
     // Playing/paused intent carries over to the next song rather than
@@ -265,10 +404,12 @@ export function App() {
 
   const handlePlayerPrev = () => {
     if (!lastOpenedSong) return;
-    const idx = MOCK_SONGS.findIndex((s) => s.id === lastOpenedSong.id);
-    const prev = MOCK_SONGS[(idx - 1 + MOCK_SONGS.length) % MOCK_SONGS.length];
+    const queue = setlistQueue ?? MOCK_SONGS;
+    const index = queueIndex();
+    const previous = setlistQueue ? queue[index - 1] : queue[(index - 1 + queue.length) % queue.length];
+    if (!previous || previous.id === lastOpenedSong.id) return;
     resetPlaybackProgress();
-    setLastOpenedSongId(prev.id);
+    setLastOpenedSongId(previous.id);
   };
 
   const handleSongEnded = () => {
@@ -277,11 +418,15 @@ export function App() {
     // finished was playing, so the next one should start right away.
     // isPlayerPlaying is intentionally left untouched (still true).
     if (!lastOpenedSong) return;
-    const startIdx = MOCK_SONGS.findIndex((s) => s.id === lastOpenedSong.id);
+    const queue = setlistQueue ?? MOCK_SONGS;
+    const startIdx = queueIndex();
 
-    for (let step = 1; step <= MOCK_SONGS.length; step++) {
-      const candidate = MOCK_SONGS[(startIdx + step) % MOCK_SONGS.length];
-      if (candidate.youtubeId) {
+    for (let step = 1; step <= queue.length; step++) {
+      const position = startIdx + step;
+      // A setlist ends rather than starting over.
+      if (setlistQueue && position >= queue.length) break;
+      const candidate = queue[setlistQueue ? position : position % queue.length];
+      if (candidate?.youtubeId && candidate.id !== lastOpenedSong.id) {
         resetPlaybackProgress();
         setLastOpenedSongId(candidate.id);
         return;
@@ -312,6 +457,74 @@ export function App() {
       }
     : null;
 
+  const renderSongViewer = (song: Song, viewerKey: string, playback: SetlistPlayback | null) => (
+    <SongViewer
+      // Remount per song: the viewer holds the tone, capo and font
+      // settings, which belong to the song being read. Without this,
+      // opening a second song inherits the first one's transposition.
+      key={viewerKey}
+      song={song}
+      onBack={handleBackToDashboard}
+      isFavorite={favorites.includes(song.id)}
+      onToggleFavorite={handleToggleFavorite}
+      playlists={playlists}
+      onToggleInPlaylist={handleToggleInPlaylist}
+      onCreatePlaylist={handleCreatePlaylist}
+      onShare={handleShareSong}
+      isRehearsing={isRehearsing}
+      onRehearsalChange={setIsRehearsing}
+      player={compactPlayer}
+      setlist={playback}
+    />
+  );
+
+  const renderSetlists = () => {
+    if (!openSetlistId) {
+      return (
+        <SetlistsView
+          setlists={setlists.setlists}
+          durations={durations}
+          recoveredFromUnreadableData={setlists.recoveredFromUnreadableData}
+          onOpen={(setlistId) => navigateTo(setlistHash(setlistId))}
+          onCreate={handleCreateSetlist}
+        />
+      );
+    }
+    const setlistId = openSetlistId;
+    return (
+      <SetlistDetail
+        setlist={openSetlist}
+        songs={MOCK_SONGS}
+        songsById={SONGS_BY_ID}
+        durations={durations}
+        onBack={() => navigateTo('#/setlists')}
+        onOpenItem={(item) => navigateTo(setlistSongHash(setlistId, item.id))}
+        onStartRehearsal={() => {
+          if (openSetlist) handleStartRehearsal(openSetlist);
+        }}
+        onUpdateDetails={(details) => setlists.updateDetails(setlistId, details)}
+        onDuplicate={(details) => {
+          const copy = setlists.duplicate(setlistId, details);
+          if (copy) {
+            showToast(`Setlist «${copy.name}» creado`);
+            navigateTo(setlistHash(copy.id));
+          }
+        }}
+        onDelete={() => {
+          const name = openSetlist?.name;
+          setlists.remove(setlistId);
+          if (name) showToast(`Setlist «${name}» eliminado`);
+          navigateTo('#/setlists');
+        }}
+        onAddSong={(song, moment) => setlists.addSongs(setlistId, [song], moment)}
+        onRemoveItem={(itemId) => setlists.removeItem(setlistId, itemId)}
+        onMoveItem={(itemId, toIndex) => setlists.moveItem(setlistId, itemId, toIndex)}
+        onMoveItemBy={(itemId, delta) => setlists.moveItemBy(setlistId, itemId, delta)}
+        onUpdateItem={(itemId, changes) => setlists.updateItem(setlistId, itemId, changes)}
+      />
+    );
+  };
+
   const renderContent = () => {
     switch (page) {
       case 'privacy':
@@ -323,27 +536,22 @@ export function App() {
       case 'contact':
         return <Contact onBack={handleBackToDashboard} />;
       case 'song':
-        return activeSong ? (
-          <SongViewer
-            // Remount per song: the viewer holds the tone, capo and font
-            // settings, which belong to the song being read. Without this,
-            // opening a second song inherits the first one's transposition.
-            key={activeSong.id}
-            song={activeSong}
-            onBack={handleBackToDashboard}
-            isFavorite={favorites.includes(activeSong.id)}
-            onToggleFavorite={handleToggleFavorite}
-            playlists={playlists}
-            onToggleInPlaylist={handleToggleInPlaylist}
-            onCreatePlaylist={handleCreatePlaylist}
-            onShare={handleShareSong}
-            isRehearsing={isRehearsing}
-            onRehearsalChange={setIsRehearsing}
-            player={compactPlayer}
-          />
-        ) : null;
+        if (setlistSongRoute) {
+          // The entry (or its song) can disappear while it is open, for
+          // instance edited in another tab: fall back to the setlist itself.
+          return setlistPlayback && viewerSong
+            ? renderSongViewer(
+                viewerSong,
+                `setlist:${setlistSongRoute.setlistId}:${setlistSongRoute.itemId}`,
+                setlistPlayback
+              )
+            : renderSetlists();
+        }
+        return activeSong ? renderSongViewer(activeSong, activeSong.id, null) : null;
       default:
         switch (section) {
+          case 'setlists':
+            return renderSetlists();
           case 'categorias':
             return (
               <CategoriesView
@@ -405,7 +613,7 @@ export function App() {
   };
 
   const showPlayerBar = Boolean(lastOpenedSong);
-  const rehearsalActive = isRehearsing && page === 'song' && Boolean(activeSong);
+  const rehearsalActive = isRehearsing && page === 'song' && Boolean(viewerSong);
 
   return (
     <div
@@ -455,6 +663,13 @@ export function App() {
               onTimeUpdate={(current, total) => {
                 setCurrentTime(current);
                 setDuration(total);
+              }}
+              // The only reliable source of how long a song lasts, used to
+              // estimate how long a setlist will take.
+              onDurationKnown={(playingVideoId, seconds) => {
+                for (const song of MOCK_SONGS) {
+                  if (song.youtubeId === playingVideoId) recordDuration(song.id, seconds);
+                }
               }}
               onEnded={handleSongEnded}
               onError={(message) => {

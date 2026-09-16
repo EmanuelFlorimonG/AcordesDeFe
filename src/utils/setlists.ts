@@ -13,8 +13,8 @@ export const MAX_DESCRIPTION_LENGTH = 1000;
 export const MAX_MOMENT_LENGTH = 40;
 export const MAX_NOTES_LENGTH = 500;
 
-/** Moments offered as suggestions; any other text can be typed. */
-export const SUGGESTED_MOMENTS = [
+/** The parts of a Mass, in the order they are sung. */
+export const MASS_MOMENTS = [
   'Entrada',
   'Piedad',
   'Gloria',
@@ -25,12 +25,52 @@ export const SUGGESTED_MOMENTS = [
   'Cordero',
   'Comunión',
   'Salida',
+];
+
+/** Moments offered as suggestions; any other text can be typed. */
+export const SUGGESTED_MOMENTS = [
+  ...MASS_MOMENTS,
   'Apertura',
   'Adoración',
   'Reflexión',
   'Dinámica',
   'Cierre',
 ];
+
+export interface SongCategoryCount {
+  name: string;
+  count: number;
+  /** True for the parts of the Mass, which have an order of their own */
+  isMassMoment: boolean;
+}
+
+/**
+ * The categories the songbook actually uses: the parts of the Mass first, in
+ * the order they are sung, then the rest (themes and styles) by how many songs
+ * carry them. Nothing is invented: a part with no songs simply isn't offered.
+ */
+export function listSongCategories(songs: Array<Pick<Song, 'categories'>>): SongCategoryCount[] {
+  const counts = new Map<string, number>();
+  for (const song of songs) {
+    for (const category of song.categories) {
+      const name = category.trim();
+      if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+
+  const massMoments = MASS_MOMENTS.filter((name) => counts.has(name)).map((name) => ({
+    name,
+    count: counts.get(name) ?? 0,
+    isMassMoment: true,
+  }));
+
+  const others = [...counts.entries()]
+    .filter(([name]) => !MASS_MOMENTS.includes(name))
+    .map(([name, count]) => ({ name, count, isMassMoment: false }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'es'));
+
+  return [...massMoments, ...others];
+}
 
 export type IdFactory = () => string;
 
@@ -134,11 +174,15 @@ export function duplicateSetlist(
 // ---------------------------------------------------------------------------
 
 /** A song as it enters a setlist: its own key and recommended capo. */
-export function createSetlistItem(song: SongForSetlist, makeId: IdFactory = createId): SetlistItem {
+export function createSetlistItem(
+  song: SongForSetlist,
+  makeId: IdFactory = createId,
+  moment = ''
+): SetlistItem {
   return {
     id: makeId(),
     songId: song.id,
-    moment: '',
+    moment: moment.trim().slice(0, MAX_MOMENT_LENGTH),
     ...normalizeKeySettings({ transposeSteps: 0, capoFret: song.recommendedCapo ?? 0 }),
     notes: '',
   };
@@ -147,12 +191,14 @@ export function createSetlistItem(song: SongForSetlist, makeId: IdFactory = crea
 export function addSongsToSetlist(
   setlist: Setlist,
   songs: SongForSetlist[],
-  { now, createId: makeId = createId }: ChangeOptions
+  // `moment` marks the songs as they are added, for when they are chosen by
+  // the part of the Mass they are for.
+  { now, createId: makeId = createId, moment = '' }: ChangeOptions & { moment?: string }
 ): Setlist {
   if (songs.length === 0) return setlist;
   return {
     ...setlist,
-    items: [...setlist.items, ...songs.map((song) => createSetlistItem(song, makeId))],
+    items: [...setlist.items, ...songs.map((song) => createSetlistItem(song, makeId, moment))],
     updatedAt: now,
   };
 }

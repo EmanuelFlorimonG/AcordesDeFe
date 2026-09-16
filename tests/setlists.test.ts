@@ -14,6 +14,7 @@ import {
   getSetlistPosition,
   groupSetlistsByDate,
   isValidIsoDate,
+  listSongCategories,
   moveSetlistItem,
   moveSetlistItemBy,
   moveSetlistItemCapo,
@@ -499,5 +500,58 @@ describe('Próximos y recientes', () => {
     const groups = groupSetlistsByDate([later, undatedOld, past, today, older, undatedNew, soon], '2026-09-15');
     eq(groups.upcoming.map((setlist) => setlist.id), ['hoy', 'pronto', 'luego']);
     eq(groups.recent.map((setlist) => setlist.id), ['pasado', 'antiguo', 'sin-fecha-nuevo', 'sin-fecha-viejo']);
+  });
+});
+
+describe('Clasificar por momento de la misa', () => {
+  it('ofrece las partes de la misa en su orden y después los temas', () => {
+    const categories = listSongCategories(MOCK_SONGS);
+    eq(
+      categories.filter((entry) => entry.isMassMoment).map((entry) => entry.name),
+      ['Entrada', 'Piedad', 'Gloria', 'Aclamación', 'Ofertorio', 'Santo', 'Paz', 'Cordero', 'Comunión', 'Salida']
+    );
+
+    const others = categories.filter((entry) => entry.isMassMoment === false);
+    eq(categories.findIndex((entry) => !entry.isMassMoment), 10, 'los temas van después de la misa');
+    eq(
+      others.every((entry, index) => index === 0 || others[index - 1].count >= entry.count),
+      true,
+      'los temas van del más usado al menos'
+    );
+
+    const entrada = categories.find((entry) => entry.name === 'Entrada');
+    eq(entrada?.count, MOCK_SONGS.filter((song) => song.categories.includes('Entrada')).length);
+  });
+
+  it('solo ofrece categorías que existen en el cancionero', () => {
+    eq(
+      listSongCategories([
+        { categories: ['Comunión'] },
+        { categories: ['Adoración', 'Comunión'] },
+        { categories: ['  '] },
+      ]),
+      [
+        { name: 'Comunión', count: 2, isMassMoment: true },
+        { name: 'Adoración', count: 1, isMassMoment: false },
+      ]
+    );
+    eq(listSongCategories([]), []);
+  });
+
+  it('añadir desde un momento deja la canción ya clasificada', () => {
+    const makeId = idSequence();
+    const setlist = addSongsToSetlist(
+      createSetlist({ name: 'Misa' }, { now: NOW, createId: makeId }),
+      [HURACAN, NADIE],
+      { now: NOW, createId: makeId, moment: '  Entrada  ' }
+    );
+    eq(setlist.items.map((item) => item.moment), ['Entrada', 'Entrada']);
+    eq(setlist.items[0].capoFret, 5, 'sigue tomando la cejilla recomendada de la canción');
+    eq(setlist.items[0].transposeSteps, 0, 'y su tono original');
+    eq(
+      addSongsToSetlist(setlist, [CONTIGO], { now: LATER, createId: makeId }).items[2].moment,
+      '',
+      'sin momento, la canción entra sin clasificar'
+    );
   });
 });

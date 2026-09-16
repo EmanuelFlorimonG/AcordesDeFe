@@ -78,3 +78,36 @@
 .font-lyric {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
+
+/* Setlist dialogs and menus: a short, calm entrance. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 160ms ease-out;
+}
+.animate-dialog-in {
+  animation: dialog-in 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-dialog-in {
+    animation: none;
+  }
+}

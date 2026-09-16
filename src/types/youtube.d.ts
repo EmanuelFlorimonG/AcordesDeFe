@@ -63,6 +63,11 @@ declare namespace YT {
     isMuted(): boolean;
     getCurrentTime(): number;
     getDuration(): number;
+    /**
+     * Which video the player currently holds. Undocumented but long-standing;
+     * declared optional so the app never assumes it is there.
+     */
+    getVideoData?(): { video_id?: string; title?: string } | undefined;
     getPlayerState(): PlayerState;
     destroy(): void;
   }

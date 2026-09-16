@@ -11,6 +11,11 @@ interface YouTubeAudioPlayerProps {
   volume: number; // 0-100
   onReady?: () => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
+  /**
+   * The real length of a video, reported only once the player confirms it is
+   * the one loaded. Nothing else in the app knows how long a song lasts.
+   */
+  onDurationKnown?: (videoId: string, seconds: number) => void;
   onEnded?: () => void;
   onError?: (message: string) => void;
 }
@@ -34,7 +39,7 @@ function describeYouTubeError(_code: number): string {
  * fight the user's actual choice.
  */
 export const YouTubeAudioPlayer = forwardRef<YouTubeAudioPlayerHandle, YouTubeAudioPlayerProps>(
-  ({ videoId, isPlaying, volume, onReady, onTimeUpdate, onEnded, onError }, ref) => {
+  ({ videoId, isPlaying, volume, onReady, onTimeUpdate, onDurationKnown, onEnded, onError }, ref) => {
     const loadedVideoIdRef = useRef<string | undefined>(undefined);
     const pollRef = useRef<number | null>(null);
 
@@ -43,6 +48,8 @@ export const YouTubeAudioPlayer = forwardRef<YouTubeAudioPlayerHandle, YouTubeAu
     // changed on a parent re-render.
     const onTimeUpdateRef = useRef(onTimeUpdate);
     onTimeUpdateRef.current = onTimeUpdate;
+    const onDurationKnownRef = useRef(onDurationKnown);
+    onDurationKnownRef.current = onDurationKnown;
 
     useImperativeHandle(ref, () => ({
       seekTo(seconds: number) {
@@ -60,6 +67,13 @@ export const YouTubeAudioPlayer = forwardRef<YouTubeAudioPlayerHandle, YouTubeAu
           const currentTime = player.getCurrentTime();
           if (Number.isFinite(duration) && Number.isFinite(currentTime)) {
             onTimeUpdateRef.current?.(currentTime, duration);
+          }
+          // Just after switching songs the player can still report the
+          // previous video's length, so the duration counts only when the
+          // player itself says which video it is playing.
+          const loadedVideoId = player.getVideoData?.()?.video_id;
+          if (loadedVideoId && loadedVideoId === loadedVideoIdRef.current && duration > 0) {
+            onDurationKnownRef.current?.(loadedVideoId, duration);
           }
         });
       }, 500);

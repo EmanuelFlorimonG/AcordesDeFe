@@ -40,3 +40,31 @@ export interface SetlistDetails {
   date: string;
   description: string;
 }
+
+/**
+ * One song being played as part of a setlist. The song viewer and rehearsal
+ * mode receive this instead of reaching for setlists themselves: they show the
+ * settings of this occasion and move along it, while the song stays untouched.
+ */
+export interface SetlistStep {
+  title: string;
+  moment: string;
+  onSelect: () => void;
+}
+
+export interface SetlistPlayback {
+  setlistId: string;
+  setlistName: string;
+  item: SetlistItem;
+  /** 1-based, counting only songs that can be opened */
+  position: number;
+  total: number;
+  previous: SetlistStep | null;
+  /** Null on the last song: a setlist ends, it doesn't start over. */
+  next: SetlistStep | null;
+  onBackToSetlist: () => void;
+  /** Opens the same song as it is in the songbook, with no setlist settings. */
+  onViewOriginal: () => void;
+  /** Saves a new key or capo for this occasion only. */
+  onKeySettingsChange: (settings: { transposeSteps: number; capoFret: number }) => void;
+}

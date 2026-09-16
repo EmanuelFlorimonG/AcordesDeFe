@@ -1,7 +1,7 @@
 import React from 'react';
-import { Cross, ListMusic, Heart, Tags, Users, ListPlus, Sun, Moon, X, Quote } from 'lucide-react';
+import { Cross, ListMusic, ListOrdered, Heart, Tags, Users, ListPlus, Sun, Moon, X, Quote } from 'lucide-react';
 
-export type SidebarSection = 'cancionero' | 'favoritas' | 'categorias' | 'autores' | 'listas';
+export type SidebarSection = 'cancionero' | 'favoritas' | 'categorias' | 'autores' | 'listas' | 'setlists';
 
 interface SidebarProps {
   activeSection: SidebarSection;
@@ -14,6 +14,7 @@ interface SidebarProps {
 
 const NAV_ITEMS: Array<{ id: SidebarSection; label: string; icon: React.ElementType }> = [
   { id: 'cancionero', label: 'Cancionero', icon: ListMusic },
+  { id: 'setlists', label: 'Setlists', icon: ListOrdered },
   { id: 'favoritas', label: 'Favoritas', icon: Heart },
   { id: 'categorias', label: 'Categorías', icon: Tags },
   { id: 'autores', label: 'Autores', icon: Users },

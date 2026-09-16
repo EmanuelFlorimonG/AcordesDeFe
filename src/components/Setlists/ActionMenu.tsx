@@ -91,7 +91,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ label, icon: Icon, items
   };
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         ref={triggerRef}
         type="button"

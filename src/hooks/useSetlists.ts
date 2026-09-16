@@ -29,7 +29,8 @@ export interface SetlistsStore {
   updateDetails: (id: string, details: Partial<SetlistDetails>) => void;
   remove: (id: string) => void;
   duplicate: (id: string, details: Partial<SetlistDetails>) => Setlist | null;
-  addSongs: (id: string, songs: Array<Pick<Song, 'id' | 'recommendedCapo'>>) => void;
+  /** `moment` marks the songs as added for a part of the Mass. */
+  addSongs: (id: string, songs: Array<Pick<Song, 'id' | 'recommendedCapo'>>, moment?: string) => void;
   removeItem: (id: string, itemId: string) => void;
   moveItem: (id: string, itemId: string, toIndex: number) => void;
   moveItemBy: (id: string, itemId: string, delta: number) => void;
@@ -109,7 +110,8 @@ export function useSetlists(repository?: SetlistRepository): SetlistsStore {
     duplicate,
     updateDetails: (id, details) => change(id, (setlist, now) => updateSetlistDetails(setlist, details, now)),
     remove: (id) => setSetlists((current) => current.filter((setlist) => setlist.id !== id)),
-    addSongs: (id, songs) => change(id, (setlist, now) => addSongsToSetlist(setlist, songs, { now })),
+    addSongs: (id, songs, moment) =>
+      change(id, (setlist, now) => addSongsToSetlist(setlist, songs, { now, moment })),
     removeItem: (id, itemId) => change(id, (setlist, now) => removeSetlistItem(setlist, itemId, now)),
     moveItem: (id, itemId, toIndex) => change(id, (setlist, now) => moveSetlistItem(setlist, itemId, toIndex, now)),
     moveItemBy: (id, itemId, delta) => change(id, (setlist, now) => moveSetlistItemBy(setlist, itemId, delta, now)),

@@ -104,7 +104,7 @@ describe('Acordes escritos según la tonalidad destino', () => {
   });
 });
 
-describe('Las 80 canciones en los 12 tonos', () => {
+describe('Todas las canciones en los 12 tonos', () => {
   it('conservan sonido y calidad, se escriben en la tonalidad y vuelven intactas', () => {
     let transpositions = 0;
     for (const song of MOCK_SONGS) {
@@ -291,7 +291,7 @@ describe('Slash chords de guitarra', () => {
     names.forEach(validateChord);
   });
 
-  it('todos los slash chords de las 80 canciones en sus 12 tonos', () => {
+  it('todos los slash chords del cancionero en sus 12 tonos', () => {
     const chords = new Set<string>();
     for (const song of MOCK_SONGS) {
       for (let steps = 0; steps < 12; steps++) {
