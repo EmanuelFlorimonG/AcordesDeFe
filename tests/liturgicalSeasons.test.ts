@@ -164,9 +164,9 @@ describe('Las canciones del cancionero', () => {
     }
   });
 
-  it('86 clasificadas y 6 pendientes de revisar', () => {
+  it('88 clasificadas y 6 pendientes de revisar', () => {
     const unclassified = MOCK_SONGS.filter((song) => getSongSeasons(song).length === 0).map((song) => song.id);
-    eq(MOCK_SONGS.length, 92);
+    eq(MOCK_SONGS.length, 94);
     eq(unclassified.sort(), [
       'gloria-a-dios-en-el-cielo-pascua',
       'llegara-con-la-luz',
@@ -175,7 +175,7 @@ describe('Las canciones del cancionero', () => {
       'salve-regina',
       'siempre-es-pentecostes',
     ]);
-    eq(MOCK_SONGS.filter(isAllYearSong).length, 73);
+    eq(MOCK_SONGS.filter(isAllYearSong).length, 75);
   });
 
   it('ejemplos: Adviento, Pascua y Todo el año', () => {
@@ -203,7 +203,7 @@ describe('Las canciones del cancionero', () => {
 
   it('el filtro de Cuaresma incluye las de Todo el año y ninguna solo de Pascua', () => {
     const lent = filterSongsBySeason(MOCK_SONGS, 'cuaresma');
-    eq(lent.length, 73);
+    eq(lent.length, 75);
     eq(lent.some((song) => getSongSeasons(song).includes('pascua')), false);
   });
 });

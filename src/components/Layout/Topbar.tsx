@@ -10,6 +10,8 @@ interface TopbarProps {
   onGoToContact: () => void;
   activePage: 'app' | 'about' | 'contact';
   inputRef: React.RefObject<HTMLInputElement | null>;
+  /** Shown next to the search box, e.g. the filters button on the songbook */
+  searchAccessory?: React.ReactNode;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -21,6 +23,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onGoToContact,
   activePage,
   inputRef,
+  searchAccessory,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -34,7 +37,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   }, []);
 
   const linkClass = (isActive: boolean) =>
-    `hidden sm:inline text-sm font-semibold transition-colors ${
+    `hidden lg:inline text-sm font-semibold transition-colors ${
       isActive
         ? 'text-[#2464ED]'
         : 'text-slate-500 dark:text-slate-400 hover:text-[#2464ED]'
@@ -49,28 +52,33 @@ export const Topbar: React.FC<TopbarProps> = ({
         <Menu className="w-5 h-5" />
       </button>
 
-      <div className="relative flex-grow max-w-xl">
+      <div className="flex flex-grow min-w-0 max-w-2xl items-center gap-2">
+      <div className="relative flex-grow min-w-0">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           ref={inputRef}
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Buscar por título, autor o etiqueta..."
-          className="w-full pl-10 pr-16 py-2.5 bg-slate-50 dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#2464ED] focus:ring-1 focus:ring-[#2464ED] transition-shadow text-[#10203A] dark:text-slate-100"
+          placeholder="Buscar canciones, artistas, momentos…"
+          aria-label="Buscar canciones"
+          className="w-full pl-10 pr-9 lg:pr-16 py-2.5 bg-slate-50 dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#2464ED] focus:ring-1 focus:ring-[#2464ED] transition-shadow text-[#10203A] dark:text-slate-100"
         />
         {searchQuery ? (
           <button
             onClick={() => onSearchChange('')}
+            aria-label="Borrar la búsqueda"
             className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
           >
             <X className="w-3.5 h-3.5" />
           </button>
         ) : (
-          <kbd className="hidden md:inline absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded px-1.5 py-0.5">
+          <kbd className="hidden lg:inline absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 rounded px-1.5 py-0.5">
             Ctrl + K
           </kbd>
         )}
+      </div>
+      {searchAccessory}
       </div>
 
       <nav className="flex items-center gap-4 sm:gap-6 ml-auto flex-shrink-0">

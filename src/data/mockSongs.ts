@@ -457,6 +457,187 @@ mi roca y mi can[F#m]ción por la eterni[D]dad.
 [Outro]
 [Em]  [C]  [G]  [D]  [Em]`
   },
+  {
+    id: 'en-medio-del-fuego',
+    title: 'En Medio del Fuego',
+    artist: 'Hakuna Group Music',
+    originalKey: 'B',
+    categories: ['Hakuna'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: ['G#m', 'E', 'B', 'F#'],
+    content: `[Estribillo]
+[G#m]Alzo la voz
+En medio del [E]fuego
+De pie en el do[B]lor
+Sin miedo te es[F#]pero
+
+[G#m]Alzo la voz
+En medio del [E]fuego
+De pie en el do[B]lor
+Sin miedo te es[F#]pero
+
+[Puente]
+[G#m]Ahora que no hay [B]tierra que pi[E]sar
+[G#m]Aunque todo en mí [B]me pida aban[E]donar
+
+[Estribillo]
+[B]Alzo la voz
+En medio del [E]fuego
+De pie en el do[G#m]lor
+Sin miedo te es[F#]pero
+
+[B]Alzo la voz
+En medio del [E]fuego
+De pie en el do[G#m]lor
+Sin miedo te es[F#]pero
+
+[Verso 1]
+[G#m]Cielos, ejércitos
+Luz y tinieblas
+La [E]noche y el día
+El Sol, las estrellas, can[B]tad
+Bendecid al Se[F#]ñor
+
+[Verso 2]
+[G#m]Que rompan los mares
+Los ríos que corran
+Que na[E]den los peces
+Retumben las olas, can[B]tad
+Bendecid al Se[F#]ñor
+
+[Verso 3]
+[G#m]Los montes y cumbres
+Los fríos y heladas
+Gana[E]dos y fieras
+Las aves y plantas, can[B]tad
+Bendecid al Se[F#]ñor
+
+[Verso 4]
+[G#m]Hijos de hombres
+Que rían y lloren
+Que a[E]bracen
+Que corran
+Que griten y adoren, can[B]tad
+Bendecid al Se[F#]ñor
+
+[Estribillo]
+[G#m]Alzo la voz
+En medio del [E]fuego
+De pie en el do[B]lor
+Sin miedo te es[F#]pero
+
+[B]Alzo la voz
+En medio del [E]fuego
+De pie en el do[G#m]lor
+Sin miedo te es[F#]pero
+
+[Final]
+[B]Alzo la voz (alzo la voz)
+En medio del [E]fuego (en medio del fuego)
+De pie en el do[G#m]lor (de pie en el dolor)
+Sin miedo te es[F#]pero (sin miedo te espero)
+
+[B]Alzo la voz (alzo la voz)
+En medio del [E]fuego (en medio del fuego)
+De pie en el do[G#m]lor
+Sin miedo te es[F#]pero`
+  },
+  {
+    id: 'un-segundo',
+    title: 'Un Segundo',
+    artist: 'Hakuna Group Music',
+    originalKey: 'Em',
+    recommendedCapo: 1,
+    categories: ['Hakuna'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: ['G', 'C', 'Cm', 'D', 'Em', 'D7', 'B7'],
+    content: `[Intro]
+[G]
+
+[Verso]
+Si por [G]un segundo vieras cómo te [C]miro
+Cuando [Cm]duermes, cierras los ojos, yo
+Ahí [G]sigo
+[D]Se me cae la baba, impo[G]sible no mi[Em]rar
+No [C]quiero dejar de hacerlo, no lo
+In[D]tentes imaginar
+
+[Verso]
+Si por [G]un segundo vieras cómo te
+Es[C]cucho
+Cada [Cm]ruido, cada palabra, y cuando no
+Hablas [G]mucho
+Y [D]hables o estés callado, sólo [G]me
+Importa si es[Em]tás
+En mi a[C]mor cabe el silencio, cabe
+Ha[D]blar y mucho [D7]más
+
+[Estribillo]
+Re[G]viento de amor, estoy tem[C]blando de
+Gozo
+Te [D]como con la mirada, estás aquí [B7]y no
+Es[Em]tás solo
+Cada [G]lágrima, cada risa, en mi memo[C]ria
+Se han grabado
+Cada de[D]talle de tu cuerpo y de tu [B7]alma
+Fueron pen[Em]sados
+No [G]creo que aguante más conte[C]nerme aquí
+De[D]trás
+Quiero en[D]trar, hacerte mío, curar tu
+He[G]rida si me la [Em]das
+Si por [C]un segundo vieras cómo te [D]miro
+No querrías ver nada [G]más
+
+[Verso]
+Si por [G]un segundo vieras cuánto te [C]amo
+Yo [Cm]solo sé entregarme, [G]aunque sea en
+[Em]Vano
+Y [D]tiemblo al imaginar cuando lle[G]gues al
+[Em]Cielo
+Costa[C]rá respirar en el a[D]brazo que nos
+Daremos
+
+[Verso]
+Si por [G]un segundo vieras lo que [C]hay por
+Llegar
+Lo que a[Cm]guarda escondido, casuali[G]dades
+Sin a[Em]zar
+Lo [D]sueño tantas veces, en cada [G]don
+¿Qué puedo ha[Em]cer?
+Tú re[C]cibes mi regalo, al cielo mi[D]ras
+Agrade[D7]ce
+
+[Estribillo]
+Re[G]viento de amor, estoy tem[C]blando de
+Gozo
+Te [D]como con la mirada, estás aquí [B7]y no
+Estás [Em]solo
+Cada [G]lágrima, cada risa, en mi memo[C]ria
+Se han grabado
+Cada de[D]talle de tu cuerpo y de tu [B7]alma
+Fueron pen[Em]sados
+No [G]creo que aguante más conte[C]nerme aquí
+De[D]trás
+Quiero en[D]trar, hacerte mío, curar tu
+He[G]rida si me la [Em]das
+Si por [C]un segundo vieras cómo te [D]miro
+No querrías ver nada [G]más
+
+[G]  [C]  [D7]
+
+[Estribillo]
+Re[G]viento de amor, estoy tem[C]blando de
+Gozo
+[D]Hay tanta locura en este amor [B7]que no
+Con[Em]trolo
+[G]Pierde tu vida, recibi[C]rás la eternidad
+La ale[D]gría de ser esclavo, esclavo [G]de
+Mi liber[Em]tad
+Si por [C]un segundo vieras cómo te [D]miro
+No querrías ver nada [G]más`
+  },
 {
     id: 'vienen-con-alegria',
     title: 'Vienen con Alegría',

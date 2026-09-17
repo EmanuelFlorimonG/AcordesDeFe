@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { Playlist, Song, SongCategory } from './types/song';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Playlist, Song } from './types/song';
 import type { Setlist, SetlistDetails, SetlistItem, SetlistPlayback } from './types/setlist';
 import { MOCK_SONGS } from './data/mockSongs';
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -12,7 +12,21 @@ import { setlistHash, setlistSongHash } from './components/Setlists/ui';
 import { Sidebar, type SidebarSection } from './components/Layout/Sidebar';
 import { Topbar } from './components/Layout/Topbar';
 import { Footer } from './components/Layout/Footer';
-import { Dashboard, type SortOption, type ViewMode } from './components/Dashboard/Dashboard';
+import { Dashboard, type ViewMode } from './components/Dashboard/Dashboard';
+import { SongFiltersControl } from './components/Discovery/SongFiltersControl';
+import type { YourSongsTab } from './components/Discovery/YourSongs';
+import { useRecentSongs } from './hooks/useRecentSongs';
+import {
+  EMPTY_FILTERS,
+  buildSearchIndex,
+  getFilterOptions,
+  removeFilterValue,
+  searchSongs,
+  sortSongs,
+  type SongFilters,
+  type SongSortOption,
+} from './utils/songSearch';
+import { countSongUsage, getMostUsedSongs } from './utils/songUsage';
 import { CategoriesView } from './components/Dashboard/CategoriesView';
 import { AuthorsView } from './components/Dashboard/AuthorsView';
 import { PlaylistsView } from './components/Dashboard/PlaylistsView';
@@ -32,6 +46,17 @@ const SONGS_BY_ID = new Map(MOCK_SONGS.map((song) => [song.id, song]));
 const SETLIST_SONG_ROUTE = /^#\/setlist\/([^/]+)\/song\/([^/]+)$/;
 /** An entry can only be opened while its song is still in the songbook. */
 const isPlayableItem = (item: SetlistItem) => SONGS_BY_ID.has(item.songId);
+/** The songs never change while the app runs, so their search text is prepared once. */
+const SEARCH_INDEX = buildSearchIndex(MOCK_SONGS);
+/** Routes that show the songbook's home, where search and filters live. */
+const isSongbookRoute = (hash: string) =>
+  hash === '' ||
+  hash === '#' ||
+  hash === '#/' ||
+  hash === '#/favoritas' ||
+  hash.startsWith('#/categoria/') ||
+  hash.startsWith('#/autor/');
+const isSongRoute = (hash: string) => hash.startsWith('#/song/') || SETLIST_SONG_ROUTE.test(hash);
 
 export function App() {
   const [page, setPage] = useState<AppPage>('app');
@@ -50,10 +75,14 @@ export function App() {
     null
   );
 
+  // Search, filters and "Tus canciones" live here, above the pages, so opening
+  // a song and coming back finds them exactly as they were.
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<SongCategory>('Todas');
+  const [filters, setFilters] = useState<SongFilters>(EMPTY_FILTERS);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
-  const [sortBy, setSortBy] = useState<SortOption>('az');
+  const [sortBy, setSortBy] = useState<SongSortOption>('az');
+  const [yourSongsTab, setYourSongsTab] = useState<YourSongsTab>('favoritas');
+  const [isFavoritesRoute, setIsFavoritesRoute] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isPlayerPlaying, setIsPlayerPlaying] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -77,6 +106,16 @@ export function App() {
   const setlists = useSetlists();
   // Song lengths, as reported by the player while actually playing.
   const { durations, recordDuration } = useSongDurations();
+  // Songs whose page was opened, newest first.
+  const { recents, lastOpenedAt, recordOpened } = useRecentSongs();
+  const recordOpenedRef = useRef(recordOpened);
+  useEffect(() => {
+    recordOpenedRef.current = recordOpened;
+  }, [recordOpened]);
+  // Where the songbook was scrolled when a song was opened, to return there.
+  const songbookScrollRef = useRef<number | null>(null);
+  const currentHashRef = useRef<string | null>(null);
+  const pendingScrollRef = useRef<number | 'tus-canciones' | null>(null);
   /** Null on the list of setlists, an id on one setlist's page. */
   const [openSetlistId, setOpenSetlistId] = useState<string | null>(null);
   /** Set while a song is open as part of a setlist, instead of on its own. */
@@ -120,8 +159,21 @@ export function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = decodeURIComponent(window.location.hash);
-      // Every page starts at the top. window.scrollTo would do nothing here.
-      scrollContainerRef.current?.scrollTo({ top: 0 });
+      const previousHash = currentHashRef.current;
+      currentHashRef.current = hash;
+      const container = scrollContainerRef.current;
+      // Opening a song from the songbook remembers how far down the list was;
+      // coming back from the song returns there instead of to the top.
+      if (previousHash !== null && isSongbookRoute(previousHash) && isSongRoute(hash) && container) {
+        songbookScrollRef.current = container.scrollTop;
+      }
+      pendingScrollRef.current =
+        previousHash !== null && isSongRoute(previousHash) && isSongbookRoute(hash) && hash !== '#/favoritas'
+          ? songbookScrollRef.current
+          : null;
+      // Every other page starts at the top. window.scrollTo would do nothing here.
+      container?.scrollTo({ top: 0 });
+      setIsFavoritesRoute(hash === '#/favoritas');
       const setlistSongMatch = hash.match(SETLIST_SONG_ROUTE);
       // Rehearsal mode survives moving between songs, including along a setlist.
       if (!hash.startsWith('#/song/') && !setlistSongMatch) setIsRehearsing(false);
@@ -148,6 +200,8 @@ export function App() {
         const found = MOCK_SONGS.find((s) => s.id === songId);
         if (found) {
           setActiveSong(found);
+          // Opening a song's page is what makes it "recent"; being listed is not.
+          recordOpenedRef.current(found.id);
           if (found.id !== lastOpenedSongIdRef.current) {
             resetPlaybackProgress();
             setLastOpenedSongId(found.id);
@@ -169,6 +223,8 @@ export function App() {
         if (itemSong) {
           setActiveSong(itemSong);
           setSetlistSongRoute({ setlistId, itemId });
+          // Includes moving from song to song inside rehearsal mode.
+          recordOpenedRef.current(itemSong.id);
           if (itemSong.id !== lastOpenedSongIdRef.current) {
             resetPlaybackProgress();
             setLastOpenedSongId(itemSong.id);
@@ -197,24 +253,27 @@ export function App() {
         return;
       }
       if (hash === '#/favoritas') {
+        // Favourites live in "Tus canciones", which shows while nothing is searched.
         setPage('app');
         setSection('cancionero');
-        setSelectedCategory('Favoritas');
+        setSearchQuery('');
+        setFilters(EMPTY_FILTERS);
+        setYourSongsTab('favoritas');
+        pendingScrollRef.current = 'tus-canciones';
         return;
       }
       if (hash.startsWith('#/categoria/')) {
-        const category = hash.replace('#/categoria/', '') as SongCategory;
         setPage('app');
         setSection('cancionero');
-        setSelectedCategory(category);
+        setSearchQuery('');
+        setFilters({ ...EMPTY_FILTERS, categories: [hash.replace('#/categoria/', '')] });
         return;
       }
       if (hash.startsWith('#/autor/')) {
-        const author = hash.replace('#/autor/', '');
         setPage('app');
         setSection('cancionero');
-        setSelectedCategory('Todas');
-        setSearchQuery(author);
+        setSearchQuery('');
+        setFilters({ ...EMPTY_FILTERS, artists: [hash.replace('#/autor/', '')] });
         return;
       }
       if (hash === '#/categorias') {
@@ -318,7 +377,88 @@ export function App() {
   };
 
   const sidebarActiveSection: SidebarSection =
-    section === 'cancionero' && selectedCategory === 'Favoritas' ? 'favoritas' : section;
+    section === 'cancionero' && isFavoritesRoute ? 'favoritas' : section;
+
+  // After the page for a route has rendered: return to where the songbook was,
+  // or bring "Tus canciones" into view.
+  useEffect(() => {
+    const pending = pendingScrollRef.current;
+    if (pending === null) return;
+    pendingScrollRef.current = null;
+    if (pending === 'tus-canciones') {
+      document.getElementById('tus-canciones')?.scrollIntoView({ block: 'start' });
+    } else {
+      scrollContainerRef.current?.scrollTo({ top: pending });
+    }
+  });
+
+  const isOnSongbook = page === 'app' && section === 'cancionero';
+
+  /** Typing a search anywhere shows the songbook, where the results are. */
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    if (!isOnSongbook) {
+      songbookScrollRef.current = null;
+      navigateTo('#/');
+    }
+  };
+
+  const handleAddToSetlist = (setlistId: string, song: Song) => {
+    const setlist = setlists.getSetlist(setlistId);
+    setlists.addSongs(setlistId, [song]);
+    if (setlist) showToast(`«${song.title}» añadida a ${setlist.name}`);
+  };
+
+  const handleCreateSetlistWithSong = (name: string, song: Song) => {
+    const created = setlists.create({ name });
+    setlists.addSongs(created.id, [song]);
+    showToast(`Setlist «${created.name}» creado con «${song.title}»`);
+  };
+
+  const setlistActions = {
+    setlists: setlists.setlists,
+    onAddToSetlist: handleAddToSetlist,
+    onCreateSetlistWithSong: handleCreateSetlistWithSong,
+  };
+
+  // --- Finding songs -------------------------------------------------------
+  const usage = useMemo(() => countSongUsage(setlists.setlists), [setlists.setlists]);
+  const usesBySong = useMemo(
+    () => new Map([...usage.values()].map((entry) => [entry.songId, entry.uses])),
+    [usage]
+  );
+
+  const searchResults = useMemo(() => {
+    const matches = searchSongs(SEARCH_INDEX, searchQuery, filters);
+    const sorted = sortSongs(
+      matches.map((match) => match.song),
+      sortBy,
+      { lastOpenedAt, uses: usesBySong }
+    );
+    // Songs found only by a phrase in their lyrics go after those whose title
+    // or details match, whatever the chosen order.
+    const weak = new Set(matches.filter((match) => match.score < 50).map((match) => match.song.id));
+    return [...sorted.filter((song) => !weak.has(song.id)), ...sorted.filter((song) => weak.has(song.id))];
+  }, [searchQuery, filters, sortBy, lastOpenedAt, usesBySong]);
+
+  const filterOptions = useMemo(
+    () => (isOnSongbook ? getFilterOptions(SEARCH_INDEX, searchQuery, filters) : null),
+    [isOnSongbook, searchQuery, filters]
+  );
+
+  const favoriteSongs = useMemo(
+    // Most recently marked first.
+    () => [...favorites].reverse().flatMap((id) => SONGS_BY_ID.get(id) ?? []),
+    [favorites]
+  );
+  const recentSongs = useMemo(
+    () => recents.flatMap(({ songId, lastOpenedAt: openedAt }) => {
+      const song = SONGS_BY_ID.get(songId);
+      return song ? [{ song, lastOpenedAt: openedAt }] : [];
+    }),
+    [recents]
+  );
+  const mostUsedSongs = useMemo(() => getMostUsedSongs(MOCK_SONGS, usage, lastOpenedAt), [usage, lastOpenedAt]);
 
   const openSetlist = openSetlistId ? setlists.getSetlist(openSetlistId) : null;
   const activeSetlist = setlistSongRoute ? setlists.getSetlist(setlistSongRoute.setlistId) : null;
@@ -475,6 +615,7 @@ export function App() {
       onRehearsalChange={setIsRehearsing}
       player={compactPlayer}
       setlist={playback}
+      {...setlistActions}
     />
   );
 
@@ -583,17 +724,27 @@ export function App() {
           default:
             return (
               <Dashboard
-                songs={MOCK_SONGS}
+                {...setlistActions}
+                results={searchResults}
+                query={searchQuery}
+                filters={filters}
+                sortBy={sortBy}
+                viewMode={viewMode}
                 favorites={favorites}
                 playlists={playlists}
-                lastOpenedSong={lastOpenedSong}
-                searchQuery={searchQuery}
-                selectedCategory={selectedCategory}
-                viewMode={viewMode}
-                sortBy={sortBy}
-                onSelectCategory={setSelectedCategory}
-                onSetViewMode={setViewMode}
+                favoriteSongs={favoriteSongs}
+                recentSongs={recentSongs}
+                mostUsedSongs={mostUsedSongs}
+                yourSongsTab={yourSongsTab}
+                onYourSongsTabChange={setYourSongsTab}
                 onSetSortBy={setSortBy}
+                onSetViewMode={setViewMode}
+                onRemoveFilter={(group, value) => setFilters((current) => removeFilterValue(current, group, value))}
+                onClearFilters={() => setFilters(EMPTY_FILTERS)}
+                onClearQuery={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
                 onToggleFavorite={handleToggleFavorite}
                 onSelectSong={handleSelectSong}
                 onToggleInPlaylist={handleToggleInPlaylist}
@@ -602,10 +753,7 @@ export function App() {
                 onFocusSearch={() => searchInputRef.current?.focus()}
                 onGoToFavorites={() => navigateTo('#/favoritas')}
                 onGoToCategories={() => navigateTo('#/categorias')}
-                onResetFilters={() => {
-                  setSearchQuery('');
-                  setSelectedCategory('Todas');
-                }}
+                onGoToSetlists={() => navigateTo('#/setlists')}
               />
             );
         }
@@ -634,7 +782,17 @@ export function App() {
       <div className="flex flex-col flex-grow min-w-0">
         <Topbar
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          onSearchChange={handleSearchChange}
+          searchAccessory={
+            isOnSongbook && filterOptions ? (
+              <SongFiltersControl
+                filters={filters}
+                options={filterOptions}
+                resultCount={searchResults.length}
+                onChange={setFilters}
+              />
+            ) : null
+          }
           onOpenSidebar={() => setIsMobileSidebarOpen(true)}
           onGoToCancionero={() => navigateTo('#/')}
           onGoToAbout={() => navigateTo('#/nosotros')}

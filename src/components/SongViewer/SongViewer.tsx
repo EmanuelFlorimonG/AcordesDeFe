@@ -18,6 +18,7 @@ import { LiturgicalSeasonChips } from '../Liturgy/LiturgicalSeasonChips';
 import { RehearsalMode } from '../Rehearsal/RehearsalMode';
 import type { RehearsalKeyControls } from '../Rehearsal/RehearsalHeader';
 import type { CompactPlayerState } from '../Player/MiniPlayer';
+import type { SongSetlistActions } from '../Dashboard/songActions';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -36,7 +37,7 @@ import {
 
 type SongTab = 'letra' | 'diagramas' | 'recursos';
 
-interface SongViewerProps {
+interface SongViewerProps extends SongSetlistActions {
   song: Song;
   onBack: () => void;
   isFavorite: boolean;
@@ -98,6 +99,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   onRehearsalChange,
   player,
   setlist,
+  setlists,
+  onAddToSetlist,
+  onCreateSetlistWithSong,
 }) => {
   const [localSettings, setLocalSettings] = useState<ViewSettings>(() => {
     // Opened from a setlist, the song starts in that setlist's key, not in
@@ -427,6 +431,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             onToggleInPlaylist={onToggleInPlaylist}
             onCreatePlaylist={onCreatePlaylist}
             onShare={onShare}
+            setlists={setlists}
+            onAddToSetlist={onAddToSetlist}
+            onCreateSetlistWithSong={onCreateSetlistWithSong}
           />
         </div>
 
