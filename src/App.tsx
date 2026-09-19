@@ -1,14 +1,67 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Playlist, Song } from './types/song';
 import type { Setlist, SetlistDetails, SetlistItem, SetlistPlayback } from './types/setlist';
-import { MOCK_SONGS } from './data/mockSongs';
+import { getCatalogStore, refreshCatalog, useCatalog } from './catalog/useCatalog';
+import {
+  About,
+  AuthorsView,
+  CalendarView,
+  CategoriesView,
+  Contact,
+  EventDetail,
+  EventFormDialog,
+  HistoryView,
+  MassMode,
+  MemberDetail,
+  MemberFormDialog,
+  MembersView,
+  PerformanceDetail,
+  PlaylistsView,
+  PrivacyPolicy,
+  SetlistDetail,
+  SetlistsView,
+  SongEditorScreen,
+  TermsConditions,
+  TrackingScreen,
+  SongViewer,
+  prefetchSongViewer,
+  CatalogFallbackNotice,
+  SongUnavailableScreen,
+  ProposalEditScreen,
+} from './app/lazyScreens';
+import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
 import { useSongDurations } from './hooks/useSongDurations';
-import { getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
-import { SetlistsView } from './components/Setlists/SetlistsView';
-import { SetlistDetail } from './components/Setlists/SetlistDetail';
-import { setlistHash, setlistSongHash } from './components/Setlists/ui';
+import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
+import { setlistHash, setlistMassHash, setlistSongHash } from './components/Setlists/ui';
+import { useMinistry } from './hooks/useMinistry';
+import { MinistryContext, type MinistryData } from './hooks/ministryContext';
+import { useEvents } from './hooks/useEvents';
+import { useNow } from './hooks/useNow';
+import { isValidIsoDate, toLocalIsoDate, toLocalTime } from './utils/dates';
+import {
+  findOccurrence,
+  getEventsForMember,
+  getEventsForSetlist,
+  getUpcomingEvents,
+  type CalendarNow,
+} from './utils/ministryEvents';
+import type { EventOccurrence, MinistryEventDetails } from './types/event';
+import type { CalendarViewMode } from './components/Calendar/CalendarView';
+import { ActivityList } from './components/Calendar/ActivityList';
+import { UpcomingActivities } from './components/Calendar/UpcomingActivities';
+import { usePerformanceHistory } from './hooks/usePerformanceHistory';
+import {
+  EMPTY_PERFORMANCE_FILTERS,
+  canFinishCelebration,
+  countSoloSongsForMember,
+  getPerformancesForEvent,
+  getPerformancesForMember,
+  getRecentPerformances,
+  type PerformanceFilters,
+} from './utils/performanceHistory';
+import { SongHistoryCard } from './components/History/SongHistoryCard';
 import { Sidebar, type SidebarSection } from './components/Layout/Sidebar';
 import { Topbar } from './components/Layout/Topbar';
 import { Footer } from './components/Layout/Footer';
@@ -18,7 +71,6 @@ import type { YourSongsTab } from './components/Discovery/YourSongs';
 import { useRecentSongs } from './hooks/useRecentSongs';
 import {
   EMPTY_FILTERS,
-  buildSearchIndex,
   getFilterOptions,
   removeFilterValue,
   searchSongs,
@@ -27,27 +79,34 @@ import {
   type SongSortOption,
 } from './utils/songSearch';
 import { countSongUsage, getMostUsedSongs } from './utils/songUsage';
-import { CategoriesView } from './components/Dashboard/CategoriesView';
-import { AuthorsView } from './components/Dashboard/AuthorsView';
-import { PlaylistsView } from './components/Dashboard/PlaylistsView';
-import { SongViewer } from './components/SongViewer/SongViewer';
 import { PlayerBar } from './components/Player/PlayerBar';
 import { YouTubeAudioPlayer, type YouTubeAudioPlayerHandle } from './components/Player/YouTubeAudioPlayer';
 import type { CompactPlayerState } from './components/Player/MiniPlayer';
-import { PrivacyPolicy } from './components/Legal/PrivacyPolicy';
-import { TermsConditions } from './components/Legal/TermsConditions';
-import { About } from './components/Pages/About';
-import { Contact } from './components/Pages/Contact';
 
-type AppPage = 'app' | 'song' | 'privacy' | 'terms' | 'about' | 'contact';
+type AppPage =
+  | 'app'
+  | 'song'
+  | 'songPending'
+  | 'songUnavailable'
+  | 'privacy'
+  | 'terms'
+  | 'about'
+  | 'contact'
+  | 'songEditor'
+  | 'tracking'
+  | 'proposalEdit';
 
-const SONGS_BY_ID = new Map(MOCK_SONGS.map((song) => [song.id, song]));
+/** The public editor: #/canciones/nueva */
+const NEW_SONG_ROUTE = '#/canciones/nueva';
+/** A proposal's status, optionally for one code: #/propuesta or #/propuesta/GS-XXXX-XXXX */
+const TRACKING_ROUTE = /^#\/propuesta(?:\/([^/]+))?$/;
+/** Correcting one's own proposal. The address carries only the tracking code, never the edit token. */
+const PROPOSAL_EDIT_ROUTE = /^#\/propuesta\/([^/]+)\/editar$/;
+
 /** A song opened as part of a setlist: #/setlist/<setlist>/song/<entry> */
 const SETLIST_SONG_ROUTE = /^#\/setlist\/([^/]+)\/song\/([^/]+)$/;
-/** An entry can only be opened while its song is still in the songbook. */
-const isPlayableItem = (item: SetlistItem) => SONGS_BY_ID.has(item.songId);
-/** The songs never change while the app runs, so their search text is prepared once. */
-const SEARCH_INDEX = buildSearchIndex(MOCK_SONGS);
+/** A setlist being played live: #/setlist/<setlist>/misa */
+const SETLIST_MASS_ROUTE = /^#\/setlist\/([^/]+)\/misa$/;
 /** Routes that show the songbook's home, where search and filters live. */
 const isSongbookRoute = (hash: string) =>
   hash === '' ||
@@ -57,11 +116,46 @@ const isSongbookRoute = (hash: string) =>
   hash.startsWith('#/categoria/') ||
   hash.startsWith('#/autor/');
 const isSongRoute = (hash: string) => hash.startsWith('#/song/') || SETLIST_SONG_ROUTE.test(hash);
+/** The calendar, optionally on one day: #/calendario or #/calendario/2026-09-20 */
+const CALENDAR_ROUTE = /^#\/calendario(?:\/(\d{4}-\d{2}-\d{2}))?$/;
+/** One activity, optionally one date of a repeating one: #/actividad/<id>[/2026-09-20] */
+const EVENT_ROUTE = /^#\/actividad\/([^/]+)(?:\/(\d{4}-\d{2}-\d{2}))?$/;
+const calendarHash = (date: string) => `#/calendario/${date}`;
+/** The history, optionally filtered by one song or one person: #/historial[/cancion/<id>|/miembro/<id>] */
+const HISTORY_ROUTE = /^#\/historial(?:\/(cancion|miembro)\/([^/]+))?$/;
+/** One recorded performance: #/interpretacion/<id> */
+const PERFORMANCE_ROUTE = /^#\/interpretacion\/([^/]+)$/;
+const performanceHash = (recordId: string) => `#/interpretacion/${encodeURIComponent(recordId)}`;
+const occurrenceHash = (occurrence: Pick<EventOccurrence, 'event' | 'date'>) =>
+  `#/actividad/${encodeURIComponent(occurrence.event.id)}/${occurrence.date}`;
 
 export function App() {
   const [page, setPage] = useState<AppPage>('app');
+  /** The code in #/propuesta/<code>, if any */
+  const [trackingCode, setTrackingCode] = useState<string | null>(null);
   const [section, setSection] = useState<SidebarSection>('cancionero');
   const [activeSong, setActiveSong] = useState<Song | null>(null);
+  /** A song the address asks for that the catalog shown doesn't have (yet): waiting for Supabase, or offline */
+  const [pendingSongId, setPendingSongId] = useState<string | null>(null);
+  /**
+   * The official catalog: ONE complete source at a time (Supabase, its last
+   * valid copy in this browser, or the bundled songs), see catalogStore.ts.
+   * The map by id, the search index and the categories come with it, built
+   * once per catalog, so every screen reads the same songs.
+   */
+  const catalog = useCatalog();
+  const catalogSongs = catalog.songs as Song[];
+  const songsById = catalog.byId as Map<string, Song>;
+  const searchIndex = catalog.searchIndex;
+  /** The catalog's own categories, offered by the song editor (no second list). */
+  const catalogCategories = catalog.categories;
+  /** An entry can only be opened while its song is in the catalog. */
+  const isPlayableItem = useCallback((item: SetlistItem) => songsById.has(item.songId), [songsById]);
+  // The hash-change listener is registered once: it reads the current catalog through this ref.
+  const catalogRef = useRef(catalog);
+  useEffect(() => {
+    catalogRef.current = catalog;
+  }, [catalog]);
 
   const [favorites, setFavorites] = useLocalStorage<string[]>('genesaret_favorites', [
     'huracan-hakuna',
@@ -104,6 +198,41 @@ export function App() {
   const [isRehearsing, setIsRehearsing] = useState(false);
 
   const setlists = useSetlists();
+  // The people of the ministry and the keys they usually sing in.
+  const ministry = useMinistry();
+  const ministryData = useMemo<MinistryData>(
+    () => ({ members: ministry.members, membersById: ministry.membersById, keyPreferences: ministry.keyPreferences }),
+    [ministry.members, ministry.membersById, ministry.keyPreferences]
+  );
+  // The ministry's activities, and "now" as the calendar reads it (local day and time).
+  const events = useEvents();
+  const nowMs = useNow(30_000);
+  const calendarNow = useMemo<CalendarNow>(() => {
+    const current = new Date(nowMs);
+    return { date: toLocalIsoDate(current), time: toLocalTime(current) };
+  }, [nowMs]);
+  /** The day the calendar is on; null means today. */
+  const [calendarDate, setCalendarDate] = useState<string | null>(null);
+  const [calendarView, setCalendarView] = useState<CalendarViewMode>('month');
+  /** Set on an activity's page: its id, and the date of the occurrence when it repeats. */
+  const [openEventRoute, setOpenEventRoute] = useState<{ eventId: string; date: string | null } | null>(null);
+  /** The date a new activity starts on while its form is open. */
+  const [newEventDate, setNewEventDate] = useState<string | null>(null);
+  /**
+   * The activity date mass mode was opened from, when it was: leaving returns
+   * there, and its end can close that date. Mass mode itself only knows the setlist.
+   */
+  const [massOrigin, setMassOrigin] = useState<{ eventId: string; date: string } | null>(null);
+  /** Set by "Finalizar celebración": the activity page opens with its closing dialog. */
+  const [closingKey, setClosingKey] = useState<string | null>(null);
+  // What was actually sung, recorded on purpose; separate from everything above.
+  const history = usePerformanceHistory();
+  const [historyFilters, setHistoryFilters] = useState<PerformanceFilters>(EMPTY_PERFORMANCE_FILTERS);
+  /** Null on the history list, an id on one record's page. */
+  const [openRecordId, setOpenRecordId] = useState<string | null>(null);
+  /** Null on the list of members, an id on one member's page. */
+  const [openMemberId, setOpenMemberId] = useState<string | null>(null);
+  const [isCreatingMember, setIsCreatingMember] = useState(false);
   // Song lengths, as reported by the player while actually playing.
   const { durations, recordDuration } = useSongDurations();
   // Songs whose page was opened, newest first.
@@ -120,6 +249,8 @@ export function App() {
   const [openSetlistId, setOpenSetlistId] = useState<string | null>(null);
   /** Set while a song is open as part of a setlist, instead of on its own. */
   const [setlistSongRoute, setSetlistSongRoute] = useState<{ setlistId: string; itemId: string } | null>(null);
+  /** Set while a setlist is being played live, in mass mode. */
+  const [massSetlistId, setMassSetlistId] = useState<string | null>(null);
 
   // Like lastOpenedSongIdRef: the routing listener is registered once and
   // reads the setlists from here rather than closing over a stale copy.
@@ -135,7 +266,12 @@ export function App() {
     lastOpenedSongIdRef.current = lastOpenedSongId;
   }, [lastOpenedSongId]);
 
-  const lastOpenedSong = MOCK_SONGS.find((s) => s.id === lastOpenedSongId) || null;
+  const lastOpenedSong = catalogSongs.find((s) => s.id === lastOpenedSongId) || null;
+
+  // The song page loads on demand; fetch it while the browser is idle so opening a song never waits.
+  useEffect(() => {
+    prefetchSongViewer();
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
@@ -178,9 +314,33 @@ export function App() {
       // Rehearsal mode survives moving between songs, including along a setlist.
       if (!hash.startsWith('#/song/') && !setlistSongMatch) setIsRehearsing(false);
       setSetlistSongRoute(null);
+      setMassSetlistId(null);
+      setOpenEventRoute(null);
+      if (!SETLIST_MASS_ROUTE.test(hash)) setMassOrigin(null);
+      if (!EVENT_ROUTE.test(hash)) setClosingKey(null);
+      setOpenRecordId(null);
 
       if (hash === '#/privacidad') {
         setPage('privacy');
+        return;
+      }
+      if (hash === NEW_SONG_ROUTE) {
+        setPage('songEditor');
+        setSection('cancionero');
+        return;
+      }
+      const proposalEditMatch = hash.match(PROPOSAL_EDIT_ROUTE);
+      if (proposalEditMatch) {
+        setPage('proposalEdit');
+        setSection('cancionero');
+        setTrackingCode(proposalEditMatch[1]);
+        return;
+      }
+      const trackingMatch = hash.match(TRACKING_ROUTE);
+      if (trackingMatch) {
+        setPage('tracking');
+        setSection('cancionero');
+        setTrackingCode(trackingMatch[1] ?? null);
         return;
       }
       if (hash === '#/terminos') {
@@ -197,7 +357,17 @@ export function App() {
       }
       if (hash.startsWith('#/song/')) {
         const songId = hash.replace('#/song/', '');
-        const found = MOCK_SONGS.find((s) => s.id === songId);
+        const found = catalogRef.current.byId.get(songId);
+        if (!found) {
+          // Not in what is shown: maybe a song newer than this device's catalog.
+          // While Supabase answers, wait; without it, say so instead of showing the songbook.
+          const availability = getCatalogStore().availability(songId);
+          if (availability === 'checking' || availability === 'unverified') {
+            setPendingSongId(songId);
+            setPage(availability === 'checking' ? 'songPending' : 'songUnavailable');
+            return;
+          }
+        }
         if (found) {
           setActiveSong(found);
           // Opening a song's page is what makes it "recent"; being listed is not.
@@ -218,7 +388,12 @@ export function App() {
         const [, setlistId, itemId] = setlistSongMatch;
         const setlist = setlistsRef.current.find((candidate) => candidate.id === setlistId);
         const item = setlist?.items.find((candidate) => candidate.id === itemId);
-        const itemSong = item && SONGS_BY_ID.get(item.songId);
+        const itemSong = item && catalogRef.current.byId.get(item.songId);
+        if (item && !itemSong && getCatalogStore().availability(item.songId) === 'checking') {
+          setPendingSongId(item.songId);
+          setPage('songPending');
+          return;
+        }
         setOpenSetlistId(setlistId);
         if (itemSong) {
           setActiveSong(itemSong);
@@ -238,6 +413,16 @@ export function App() {
         setIsRehearsing(false);
         setPage('app');
         setSection('setlists');
+        return;
+      }
+      const massMatch = hash.match(SETLIST_MASS_ROUTE);
+      if (massMatch) {
+        // Mass mode opens over the setlist's own page, so leaving it lands
+        // exactly where it started.
+        setPage('app');
+        setSection('setlists');
+        setOpenSetlistId(massMatch[1]);
+        setMassSetlistId(massMatch[1]);
         return;
       }
       if (hash === '#/setlists') {
@@ -291,6 +476,48 @@ export function App() {
         setSection('listas');
         return;
       }
+      const calendarMatch = hash.match(CALENDAR_ROUTE);
+      if (calendarMatch) {
+        setPage('app');
+        setSection('calendario');
+        setCalendarDate(calendarMatch[1] && isValidIsoDate(calendarMatch[1]) ? calendarMatch[1] : null);
+        return;
+      }
+      const historyMatch = hash.match(HISTORY_ROUTE);
+      if (historyMatch) {
+        setPage('app');
+        setSection('historial');
+        // A link from a song or a member asks one question; the plain list keeps the filters as they were.
+        if (historyMatch[1] === 'cancion') setHistoryFilters({ ...EMPTY_PERFORMANCE_FILTERS, songId: historyMatch[2] });
+        if (historyMatch[1] === 'miembro') setHistoryFilters({ ...EMPTY_PERFORMANCE_FILTERS, memberId: historyMatch[2] });
+        return;
+      }
+      const performanceMatch = hash.match(PERFORMANCE_ROUTE);
+      if (performanceMatch) {
+        setPage('app');
+        setSection('historial');
+        setOpenRecordId(performanceMatch[1]);
+        return;
+      }
+      const eventMatch = hash.match(EVENT_ROUTE);
+      if (eventMatch) {
+        setPage('app');
+        setSection('calendario');
+        setOpenEventRoute({ eventId: eventMatch[1], date: eventMatch[2] ?? null });
+        return;
+      }
+      if (hash === '#/miembros') {
+        setPage('app');
+        setSection('miembros');
+        setOpenMemberId(null);
+        return;
+      }
+      if (hash.startsWith('#/miembro/')) {
+        setPage('app');
+        setSection('miembros');
+        setOpenMemberId(hash.replace('#/miembro/', ''));
+        return;
+      }
 
       setPage('app');
       setSection('cancionero');
@@ -301,11 +528,20 @@ export function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [setLastOpenedSongId]);
 
+  // A song the address asked for before the catalog had it: once Supabase answers
+  // (or fails), the same address is read again, with the catalog it has now.
+  const waitingForCatalog = page === 'songPending' || page === 'songUnavailable';
+  useEffect(() => {
+    if (waitingForCatalog && catalog.remote !== 'loading') window.dispatchEvent(new HashChangeEvent('hashchange'));
+  }, [waitingForCatalog, catalog.byId, catalog.remote]);
+
   const navigateTo = (hash: string) => {
     if (window.location.hash === hash) {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     } else {
-      window.location.hash = hash;
+      // A fragment navigation, exactly like setting location.hash: new history
+      // entry and a hashchange event.
+      window.location.assign(hash);
     }
   };
 
@@ -429,7 +665,7 @@ export function App() {
   );
 
   const searchResults = useMemo(() => {
-    const matches = searchSongs(SEARCH_INDEX, searchQuery, filters);
+    const matches = searchSongs(searchIndex, searchQuery, filters);
     const sorted = sortSongs(
       matches.map((match) => match.song),
       sortBy,
@@ -439,28 +675,30 @@ export function App() {
     // or details match, whatever the chosen order.
     const weak = new Set(matches.filter((match) => match.score < 50).map((match) => match.song.id));
     return [...sorted.filter((song) => !weak.has(song.id)), ...sorted.filter((song) => weak.has(song.id))];
-  }, [searchQuery, filters, sortBy, lastOpenedAt, usesBySong]);
+  }, [searchIndex, searchQuery, filters, sortBy, lastOpenedAt, usesBySong]);
 
   const filterOptions = useMemo(
-    () => (isOnSongbook ? getFilterOptions(SEARCH_INDEX, searchQuery, filters) : null),
-    [isOnSongbook, searchQuery, filters]
+    () => (isOnSongbook ? getFilterOptions(searchIndex, searchQuery, filters) : null),
+    [isOnSongbook, searchIndex, searchQuery, filters]
   );
 
   const favoriteSongs = useMemo(
     // Most recently marked first.
-    () => [...favorites].reverse().flatMap((id) => SONGS_BY_ID.get(id) ?? []),
-    [favorites]
+    () => [...favorites].reverse().flatMap((id) => songsById.get(id) ?? []),
+    [favorites, songsById]
   );
   const recentSongs = useMemo(
     () => recents.flatMap(({ songId, lastOpenedAt: openedAt }) => {
-      const song = SONGS_BY_ID.get(songId);
+      const song = songsById.get(songId);
       return song ? [{ song, lastOpenedAt: openedAt }] : [];
     }),
-    [recents]
+    [recents, songsById]
   );
-  const mostUsedSongs = useMemo(() => getMostUsedSongs(MOCK_SONGS, usage, lastOpenedAt), [usage, lastOpenedAt]);
+  const mostUsedSongs = useMemo(() => getMostUsedSongs(catalogSongs, usage, lastOpenedAt), [catalogSongs, usage, lastOpenedAt]);
 
   const openSetlist = openSetlistId ? setlists.getSetlist(openSetlistId) : null;
+  /** The setlist being played live, when mass mode is open over it. */
+  const massSetlist = massSetlistId ? setlists.getSetlist(massSetlistId) : null;
   const activeSetlist = setlistSongRoute ? setlists.getSetlist(setlistSongRoute.setlistId) : null;
 
   /**
@@ -472,7 +710,7 @@ export function App() {
     const position = getSetlistPosition(activeSetlist, setlistSongRoute.itemId, isPlayableItem);
     if (!position) return null;
     const stepTo = (item: SetlistItem) => ({
-      title: SONGS_BY_ID.get(item.songId)?.title ?? '',
+      title: songsById.get(item.songId)?.title ?? '',
       moment: item.moment,
       onSelect: () => navigateTo(setlistSongHash(activeSetlist.id, item.id)),
     });
@@ -497,8 +735,10 @@ export function App() {
     };
   })();
 
+  /** The open song as the current catalog has it (a newer remote version replaces the one opened). */
+  const currentSong = activeSong ? songsById.get(activeSong.id) ?? activeSong : null;
   /** The song on screen: from the setlist when there is one, else the plain route. */
-  const viewerSong = setlistPlayback ? SONGS_BY_ID.get(setlistPlayback.item.songId) ?? null : activeSong;
+  const viewerSong = setlistPlayback ? songsById.get(setlistPlayback.item.songId) ?? null : currentSong;
 
   const handleCreateSetlist = (details: SetlistDetails) => {
     const created = setlists.create(details);
@@ -516,7 +756,7 @@ export function App() {
   // stops at its end; everywhere else it cycles through the songbook.
   const setlistQueue: Song[] | null = setlistPlayback && activeSetlist
     ? activeSetlist.items
-        .map((item) => SONGS_BY_ID.get(item.songId))
+        .map((item) => songsById.get(item.songId))
         .filter((song): song is Song => Boolean(song))
     : null;
 
@@ -527,12 +767,12 @@ export function App() {
     if (setlistQueue && setlistPlayback && viewerSong?.id === lastOpenedSong.id) {
       return setlistPlayback.position - 1;
     }
-    return (setlistQueue ?? MOCK_SONGS).findIndex((song) => song.id === lastOpenedSong.id);
+    return (setlistQueue ?? catalogSongs).findIndex((song) => song.id === lastOpenedSong.id);
   };
 
   const handlePlayerNext = () => {
     if (!lastOpenedSong) return;
-    const queue = setlistQueue ?? MOCK_SONGS;
+    const queue = setlistQueue ?? catalogSongs;
     const index = queueIndex();
     const next = setlistQueue ? queue[index + 1] : queue[(index + 1) % queue.length];
     if (!next || next.id === lastOpenedSong.id) return;
@@ -544,7 +784,7 @@ export function App() {
 
   const handlePlayerPrev = () => {
     if (!lastOpenedSong) return;
-    const queue = setlistQueue ?? MOCK_SONGS;
+    const queue = setlistQueue ?? catalogSongs;
     const index = queueIndex();
     const previous = setlistQueue ? queue[index - 1] : queue[(index - 1 + queue.length) % queue.length];
     if (!previous || previous.id === lastOpenedSong.id) return;
@@ -558,7 +798,7 @@ export function App() {
     // finished was playing, so the next one should start right away.
     // isPlayerPlaying is intentionally left untouched (still true).
     if (!lastOpenedSong) return;
-    const queue = setlistQueue ?? MOCK_SONGS;
+    const queue = setlistQueue ?? catalogSongs;
     const startIdx = queueIndex();
 
     for (let step = 1; step <= queue.length; step++) {
@@ -616,8 +856,148 @@ export function App() {
       player={compactPlayer}
       setlist={playback}
       {...setlistActions}
+      history={
+        <SongHistoryCard
+          songId={song.id}
+          records={history.records}
+          onOpenHistory={() => navigateTo(`#/historial/cancion/${encodeURIComponent(song.id)}`)}
+        />
+      }
     />
   );
+
+  const openOccurrence = (occurrence: EventOccurrence) => navigateTo(occurrenceHash(occurrence));
+  const upcomingActivities = useMemo(() => getUpcomingEvents(events.events, calendarNow, 4), [events.events, calendarNow]);
+  const lastRecord = useMemo(() => getRecentPerformances(history.records, 1)[0] ?? null, [history.records]);
+  /** The activity date mass mode was opened from, as it is now (null from a setlist, or once it's gone). */
+  const massOccurrence = massOrigin ? findOccurrence(events.events, massOrigin.eventId, massOrigin.date) : null;
+  const massOriginOccurrence = massOccurrence && massOccurrence.date === massOrigin?.date ? massOccurrence : null;
+
+  /** Exact counts from the records, never a ranking: what they took part in, and where they sang solo. */
+  const renderMemberHistory = (memberId: string) => {
+    const taken = getPerformancesForMember(history.records, memberId).length;
+    if (taken === 0) return null;
+    const solo = countSoloSongsForMember(history.records, memberId);
+    return (
+      <div>
+        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+          Interpretaciones
+        </h2>
+        <p className="text-sm text-slate-700 dark:text-slate-200">
+          {taken === 1 ? '1 actividad registrada' : `${taken} actividades registradas`}
+          {solo > 0 ? ` · solista en ${solo === 1 ? '1 canción' : `${solo} canciones`}` : ''}
+        </p>
+        <button
+          type="button"
+          onClick={() => navigateTo(`#/historial/miembro/${encodeURIComponent(memberId)}`)}
+          className="mt-1 h-10 -ml-2 px-2 rounded-lg text-sm font-semibold text-[#2464ED] dark:text-sky-400 hover:bg-[#EAF1FF] dark:hover:bg-blue-500/10"
+        >
+          Ver historial
+        </button>
+      </div>
+    );
+  };
+
+  const renderHistory = () => {
+    if (openRecordId) {
+      const record = history.getRecord(openRecordId);
+      const recordId = openRecordId;
+      const origin = record ? findOccurrence(events.events, record.eventId, record.occurrenceDate) : null;
+      return (
+        <PerformanceDetail
+          record={record}
+          // The activity must still exist and still have that date.
+          eventExists={Boolean(origin && origin.date === record?.occurrenceDate)}
+          todayIso={calendarNow.date}
+          members={ministry.members}
+          onBack={() => navigateTo('#/historial')}
+          onOpenEvent={() => {
+            if (origin) navigateTo(occurrenceHash(origin));
+          }}
+          onUpdate={(changes) => {
+            history.update(recordId, changes);
+            showToast('Registro actualizado');
+          }}
+          onDelete={() => {
+            history.remove(recordId);
+            showToast('Registro de interpretación eliminado');
+            navigateTo(origin && origin.date === record?.occurrenceDate ? occurrenceHash(origin) : '#/historial');
+          }}
+        />
+      );
+    }
+    return (
+      <HistoryView
+        records={history.records}
+        filters={historyFilters}
+        onChangeFilters={setHistoryFilters}
+        onOpenRecord={(recordId) => navigateTo(performanceHash(recordId))}
+        onGoToCalendar={() => navigateTo('#/calendario')}
+        recoveredFromUnreadableData={history.recoveredFromUnreadableData}
+      />
+    );
+  };
+
+  const renderMembers = () => {
+    if (openMemberId) {
+      const member = ministry.membersById.get(openMemberId) ?? null;
+      const memberId = openMemberId;
+      return (
+        <MemberDetail
+          member={member}
+          songs={catalogSongs}
+          songsById={songsById}
+          keyPreferences={ministry.keyPreferences}
+          setlistCount={countSetlistsWithMember(setlists.setlists, memberId)}
+          onBack={() => navigateTo('#/miembros')}
+          onUpdate={(details) => ministry.updateMember(memberId, details)}
+          onSetActive={(isActive) => ministry.setMemberActive(memberId, isActive)}
+          onDelete={() => {
+            const name = member?.name;
+            // One clear operation: the member, their keys, and every place that pointed at them.
+            ministry.deleteMember(memberId);
+            setlists.removeMemberEverywhere(memberId);
+            events.removeMemberEverywhere(memberId);
+            if (name) showToast(`${name} eliminado del ministerio`);
+            navigateTo('#/miembros');
+          }}
+          onSetKeyPreference={(songId, key) => ministry.setKeyPreference(memberId, songId, key)}
+          onRemoveKeyPreference={(songId) => ministry.removeKeyPreference(memberId, songId)}
+          activities={
+            <ActivityList
+              title="Próximas actividades"
+              headingId="miembro-actividades"
+              occurrences={getEventsForMember(events.events, memberId, calendarNow)}
+              now={calendarNow}
+              onOpen={openOccurrence}
+              emptyText="No está en el equipo de ninguna actividad próxima."
+            />
+          }
+          history={renderMemberHistory(memberId)}
+        />
+      );
+    }
+    return (
+      <>
+        <MembersView
+          members={ministry.members}
+          onOpen={(memberId) => navigateTo(`#/miembro/${encodeURIComponent(memberId)}`)}
+          onCreate={() => setIsCreatingMember(true)}
+        />
+        {isCreatingMember && (
+          <MemberFormDialog
+            mode="create"
+            onSubmit={(details) => {
+              const created = ministry.createMember(details);
+              setIsCreatingMember(false);
+              navigateTo(`#/miembro/${encodeURIComponent(created.id)}`);
+            }}
+            onClose={() => setIsCreatingMember(false)}
+          />
+        )}
+      </>
+    );
+  };
 
   const renderSetlists = () => {
     if (!openSetlistId) {
@@ -635,14 +1015,15 @@ export function App() {
     return (
       <SetlistDetail
         setlist={openSetlist}
-        songs={MOCK_SONGS}
-        songsById={SONGS_BY_ID}
+        songs={catalogSongs}
+        songsById={songsById}
         durations={durations}
         onBack={() => navigateTo('#/setlists')}
         onOpenItem={(item) => navigateTo(setlistSongHash(setlistId, item.id))}
         onStartRehearsal={() => {
           if (openSetlist) handleStartRehearsal(openSetlist);
         }}
+        onStartMass={() => navigateTo(setlistMassHash(setlistId))}
         onUpdateDetails={(details) => setlists.updateDetails(setlistId, details)}
         onDuplicate={(details) => {
           const copy = setlists.duplicate(setlistId, details);
@@ -654,6 +1035,7 @@ export function App() {
         onDelete={() => {
           const name = openSetlist?.name;
           setlists.remove(setlistId);
+          events.clearSetlistEverywhere(setlistId);
           if (name) showToast(`Setlist «${name}» eliminado`);
           navigateTo('#/setlists');
         }}
@@ -662,7 +1044,166 @@ export function App() {
         onMoveItem={(itemId, toIndex) => setlists.moveItem(setlistId, itemId, toIndex)}
         onMoveItemBy={(itemId, delta) => setlists.moveItemBy(setlistId, itemId, delta)}
         onUpdateItem={(itemId, changes) => setlists.updateItem(setlistId, itemId, changes)}
+        members={ministry.members}
+        membersById={ministry.membersById}
+        onSetParticipants={(memberIds) => setlists.setParticipants(setlistId, memberIds)}
+        onAddParticipants={(memberIds) => setlists.addParticipants(setlistId, memberIds)}
+        onGoToMembers={() => navigateTo('#/miembros')}
+        activities={renderSetlistActivities(setlistId)}
       />
+    );
+  };
+
+  const renderSetlistActivities = (setlistId: string) => {
+    const { upcoming, past } = getEventsForSetlist(events.events, setlistId, calendarNow);
+    if (upcoming.length === 0 && past.length === 0) return null;
+    return (
+      <div className="space-y-5">
+        <ActivityList
+          title="Actividades"
+          headingId="setlist-actividades"
+          occurrences={upcoming}
+          now={calendarNow}
+          onOpen={openOccurrence}
+          emptyText="No hay actividades próximas con este Setlist."
+        />
+        <ActivityList
+          title="Anteriores"
+          headingId="setlist-actividades-pasadas"
+          occurrences={past}
+          now={calendarNow}
+          onOpen={openOccurrence}
+        />
+      </div>
+    );
+  };
+
+  const handleCreateEvent = (details: MinistryEventDetails) => {
+    const created = events.create(details);
+    setNewEventDate(null);
+    navigateTo(occurrenceHash({ event: created, date: created.date }));
+  };
+
+  const renderCalendar = () => {
+    if (openEventRoute) {
+      const occurrence = findOccurrence(events.events, openEventRoute.eventId, openEventRoute.date);
+      const eventId = openEventRoute.eventId;
+      const backDate = occurrence?.date ?? openEventRoute.date ?? calendarNow.date;
+      const performance = occurrence ? history.getForOccurrence(eventId, occurrence.date) : null;
+      const recordPerformance = (performedItemIds: string[], notes: string) => {
+        const setlist = occurrence?.event.setlistId ? setlists.getSetlist(occurrence.event.setlistId) : null;
+        if (!occurrence || !setlist || performedItemIds.length === 0) return null;
+        return history.record({
+          event: occurrence.event,
+          occurrenceDate: occurrence.date,
+          setlist,
+          songsById: songsById,
+          membersById: ministry.membersById,
+          performedItemIds,
+          notes,
+        });
+      };
+      return (
+        <EventDetail
+          // Another activity, or another date of the same one, starts clean.
+          key={occurrence?.key ?? eventId}
+          occurrence={occurrence}
+          setlists={setlists.setlists}
+          members={ministry.members}
+          membersById={ministry.membersById}
+          now={calendarNow}
+          onBack={() => navigateTo(calendarHash(backDate))}
+          onUpdate={(details) => {
+            events.update(eventId, details);
+            // The date may have moved: follow the activity there.
+            if (details.date !== occurrence?.event.date) navigateTo(`#/actividad/${encodeURIComponent(eventId)}`);
+          }}
+          onDelete={() => {
+            const title = occurrence?.event.title;
+            events.remove(eventId);
+            if (title) showToast(`Actividad «${title}» eliminada`);
+            navigateTo(calendarHash(backDate));
+          }}
+          onDuplicate={(details) => {
+            const copy = events.create(details);
+            showToast(`Actividad «${copy.title}» creada`);
+            navigateTo(occurrenceHash({ event: copy, date: copy.date }));
+          }}
+          onSetSetlist={(setlistId) => events.setSetlist(eventId, setlistId)}
+          onSetParticipants={(memberIds) => events.setParticipants(eventId, memberIds)}
+          onCopyTeamToSetlist={() => {
+            const setlistId = occurrence?.event.setlistId;
+            if (!occurrence || !setlistId || !setlists.getSetlist(setlistId)) return;
+            setlists.setParticipants(setlistId, occurrence.event.participantIds);
+            showToast('Equipo copiado al Setlist');
+          }}
+          onOpenSetlist={(setlistId) => navigateTo(setlistHash(setlistId))}
+          onStartRehearsal={(setlistId) => {
+            const setlist = setlists.getSetlist(setlistId);
+            if (setlist) handleStartRehearsal(setlist);
+          }}
+          onStartMass={(setlistId) => {
+            // Leaving mass mode comes back to this activity, not to the setlist.
+            setMassOrigin(occurrence ? { eventId, date: occurrence.date } : null);
+            navigateTo(setlistMassHash(setlistId));
+          }}
+          songsById={songsById}
+          performance={performance}
+          performanceCount={getPerformancesForEvent(history.records, eventId).length}
+          onSetStatus={(status) => {
+            if (!occurrence) return;
+            events.setStatus(eventId, occurrence.date, status);
+            showToast(
+              status === 'cancelled' ? 'Actividad cancelada' : status === 'completed' ? 'Actividad realizada' : 'Actividad programada de nuevo'
+            );
+          }}
+          onComplete={(performedItemIds, notes) => {
+            if (!occurrence) return;
+            // The record first, then the status: both belong to this date only.
+            const record = recordPerformance(performedItemIds, notes);
+            events.setStatus(eventId, occurrence.date, 'completed');
+            showToast(record ? 'Actividad realizada e interpretación registrada' : 'Actividad realizada');
+          }}
+          onRecordPerformance={(performedItemIds, notes) => {
+            if (recordPerformance(performedItemIds, notes)) showToast('Interpretación registrada');
+          }}
+          onViewPerformance={(recordId) => navigateTo(performanceHash(recordId))}
+          startClosing={Boolean(occurrence && closingKey === occurrence.key && occurrence.status === 'scheduled')}
+        />
+      );
+    }
+    const selectedDate = calendarDate ?? calendarNow.date;
+    return (
+      <>
+        <CalendarView
+          events={events.events}
+          now={calendarNow}
+          selectedDate={selectedDate}
+          view={calendarView}
+          onChangeView={setCalendarView}
+          onSelectDate={(date) => {
+            // Choosing a day is not a new page: the address follows without
+            // filling the history, so Back still leaves the calendar.
+            setCalendarDate(date);
+            window.history.replaceState(null, '', calendarHash(date));
+            currentHashRef.current = calendarHash(date);
+          }}
+          onOpenOccurrence={openOccurrence}
+          onCreate={setNewEventDate}
+          recoveredFromUnreadableData={events.recoveredFromUnreadableData}
+        />
+        {newEventDate && (
+          <EventFormDialog
+            mode="create"
+            initialDetails={{ date: newEventDate }}
+            setlists={setlists.setlists}
+            members={ministry.members}
+            todayIso={calendarNow.date}
+            onSubmit={handleCreateEvent}
+            onClose={() => setNewEventDate(null)}
+          />
+        )}
+      </>
     );
   };
 
@@ -676,6 +1217,34 @@ export function App() {
         return <About onBack={handleBackToDashboard} />;
       case 'contact':
         return <Contact onBack={handleBackToDashboard} />;
+      case 'songEditor':
+        return (
+          <SongEditorScreen
+            categories={catalogCategories}
+            onBackToSongbook={handleBackToDashboard}
+            onCheckStatus={(code) => navigateTo(`#/propuesta/${code}`)}
+          />
+        );
+      case 'proposalEdit':
+        return (
+          <ProposalEditScreen
+            key={trackingCode ?? ''}
+            code={trackingCode ?? ''}
+            categories={catalogCategories}
+            onCheckStatus={(code) => navigateTo(`#/propuesta/${code}`)}
+            onBackToSongbook={handleBackToDashboard}
+          />
+        );
+      case 'tracking':
+        return (
+          <TrackingScreen
+            initialCode={trackingCode}
+            onCheckCode={(code) => navigateTo(`#/propuesta/${code}`)}
+            onEditProposal={(code) => navigateTo(`#/propuesta/${code}/editar`)}
+            onAddSong={() => navigateTo(NEW_SONG_ROUTE)}
+            onBackToSongbook={handleBackToDashboard}
+          />
+        );
       case 'song':
         if (setlistSongRoute) {
           // The entry (or its song) can disappear while it is open, for
@@ -688,22 +1257,32 @@ export function App() {
               )
             : renderSetlists();
         }
-        return activeSong ? renderSongViewer(activeSong, activeSong.id, null) : null;
+        return currentSong ? renderSongViewer(currentSong, currentSong.id, null) : null;
+      case 'songPending':
+        return <SongPendingScreen />;
+      case 'songUnavailable':
+        return <SongUnavailableScreen songId={pendingSongId} onRetry={refreshCatalog} onBack={handleBackToDashboard} />;
       default:
         switch (section) {
           case 'setlists':
             return renderSetlists();
+          case 'miembros':
+            return renderMembers();
+          case 'calendario':
+            return renderCalendar();
+          case 'historial':
+            return renderHistory();
           case 'categorias':
             return (
               <CategoriesView
-                songs={MOCK_SONGS}
+                songs={catalogSongs}
                 onSelectCategory={(cat) => navigateTo(`#/categoria/${cat}`)}
               />
             );
           case 'autores':
             return (
               <AuthorsView
-                songs={MOCK_SONGS}
+                songs={catalogSongs}
                 onSelectAuthor={(author) => navigateTo(`#/autor/${author}`)}
               />
             );
@@ -711,7 +1290,7 @@ export function App() {
             return (
               <PlaylistsView
                 playlists={playlists}
-                songs={MOCK_SONGS}
+                songs={catalogSongs}
                 favorites={favorites}
                 onToggleFavorite={handleToggleFavorite}
                 onSelectSong={handleSelectSong}
@@ -723,6 +1302,12 @@ export function App() {
             );
           default:
             return (
+              <>
+              {catalog.remote === 'failed' && catalog.source !== 'remote' && (
+                <Suspense fallback={null}>
+                  <CatalogFallbackNotice catalog={catalog} onRetry={refreshCatalog} />
+                </Suspense>
+              )}
               <Dashboard
                 {...setlistActions}
                 results={searchResults}
@@ -754,7 +1339,19 @@ export function App() {
                 onGoToFavorites={() => navigateTo('#/favoritas')}
                 onGoToCategories={() => navigateTo('#/categorias')}
                 onGoToSetlists={() => navigateTo('#/setlists')}
+                onAddSong={() => navigateTo(NEW_SONG_ROUTE)}
+                upcomingActivities={
+                  <UpcomingActivities
+                    occurrences={upcomingActivities}
+                    now={calendarNow}
+                    onOpen={openOccurrence}
+                    onGoToCalendar={() => navigateTo('#/calendario')}
+                    lastRecord={lastRecord}
+                    onOpenRecord={(recordId) => navigateTo(performanceHash(recordId))}
+                  />
+                }
               />
+              </>
             );
         }
     }
@@ -762,12 +1359,14 @@ export function App() {
 
   const showPlayerBar = Boolean(lastOpenedSong);
   const rehearsalActive = isRehearsing && page === 'song' && Boolean(viewerSong);
+  const massActive = Boolean(massSetlist);
 
   return (
+    <MinistryContext.Provider value={ministryData}>
     <div
       // While rehearsing, the app underneath can't be reached by keyboard or
       // screen reader; rehearsal mode itself is portalled outside this element.
-      inert={rehearsalActive}
+      inert={rehearsalActive || massActive}
       className="h-screen flex bg-white dark:bg-dark-950 text-[#10203A] dark:text-slate-100 font-sans overflow-hidden"
     >
       <Sidebar
@@ -802,7 +1401,10 @@ export function App() {
         />
 
         <div ref={scrollContainerRef} className="flex-grow min-h-0 overflow-y-auto flex flex-col">
-          <main className="flex-grow flex flex-col">{renderContent()}</main>
+          <main className="flex-grow flex flex-col">
+            {/* A screen loaded on demand shows its outline meanwhile; the key restarts it per page. */}
+            <Suspense fallback={<ScreenFallback />}>{renderContent()}</Suspense>
+          </main>
           <Footer
             onNavigate={(hash) => {
               navigateTo(hash);
@@ -825,7 +1427,7 @@ export function App() {
               // The only reliable source of how long a song lasts, used to
               // estimate how long a setlist will take.
               onDurationKnown={(playingVideoId, seconds) => {
-                for (const song of MOCK_SONGS) {
+                for (const song of catalogSongs) {
                   if (song.youtubeId === playingVideoId) recordDuration(song.id, seconds);
                 }
               }}
@@ -835,8 +1437,9 @@ export function App() {
                 setIsPlayerPlaying(false);
               }}
             />
-            {/* Rehearsal mode shows its own compact controls for this player. */}
-            {!rehearsalActive && (
+            {/* Rehearsal mode shows its own compact controls for this player;
+                mass mode leaves the player out entirely. */}
+            {!rehearsalActive && !massActive && (
             <PlayerBar
               song={lastOpenedSong}
               isPlaying={isPlayerPlaying}
@@ -861,12 +1464,39 @@ export function App() {
         )}
       </div>
 
+      {massSetlist && (
+        <Suspense fallback={<FullScreenFallback />}>
+          <MassMode
+            // A different setlist is a different celebration.
+            key={massSetlist.id}
+            setlist={massSetlist}
+            songsById={songsById}
+            isPlayable={isPlayableItem}
+            onExit={() => navigateTo(massOriginOccurrence ? occurrenceHash(massOriginOccurrence) : setlistHash(massSetlist.id))}
+            returnsTo={massOriginOccurrence ? 'activity' : 'setlist'}
+            onFinishCelebration={
+              massOriginOccurrence && canFinishCelebration(massOriginOccurrence)
+                ? () => {
+                    // Finishing opens the closing of this date; nothing is closed until it is confirmed there.
+                    setClosingKey(massOriginOccurrence.key);
+                    navigateTo(occurrenceHash(massOriginOccurrence));
+                  }
+                : undefined
+            }
+            onSongOpened={(songId) => recordOpenedRef.current(songId)}
+            isDarkMode={isDarkMode}
+            onToggleDarkMode={() => setIsDarkMode((value) => !value)}
+          />
+        </Suspense>
+      )}
+
       {toast && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-[#10203A] text-white text-xs font-medium shadow-lg">
           {toast}
         </div>
       )}
     </div>
+    </MinistryContext.Provider>
   );
 }
 

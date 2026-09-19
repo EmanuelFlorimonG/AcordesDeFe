@@ -12,5 +12,5 @@
     "noEmit": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["tests"]
+  "include": ["tests", "scripts/generate-catalog-import.ts", "scripts/verify-remote-catalog.ts"]
 }

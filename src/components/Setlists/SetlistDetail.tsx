@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
-import { ArrowLeft, CalendarDays, Copy, ListOrdered, MoreHorizontal, Pencil, Play, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  CalendarDays,
+  Copy,
+  ListOrdered,
+  MoreHorizontal,
+  Pencil,
+  Play,
+  Plus,
+  Sparkle,
+  Trash2,
+} from 'lucide-react';
 import type { Setlist, SetlistDetails, SetlistItem } from '../../types/setlist';
+import type { MinistryMember } from '../../types/ministry';
 import type { Song } from '../../types/song';
 import {
   formatDurationSummary,
@@ -15,6 +27,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { SetlistFormDialog } from './SetlistFormDialog';
 import { SetlistItemEditor } from './SetlistItemEditor';
 import { SetlistSongList } from './SetlistSongList';
+import { SetlistTeam } from './SetlistTeam';
 import { primaryButton, secondaryButton } from './ui';
 
 interface SetlistDetailProps {
@@ -26,6 +39,8 @@ interface SetlistDetailProps {
   onBack: () => void;
   onOpenItem: (item: SetlistItem) => void;
   onStartRehearsal: () => void;
+  /** Plays the setlist live, in mass mode */
+  onStartMass: () => void;
   onUpdateDetails: (details: SetlistDetails) => void;
   onDuplicate: (details: SetlistDetails) => void;
   onDelete: () => void;
@@ -35,6 +50,14 @@ interface SetlistDetailProps {
   onMoveItem: (itemId: string, toIndex: number) => void;
   onMoveItemBy: (itemId: string, delta: number) => void;
   onUpdateItem: (itemId: string, changes: SetlistItemChanges) => void;
+  /** The people of the ministry, to choose the team from */
+  members: MinistryMember[];
+  membersById: Map<string, MinistryMember>;
+  onSetParticipants: (memberIds: string[]) => void;
+  onAddParticipants: (memberIds: string[]) => void;
+  onGoToMembers: () => void;
+  /** The calendar activities that use this setlist */
+  activities?: React.ReactNode;
 }
 
 type OpenDialog =
@@ -55,6 +78,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   onBack,
   onOpenItem,
   onStartRehearsal,
+  onStartMass,
   onUpdateDetails,
   onDuplicate,
   onDelete,
@@ -63,6 +87,12 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   onMoveItem,
   onMoveItemBy,
   onUpdateItem,
+  members,
+  membersById,
+  onSetParticipants,
+  onAddParticipants,
+  onGoToMembers,
+  activities,
 }) => {
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
   const closeDialog = () => setDialog(null);
@@ -101,6 +131,11 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     ? setlist.items.find((item) => item.id === dialog.itemId) ?? null
     : null;
   const openItemSong = openItem ? songsById.get(openItem.songId) ?? null : null;
+  // The song after the one being edited, taken from the order as it is now:
+  // a transition belongs to the song you leave, never to a fixed pair.
+  const nextAfterOpenItem = openItem
+    ? setlist.items[setlist.items.findIndex((item) => item.id === openItem.id) + 1] ?? null
+    : null;
 
   return (
     <div className="w-full px-5 sm:px-10 py-6 sm:py-8">
@@ -161,12 +196,36 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
             <Play className="w-4 h-4 fill-current" />
             Iniciar ensayo
           </button>
+          <button
+            type="button"
+            onClick={onStartMass}
+            disabled={playableCount === 0}
+            title={
+              playableCount === 0
+                ? 'Añade una canción para poder tocar'
+                : 'Toca este Setlist durante la celebración'
+            }
+            className={secondaryButton}
+          >
+            <Sparkle className="w-4 h-4" />
+            Modo Misa
+          </button>
           <button type="button" onClick={() => setDialog({ kind: 'add' })} className={secondaryButton}>
             <Plus className="w-4 h-4" />
             Añadir canción
           </button>
         </div>
       </header>
+
+      <SetlistTeam
+        participantIds={setlist.participantIds}
+        members={members}
+        membersById={membersById}
+        onSave={onSetParticipants}
+        onGoToMembers={onGoToMembers}
+      />
+
+      {activities && <div className="mb-6">{activities}</div>}
 
       {setlist.items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
@@ -233,7 +292,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       {dialog?.kind === 'delete' && (
         <ConfirmDialog
           title={`¿Eliminar «${setlist.name}»?`}
-          message="Esta acción eliminará el Setlist, no las canciones."
+          message="Esta acción eliminará el Setlist, no las canciones. Las actividades del calendario que lo usen se conservan, sin repertorio."
           confirmLabel="Eliminar Setlist"
           onConfirm={onDelete}
           onClose={closeDialog}
@@ -254,7 +313,15 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
         <SetlistItemEditor
           song={openItemSong}
           item={openItem}
-          onSave={(changes) => {
+          nextSongTitle={
+            nextAfterOpenItem
+              ? songsById.get(nextAfterOpenItem.songId)?.title ?? 'Canción no disponible'
+              : null
+          }
+          participantIds={setlist.participantIds}
+          onSave={({ newParticipantIds, ...changes }) => {
+            // Someone assigned from outside the team joins it, as the editor said.
+            if (newParticipantIds.length > 0) onAddParticipants(newParticipantIds);
             onUpdateItem(openItem.id, changes);
             closeDialog();
           }}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import type { Instrument, Playlist, Song, ViewSettings } from '../../types/song';
 import type { SetlistPlayback } from '../../types/setlist';
 import { normalizeStep, transposeKey } from '../../utils/chordTransposer';
@@ -8,14 +8,14 @@ import { useTransposeControls } from '../../hooks/useTransposeControls';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useMetronome } from '../../hooks/useMetronome';
 import { ChordSheet } from './ChordSheet';
-import { ChordDetailModal } from './ChordDetailModal';
 import { InstrumentChordDiagram } from './InstrumentChordDiagram';
 import { InstrumentToggle } from './InstrumentToggle';
 import { SongInfoChips, type SongKeyInfo } from './SongInfoChips';
 import { TransposeMenu } from './TransposeMenu';
 import { SongRowMenu } from '../Dashboard/SongRowMenu';
 import { LiturgicalSeasonChips } from '../Liturgy/LiturgicalSeasonChips';
-import { RehearsalMode } from '../Rehearsal/RehearsalMode';
+import { FullScreenFallback } from '../Layout/ScreenFallback';
+import { TeamKeysCard } from '../Members/TeamKeysCard';
 import type { RehearsalKeyControls } from '../Rehearsal/RehearsalHeader';
 import type { CompactPlayerState } from '../Player/MiniPlayer';
 import type { SongSetlistActions } from '../Dashboard/songActions';
@@ -27,6 +27,7 @@ import {
   Copy,
   Check,
   Guitar,
+  ListMusic,
   ListOrdered,
   Piano,
   Share2,
@@ -34,6 +35,14 @@ import {
   MicVocal,
   StickyNote,
 } from 'lucide-react';
+
+// The chord detail opens only when a chord is tapped: loaded then, not with the page.
+const ChordDetailModal = lazy(() => import('./ChordDetailModal').then((module) => ({ default: module.ChordDetailModal })));
+
+// Rehearsal mode is a whole screen of its own, loaded the first time it opens.
+const RehearsalMode = lazy(() =>
+  import('../Rehearsal/RehearsalMode').then((module) => ({ default: module.RehearsalMode }))
+);
 
 type SongTab = 'letra' | 'diagramas' | 'recursos';
 
@@ -56,6 +65,8 @@ interface SongViewerProps extends SongSetlistActions {
    * note shown then belong to that occasion, and are saved back to it.
    */
   setlist?: SetlistPlayback | null;
+  /** Where the song was really sung, from the history of performances */
+  history?: React.ReactNode;
 }
 
 // The key a song was left in stays for the rest of the browser session, so
@@ -102,6 +113,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   setlists,
   onAddToSetlist,
   onCreateSetlistWithSong,
+  history,
 }) => {
   const [localSettings, setLocalSettings] = useState<ViewSettings>(() => {
     // Opened from a setlist, the song starts in that setlist's key, not in
@@ -264,12 +276,14 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   const closeChordModal = useCallback(() => setSelectedChordModal(null), []);
 
   const chordModal = selectedChordModal && (
-    <ChordDetailModal
-      key={`${selectedChordModal}-${instrument}`}
-      chord={selectedChordModal}
-      instrument={instrument}
-      onClose={closeChordModal}
-    />
+    <Suspense fallback={null}>
+      <ChordDetailModal
+        key={`${selectedChordModal}-${instrument}`}
+        chord={selectedChordModal}
+        instrument={instrument}
+        onClose={closeChordModal}
+      />
+    </Suspense>
   );
 
   return (
@@ -345,6 +359,13 @@ export const SongViewer: React.FC<SongViewerProps> = ({
               Ver la canción original
             </button>
           </div>
+
+          {setlist.item.arrangement && (
+            <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-[#2464ED] dark:text-sky-400">
+              <ListMusic aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+              Con arreglo propio de este Setlist: se sigue en Modo Ensayo
+            </p>
+          )}
 
           {setlist.item.notes && (
             <p className="mt-2 flex items-start gap-2 text-sm leading-relaxed whitespace-pre-line text-slate-600 dark:text-slate-300">
@@ -642,6 +663,10 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             </div>
           )}
 
+          <TeamKeysCard songId={song.id} />
+
+          {history}
+
           {song.tags.length > 0 && (
             <div className="bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-lg p-4">
               <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-3">
@@ -667,23 +692,25 @@ export const SongViewer: React.FC<SongViewerProps> = ({
       </div>
 
       {isRehearsing ? (
-        <RehearsalMode
-          song={song}
-          content={transposedContent}
-          showChords={settings.showChords}
-          keyControls={rehearsalKeyControls}
-          capoFret={isPiano ? null : settings.capoFret}
-          instrument={hasChords ? instrument : null}
-          onInstrumentChange={setInstrument}
-          metronome={metronome}
-          player={player}
-          onChordClick={setSelectedChordModal}
-          isChordModalOpen={Boolean(selectedChordModal)}
-          // Rendered inside the rehearsal layer, which sits above this page.
-          chordModal={chordModal}
-          onExit={() => onRehearsalChange(false)}
-          setlist={setlist}
-        />
+        <Suspense fallback={<FullScreenFallback />}>
+          <RehearsalMode
+            song={song}
+            content={transposedContent}
+            showChords={settings.showChords}
+            keyControls={rehearsalKeyControls}
+            capoFret={isPiano ? null : settings.capoFret}
+            instrument={hasChords ? instrument : null}
+            onInstrumentChange={setInstrument}
+            metronome={metronome}
+            player={player}
+            onChordClick={setSelectedChordModal}
+            isChordModalOpen={Boolean(selectedChordModal)}
+            // Rendered inside the rehearsal layer, which sits above this page.
+            chordModal={chordModal}
+            onExit={() => onRehearsalChange(false)}
+            setlist={setlist}
+          />
+        </Suspense>
       ) : (
         /* Chord detail: positions (guitar) or inversions (piano) */
         chordModal

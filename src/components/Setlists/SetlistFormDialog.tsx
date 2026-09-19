@@ -2,6 +2,7 @@ import React, { useId, useState } from 'react';
 import type { SetlistDetails } from '../../types/setlist';
 import { Dialog } from './Dialog';
 import { fieldLabel, primaryButton, secondaryButton, textField } from './ui';
+import { DatePicker } from '../ui/DatePicker';
 
 export type SetlistFormMode = 'create' | 'edit' | 'duplicate';
 
@@ -99,13 +100,9 @@ export const SetlistFormDialog: React.FC<SetlistFormDialogProps> = ({
           <label htmlFor={dateId} className={fieldLabel}>
             Fecha <span className="font-normal text-slate-400">(opcional)</span>
           </label>
-          <input
-            id={dateId}
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            className={`${textField} sm:max-w-[13rem]`}
-          />
+          <div className="sm:max-w-[22rem]">
+            <DatePicker id={dateId} value={date} onChange={setDate} clearable placeholder="Sin fecha" />
+          </div>
         </div>
 
         <div>

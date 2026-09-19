@@ -9,6 +9,8 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   onClose: () => void;
   tone?: 'danger' | 'normal';
+  /** The way out, when "Cancelar" would read like the action itself ("Cancelar actividad") */
+  cancelLabel?: string;
 }
 
 /** A question with two answers, for changes that can't be undone. */
@@ -19,6 +21,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onClose,
   tone = 'danger',
+  cancelLabel = 'Cancelar',
 }) => (
   <Dialog
     role="alertdialog"
@@ -28,7 +31,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     footer={
       <>
         <button type="button" data-autofocus="" onClick={onClose} className={secondaryButton}>
-          Cancelar
+          {cancelLabel}
         </button>
         <button
           type="button"

@@ -7,13 +7,16 @@ import {
   type SetlistRepository,
 } from '../storage/setlistStorage';
 import {
+  addSetlistParticipants,
   addSongsToSetlist,
   createSetlist,
   duplicateSetlist,
   moveSetlistItem,
   moveSetlistItemBy,
   moveSetlistItemCapo,
+  removeMemberFromSetlist,
   removeSetlistItem,
+  setSetlistParticipants,
   transposeSetlistItem,
   updateSetlistDetails,
   updateSetlistItem,
@@ -37,6 +40,12 @@ export interface SetlistsStore {
   updateItem: (id: string, itemId: string, changes: SetlistItemChanges) => void;
   transposeItem: (id: string, itemId: string, delta: number) => void;
   moveItemCapo: (id: string, itemId: string, delta: number) => void;
+  /** Replaces the team of a setlist */
+  setParticipants: (id: string, memberIds: string[]) => void;
+  /** Adds people to the team, keeping who was there */
+  addParticipants: (id: string, memberIds: string[]) => void;
+  /** A member was deleted: out of every team and every arrangement */
+  removeMemberEverywhere: (memberId: string) => void;
 }
 
 /**
@@ -121,5 +130,20 @@ export function useSetlists(repository?: SetlistRepository): SetlistsStore {
       change(id, (setlist, now) => transposeSetlistItem(setlist, itemId, delta, now)),
     moveItemCapo: (id, itemId, delta) =>
       change(id, (setlist, now) => moveSetlistItemCapo(setlist, itemId, delta, now)),
+    setParticipants: (id, memberIds) =>
+      change(id, (setlist, now) => setSetlistParticipants(setlist, memberIds, now)),
+    addParticipants: (id, memberIds) =>
+      change(id, (setlist, now) => addSetlistParticipants(setlist, memberIds, now)),
+    removeMemberEverywhere: (memberId) =>
+      setSetlists((current) => {
+        const now = Date.now();
+        let changed = false;
+        const next = current.map((setlist) => {
+          const cleaned = removeMemberFromSetlist(setlist, memberId, now);
+          changed = changed || cleaned !== setlist;
+          return cleaned;
+        });
+        return changed ? next : current;
+      }),
   };
 }

@@ -136,6 +136,9 @@ export const Dialog: React.FC<DialogProps> = ({
             className="flex min-h-0 flex-1 flex-col"
             onSubmit={(event) => {
               event.preventDefault();
+              // A dialog opened from inside another one is a React child of it,
+              // so without this the outer form would submit too.
+              event.stopPropagation();
               onSubmit();
             }}
           >

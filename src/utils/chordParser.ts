@@ -93,7 +93,7 @@ export function extractUniqueChords(content: string): string[] {
  */
 export function parseBracketLine(line: string): ChordLineSegment[] {
   const segments: ChordLineSegment[] = [];
-  const regex = /\[([A-G][b#]?[^\]]*)\]([^\[]*)/g;
+  const regex = /\[([A-G][b#]?[^\]]*)\]([^[]*)/g;
   let match: RegExpExecArray | null;
   let lastIndex = 0;
 

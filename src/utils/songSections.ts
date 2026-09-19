@@ -229,20 +229,44 @@ export function groupIntoSections(lines: ParsedLine[]): SongSection[] {
   }
   flush();
 
-  // A header with nothing under it points back at the section it repeats.
+  // A header with nothing under it ("Coro" after the chorus was written out)
+  // means "sing that section again here": it gets that section's lines, so the
+  // words are on the page every time, while keeping its own id and position.
   return sections.map((section, index) => {
-    const { header } = section;
-    if (!header || header.kind === 'otro' || section.lines.length > 0) return section;
-
-    const original = sections
-      .slice(0, index)
-      .reverse()
-      .find(
-        (candidate) =>
-          candidate.lines.length > 0 &&
-          candidate.header?.kind === header.kind &&
-          (header.number === undefined || candidate.header.number === header.number)
-      );
-    return original ? { ...section, repeatOf: original.id } : section;
+    const target = findRepeatedSection(section, sections.slice(0, index));
+    return target ? { ...section, repeatOf: target.id, lines: target.lines } : section;
   });
+}
+
+/** Two sections that would put exactly the same lines on the page. */
+function sectionSignature(section: SongSection): string {
+  return section.lines.map((line) => line.raw).join('\n');
+}
+
+/**
+ * The section an empty header repeats, or null when it can't be told for sure.
+ *
+ * The same name wins over the same kind: "Estribillo" repeats the estribillo
+ * even when the song also has a "Coro". A number must match ("Coro 2" is the
+ * second chorus). And when the candidates left say different things — a song
+ * with a "Coro 1" and a "Coro 2" and a bare "Coro" — nothing is chosen: showing
+ * no lyric is better than showing the wrong one.
+ */
+export function findRepeatedSection(section: SongSection, earlier: SongSection[]): SongSection | null {
+  const { header } = section;
+  if (!header || header.kind === 'otro' || section.lines.length > 0) return null;
+
+  const written = earlier.filter(
+    (candidate) =>
+      candidate.lines.length > 0 &&
+      candidate.header?.kind === header.kind &&
+      (header.number === undefined || candidate.header.number === header.number)
+  );
+  const name = normalizeText(header.label);
+  const sameName = written.filter((candidate) => normalizeText(candidate.header?.label ?? '') === name);
+  const candidates = sameName.length > 0 ? sameName : written;
+  if (candidates.length === 0) return null;
+
+  const different = new Set(candidates.map(sectionSignature));
+  return different.size === 1 ? candidates[candidates.length - 1] : null;
 }

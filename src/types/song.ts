@@ -73,7 +73,9 @@ export interface SongSection {
   lines: ParsedLine[];
   /**
    * When a header appears with nothing under it (a bare "Coro" after the
-   * chorus was already written out), the id of the section it repeats.
+   * chorus was already written out), the id of the section it repeats. Its
+   * `lines` are then that section's lines, so the words appear again, while
+   * the section keeps its own id: every appearance is still its own section.
    */
   repeatOf?: string;
 }

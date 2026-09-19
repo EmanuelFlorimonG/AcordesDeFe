@@ -2,6 +2,7 @@ import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Song } from '../src/types/song';
 import { MOCK_SONGS } from '../src/data/mockSongs';
+import { extractUniqueChords } from '../src/utils/chordParser';
 import { LITURGICAL_SEASONS, LITURGICAL_SEASON_IDS } from '../src/data/liturgicalSeasons';
 import {
   SEASON_FILTER_OPTIONS,
@@ -164,9 +165,9 @@ describe('Las canciones del cancionero', () => {
     }
   });
 
-  it('88 clasificadas y 6 pendientes de revisar', () => {
+  it('91 clasificadas y 6 pendientes de revisar', () => {
     const unclassified = MOCK_SONGS.filter((song) => getSongSeasons(song).length === 0).map((song) => song.id);
-    eq(MOCK_SONGS.length, 94);
+    eq(MOCK_SONGS.length, 97);
     eq(unclassified.sort(), [
       'gloria-a-dios-en-el-cielo-pascua',
       'llegara-con-la-luz',
@@ -175,7 +176,7 @@ describe('Las canciones del cancionero', () => {
       'salve-regina',
       'siempre-es-pentecostes',
     ]);
-    eq(MOCK_SONGS.filter(isAllYearSong).length, 75);
+    eq(MOCK_SONGS.filter(isAllYearSong).length, 78);
   });
 
   it('ejemplos: Adviento, Pascua y Todo el año', () => {
@@ -203,7 +204,7 @@ describe('Las canciones del cancionero', () => {
 
   it('el filtro de Cuaresma incluye las de Todo el año y ninguna solo de Pascua', () => {
     const lent = filterSongsBySeason(MOCK_SONGS, 'cuaresma');
-    eq(lent.length, 75);
+    eq(lent.length, 78);
     eq(lent.some((song) => getSongSeasons(song).includes('pascua')), false);
   });
 });
@@ -230,7 +231,7 @@ describe('Canciones de las hojas de agosto y septiembre', () => {
       eq(song.originalKey, key, `${id}: tono`);
       eq(song.recommendedCapo, capo, `${id}: cejilla`);
       eq(song.categories[0], category, `${id}: categoría`);
-      eq(song.chordsUsed, [], `${id}: sin acordes inventados`);
+      eq(song.chordsUsed, extractUniqueChords(song.content), `${id}: los acordes declarados son los de la letra`);
       eq(getSongSeasons(song).length > 0, true, `${id}: clasificada`);
     }
   });
@@ -258,6 +259,13 @@ describe('Canciones de las hojas de agosto y septiembre', () => {
       'oh-cordero': 'C',
       'eucaristia-milagro-de-amor': 'C',
     });
+  });
+
+  it('los acordes declarados son los que aparecen en la letra, en todo el cancionero', () => {
+    // The order is how they are listed; what matters is that they are the same chords.
+    for (const song of MOCK_SONGS) {
+      eq([...song.chordsUsed].sort(), [...extractUniqueChords(song.content)].sort(), song.id);
+    }
   });
 
   it('no hay ids repetidos en el cancionero', () => {

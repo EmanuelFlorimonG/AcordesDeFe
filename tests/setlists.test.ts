@@ -103,6 +103,7 @@ describe('Crear y editar un Setlist', () => {
       name: 'Misa Domingo',
       date: '2026-09-20',
       description: 'Coro juvenil',
+      participantIds: [],
       items: [],
       createdAt: NOW,
       updatedAt: NOW,

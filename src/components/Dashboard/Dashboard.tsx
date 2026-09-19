@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUpDown, LayoutGrid, List, SearchX } from 'lucide-react';
+import { ArrowUpDown, LayoutGrid, List, Plus, SearchX } from 'lucide-react';
 import type { Playlist, Song } from '../../types/song';
 import {
   SORT_OPTIONS,
@@ -47,6 +47,10 @@ interface DashboardProps extends SongSetlistActions {
   onGoToFavorites: () => void;
   onGoToCategories: () => void;
   onGoToSetlists: () => void;
+  /** Opens the public editor to propose a new song */
+  onAddSong: () => void;
+  /** The ministry's next activities, from the calendar */
+  upcomingActivities?: React.ReactNode;
 }
 
 /**
@@ -81,9 +85,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onGoToFavorites,
   onGoToCategories,
   onGoToSetlists,
+  onAddSong,
   setlists,
   onAddToSetlist,
   onCreateSetlistWithSong,
+  upcomingActivities,
 }) => {
   const trimmedQuery = query.trim();
   const filtersActive = hasActiveFilters(filters);
@@ -109,6 +115,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {!isSearching && (
         <>
           <Hero onFocusSearch={onFocusSearch} onGoToFavorites={onGoToFavorites} onGoToCategories={onGoToCategories} />
+          {upcomingActivities}
           <YourSongs
             {...songActions}
             favoriteSongs={favoriteSongs}
@@ -134,6 +141,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onAddSong}
+              className="inline-flex h-9 [@media(pointer:coarse)]:h-10 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 px-3 text-sm font-semibold text-[#2464ED] dark:text-sky-400 hover:border-[#2464ED] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
+            >
+              <Plus aria-hidden="true" className="w-4 h-4" />
+              <span className="sm:hidden">Agregar</span>
+              <span className="hidden sm:inline">Agregar canción</span>
+            </button>
             <ListboxSelect
               size="sm"
               value={sortBy}
@@ -218,6 +234,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   className="h-10 px-4 rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
                 >
                   Borrar búsqueda
+                </button>
+              )}
+              {trimmedQuery && (
+                <button
+                  type="button"
+                  onClick={onAddSong}
+                  className="inline-flex h-10 items-center gap-1.5 px-4 rounded-lg text-sm font-semibold text-[#2464ED] dark:text-sky-400 hover:bg-[#EAF1FF] dark:hover:bg-blue-500/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
+                >
+                  <Plus aria-hidden="true" className="w-4 h-4" />
+                  ¿No está? Agrégala
                 </button>
               )}
             </div>

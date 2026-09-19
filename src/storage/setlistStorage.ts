@@ -1,5 +1,7 @@
 import type { Setlist, SetlistItem } from '../types/setlist';
 import { normalizeKeySettings } from '../utils/keySettings';
+import { normalizeMemberIds, sanitizeArrangement } from '../utils/arrangement';
+import { sanitizeSongTransition } from '../utils/songTransition';
 import {
   MAX_MOMENT_LENGTH,
   MAX_NOTES_LENGTH,
@@ -21,7 +23,16 @@ import {
 
 export const SETLIST_STORAGE_KEY = 'genesaret_setlists';
 export const SETLIST_BACKUP_KEY = 'genesaret_setlists_backup';
-export const SETLIST_STORAGE_VERSION = 1;
+/**
+ * 2 added the musical arrangement of each entry, 3 the transition to the next
+ * song, 4 the team (participants) and who sings each block. Older versions are
+ * read as they are: an entry with no arrangement is played as the song is
+ * written, one with no transition has nothing written down for the moment it
+ * ends, and a setlist with no team simply has nobody chosen yet, which is
+ * exactly what those setlists meant.
+ */
+export const SETLIST_STORAGE_VERSION = 4;
+const READABLE_VERSIONS = [1, 2, 3, 4];
 
 /** The part of the Web Storage API this module needs. */
 export type KeyValueStorage = Pick<Storage, 'getItem' | 'setItem'>;
@@ -50,12 +61,16 @@ export function sanitizeSetlistItem(value: unknown, makeId: IdFactory = createId
   if (!isRecord(value)) return null;
   const songId = asString(value.songId).trim();
   if (!songId) return null;
+  const arrangement = sanitizeArrangement(value.arrangement, makeId);
+  const transitionToNext = sanitizeSongTransition(value.transitionToNext);
   return {
     id: asString(value.id).trim() || makeId(),
     songId,
     moment: asString(value.moment).trim().slice(0, MAX_MOMENT_LENGTH),
     ...normalizeKeySettings(value),
     notes: asString(value.notes).trim().slice(0, MAX_NOTES_LENGTH),
+    ...(arrangement ? { arrangement } : {}),
+    ...(transitionToNext ? { transitionToNext } : {}),
   };
 }
 
@@ -85,6 +100,7 @@ export function sanitizeSetlist(value: unknown, now = Date.now(), makeId: IdFact
     name: details.name || 'Setlist sin nombre',
     date: details.date,
     description: details.description,
+    participantIds: normalizeMemberIds(value.participantIds),
     items,
     createdAt,
     updatedAt: asTimestamp(value.updatedAt, createdAt),
@@ -92,9 +108,10 @@ export function sanitizeSetlist(value: unknown, now = Date.now(), makeId: IdFact
 }
 
 /**
- * Reads stored text. Accepts the current format ({ version, setlists }) and a
- * bare array (version 0). Anything else, including a newer version this code
- * doesn't understand, is reported unreadable rather than guessed at.
+ * Reads stored text. Accepts every version this app has written ({ version,
+ * setlists }) and a bare array (version 0). Anything else, including a newer
+ * version this code doesn't understand, is reported unreadable rather than
+ * guessed at.
  */
 export function parseStoredSetlists(
   raw: string | null,
@@ -113,7 +130,14 @@ export function parseStoredSetlists(
   let list: unknown[];
   if (Array.isArray(data)) {
     list = data; // version 0: a plain array
-  } else if (isRecord(data) && data.version === SETLIST_STORAGE_VERSION && Array.isArray(data.setlists)) {
+  } else if (
+    isRecord(data) &&
+    typeof data.version === 'number' &&
+    READABLE_VERSIONS.includes(data.version) &&
+    Array.isArray(data.setlists)
+  ) {
+    // Older versions need no rewriting: every field added since is optional,
+    // and the next save stores them in the current version.
     list = data.setlists;
   } else {
     return { setlists: [], unreadable: true };

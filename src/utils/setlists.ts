@@ -1,6 +1,19 @@
-import type { Setlist, SetlistDetails, SetlistItem } from '../types/setlist';
+import type {
+  Setlist,
+  SetlistArrangement,
+  SetlistDetails,
+  SetlistItem,
+  SetlistSongTransition,
+} from '../types/setlist';
 import type { Song } from '../types/song';
 import { MAX_CAPO, MIN_CAPO, moveCapoBy, normalizeKeySettings, transposeBy } from './keySettings';
+import { createId, type IdFactory } from './createId';
+import { isValidIsoDate, toLocalIsoDate } from './dates';
+import { duplicateArrangement, normalizeMemberIds, removeMemberFromArrangement } from './arrangement';
+
+// Re-exported so everything that already builds setlists keeps one import.
+export { createId };
+export type { IdFactory };
 
 /**
  * Setlist operations as pure functions: every change returns a new setlist
@@ -72,11 +85,6 @@ export function listSongCategories(songs: Array<Pick<Song, 'categories'>>): Song
   return [...massMoments, ...others];
 }
 
-export type IdFactory = () => string;
-
-export const createId: IdFactory = () =>
-  globalThis.crypto?.randomUUID?.() ??
-  `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 interface ChangeOptions {
   now: number;
@@ -89,22 +97,9 @@ type SongForSetlist = Pick<Song, 'id' | 'recommendedCapo'>;
 // Dates
 // ---------------------------------------------------------------------------
 
-const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-/** True for a real calendar date written as YYYY-MM-DD. */
-export function isValidIsoDate(value: string): boolean {
-  const match = value.match(DATE_PATTERN);
-  if (!match) return false;
-  const [year, month, day] = match.slice(1).map(Number);
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
-}
-
-/** Today (or any date) as YYYY-MM-DD in local time, never shifted by time zones. */
-export function toLocalIsoDate(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
+// isValidIsoDate and toLocalIsoDate live with the other date helpers; they
+// are re-exported here because setlists have always offered them.
+export { isValidIsoDate, toLocalIsoDate };
 
 /** "20 sep 2026" */
 export function formatSetlistDate(isoDate: string, style: 'short' | 'long' = 'short'): string {
@@ -136,7 +131,7 @@ export function cleanSetlistDetails(details: Partial<SetlistDetails>): SetlistDe
 export function createSetlist(details: Partial<SetlistDetails>, { now, createId: makeId = createId }: ChangeOptions): Setlist {
   const clean = cleanSetlistDetails(details);
   if (!clean.name) throw new Error('Un setlist necesita un nombre.');
-  return { id: makeId(), ...clean, items: [], createdAt: now, updatedAt: now };
+  return { id: makeId(), ...clean, participantIds: [], items: [], createdAt: now, updatedAt: now };
 }
 
 export function updateSetlistDetails(setlist: Setlist, details: Partial<SetlistDetails>, now: number): Setlist {
@@ -166,7 +161,21 @@ export function duplicateSetlist(
     },
     { now, createId: makeId }
   );
-  return { ...copy, items: setlist.items.map((item) => ({ ...item, id: makeId() })) };
+  return {
+    ...copy,
+    // Same ministry, same people: the team is kept (as a list of its own).
+    participantIds: [...setlist.participantIds],
+    items: setlist.items.map((item) => ({
+      ...item,
+      id: makeId(),
+      // The arrangement is copied whole, with ids of its own, so the two
+      // setlists can be changed apart and the jumps of the copy point at the
+      // copy's own sections.
+      ...(item.arrangement ? { arrangement: duplicateArrangement(item.arrangement, makeId) } : {}),
+      // A copy of its own, so editing one setlist never reaches the other.
+      ...(item.transitionToNext ? { transitionToNext: { ...item.transitionToNext } } : {}),
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +240,10 @@ export interface SetlistItemChanges {
   notes?: string;
   transposeSteps?: number;
   capoFret?: number;
+  /** An arrangement to store, or null to go back to the song as it is written. */
+  arrangement?: SetlistArrangement | null;
+  /** How this song goes into the next one, or null to leave it unsaid. */
+  transitionToNext?: SetlistSongTransition | null;
 }
 
 export function updateSetlistItem(
@@ -248,11 +261,18 @@ export function updateSetlistItem(
         transposeSteps: changes.transposeSteps ?? item.transposeSteps,
         capoFret: changes.capoFret ?? item.capoFret,
       });
+      const { arrangement: current, transitionToNext: currentTransition, ...rest } = item;
+      const arrangement = changes.arrangement === undefined ? current : changes.arrangement;
+      const transitionToNext =
+        changes.transitionToNext === undefined ? currentTransition : changes.transitionToNext;
       return {
-        ...item,
+        ...rest,
         ...keySettings,
         moment: (changes.moment ?? item.moment).trim().slice(0, MAX_MOMENT_LENGTH),
         notes: (changes.notes ?? item.notes).trim().slice(0, MAX_NOTES_LENGTH),
+        // Absent, not empty: an entry with no arrangement is played as written.
+        ...(arrangement ? { arrangement } : {}),
+        ...(transitionToNext ? { transitionToNext } : {}),
       };
     }),
     updatedAt: now,
@@ -379,4 +399,45 @@ export function groupSetlistsByDate(setlists: Setlist[], todayIso: string): { up
       return b.updatedAt - a.updatedAt;
     });
   return { upcoming, recent };
+}
+
+// ---------------------------------------------------------------------------
+// The team of a setlist
+// ---------------------------------------------------------------------------
+
+/** Replaces who takes part in this celebration. */
+export function setSetlistParticipants(setlist: Setlist, memberIds: string[], now: number): Setlist {
+  const participantIds = normalizeMemberIds(memberIds);
+  const unchanged =
+    participantIds.length === setlist.participantIds.length &&
+    participantIds.every((id, index) => id === setlist.participantIds[index]);
+  return unchanged ? setlist : { ...setlist, participantIds, updatedAt: now };
+}
+
+/** Adds people to the team, keeping who was already there. */
+export function addSetlistParticipants(setlist: Setlist, memberIds: string[], now: number): Setlist {
+  return setSetlistParticipants(setlist, [...setlist.participantIds, ...memberIds], now);
+}
+
+/**
+ * What deleting a member means for a setlist: out of the team and out of
+ * every block of every arrangement. Nothing else changes.
+ */
+export function removeMemberFromSetlist(setlist: Setlist, memberId: string, now: number): Setlist {
+  let changed = false;
+  const items = setlist.items.map((item) => {
+    if (!item.arrangement) return item;
+    const arrangement = removeMemberFromArrangement(item.arrangement, memberId);
+    if (arrangement === item.arrangement) return item;
+    changed = true;
+    return { ...item, arrangement };
+  });
+  const participantIds = setlist.participantIds.filter((id) => id !== memberId);
+  if (participantIds.length !== setlist.participantIds.length) changed = true;
+  return changed ? { ...setlist, participantIds, items, updatedAt: now } : setlist;
+}
+
+/** How many setlists someone is on, counting only what is stored. */
+export function countSetlistsWithMember(setlists: Setlist[], memberId: string): number {
+  return setlists.filter((setlist) => setlist.participantIds.includes(memberId)).length;
 }

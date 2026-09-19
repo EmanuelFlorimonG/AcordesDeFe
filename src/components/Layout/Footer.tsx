@@ -11,13 +11,20 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
         © Ministerio Acordes de Fe
       </span>
 
-      <nav className="flex items-center gap-6">
+      <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
         <a
           href="#/nosotros"
           onClick={(e) => { e.preventDefault(); onNavigate('#/nosotros'); }}
           className="text-[11px] text-slate-400 hover:text-[#2464ED] transition-colors font-medium"
         >
           Acerca de
+        </a>
+        <a
+          href="#/propuesta"
+          onClick={(e) => { e.preventDefault(); onNavigate('#/propuesta'); }}
+          className="text-[11px] text-slate-400 hover:text-[#2464ED] transition-colors font-medium"
+        >
+          Consultar propuesta
         </a>
         <a
           href="#/contacto"

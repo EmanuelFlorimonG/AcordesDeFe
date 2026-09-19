@@ -34,7 +34,7 @@ export const Topbar: React.FC<TopbarProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [inputRef]);
 
   const linkClass = (isActive: boolean) =>
     `hidden lg:inline text-sm font-semibold transition-colors ${

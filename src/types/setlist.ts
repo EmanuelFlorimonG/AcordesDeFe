@@ -5,6 +5,74 @@
  * a setlist only refers to them by id.
  */
 
+/**
+ * Who sings a section in one arrangement. These are roles, not people: the
+ * name of the singer behind "solista" belongs to the members of the ministry,
+ * which this phase does not touch.
+ */
+export type VoiceRole =
+  | 'all'
+  | 'men'
+  | 'women'
+  | 'soloist'
+  | 'choir'
+  | 'soprano'
+  | 'alto'
+  | 'tenor'
+  | 'bass';
+
+/**
+ * What happens when a section ends. It is written for the musicians to read,
+ * not executed: nothing navigates on its own during rehearsal.
+ */
+export type ArrangementTransition =
+  | { type: 'continue' }
+  | { type: 'jump'; targetId: string }
+  | { type: 'end' };
+
+/**
+ * One block of the arrangement: this song's section, played here, this way.
+ *
+ * Its id is the identity of this appearance, not of the section: a chorus sung
+ * three times is three entries with three ids and one sourceSectionId, so each
+ * one can carry its own voices, repeats and instruction, and a jump can name
+ * exactly which one to come back to.
+ */
+export interface ArrangementSection {
+  id: string;
+  /** The section of the song text it plays ("section-3"), never its name. */
+  sourceSectionId: string;
+  /**
+   * The name the section had when it was added ("Coro", "Verso 1"). Kept so an
+   * arrangement can still be read after the song's text changed.
+   */
+  label: string;
+  /** How many times in a row it is sung, 1 to 4. The lyric is written once. */
+  repeatCount: number;
+  /** Empty means nobody in particular: everyone sings as usual. */
+  voices: VoiceRole[];
+  /**
+   * The people who sing this block, by member id. It sits next to `voices`
+   * and never replaces it: "Solista" says a soloist sings, this says who.
+   * Empty (or absent, in arrangements saved before members existed) means
+   * nobody has been chosen yet, which is perfectly valid. Names are never
+   * copied here, so renaming someone shows the new name everywhere.
+   */
+  assignedMemberIds?: string[];
+  /** Free text for this block: "Piano solo", "Entrar suave". */
+  instruction: string;
+  transition: ArrangementTransition;
+}
+
+/**
+ * How a song is played in one setlist: its order, repeats, voices and
+ * instructions. It only refers to the song's sections; lyrics and chords are
+ * never copied here, and the song itself is never modified.
+ */
+export interface SetlistArrangement {
+  sections: ArrangementSection[];
+}
+
 export interface SetlistItem {
   /**
    * Unique within the setlist, and different from the song id, so the same
@@ -20,6 +88,39 @@ export interface SetlistItem {
   capoFret: number;
   /** Notes for this arrangement: "Intro solo piano", "Último coro x2". */
   notes: string;
+  /**
+   * How this song is played on this occasion. Absent means it is played as it
+   * is written: an arrangement is only stored once someone changes something,
+   * and setlists made before this existed have none.
+   */
+  arrangement?: SetlistArrangement;
+  /**
+   * What happens when this song ends and the next one begins. Absent means
+   * nothing was decided, which is not the same as deciding to stop. It is
+   * ignored while this entry is the last one of the setlist, without being
+   * deleted: moving it back up makes it apply again.
+   */
+  transitionToNext?: SetlistSongTransition;
+}
+
+/**
+ * How the band gets from one song of the setlist to the next one.
+ *
+ * It belongs to the song you leave *from*, never to a pair of songs: if the
+ * order changes, the indication still describes "when this song ends", which
+ * is how musicians think about it.
+ *
+ * - "stop": the song finishes and there is a pause.
+ * - "direct": one song goes straight into the next.
+ * - "instrumental": the music keeps playing in between.
+ * - "custom": whatever the instruction says.
+ */
+export type SongTransitionType = 'stop' | 'direct' | 'instrumental' | 'custom';
+
+export interface SetlistSongTransition {
+  type: SongTransitionType;
+  /** Free text for the musicians: "Terminar en G y mantener 2 compases". */
+  instruction: string;
 }
 
 export interface Setlist {
@@ -28,6 +129,11 @@ export interface Setlist {
   /** Calendar date of the occasion as "YYYY-MM-DD", or "" when not set. */
   date: string;
   description: string;
+  /**
+   * The members taking part in this celebration, by id. Only ids are kept, so
+   * names and roles always come from the member as it is now.
+   */
+  participantIds: string[];
   /** Playing order is the array order. */
   items: SetlistItem[];
   createdAt: number;

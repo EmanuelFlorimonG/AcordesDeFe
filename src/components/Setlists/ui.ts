@@ -25,3 +25,20 @@ export const setlistSongHash = (setlistId: string, itemId: string) =>
   `#/setlist/${encodeURIComponent(setlistId)}/song/${encodeURIComponent(itemId)}`;
 
 export const setlistHash = (setlistId: string) => `#/setlist/${encodeURIComponent(setlistId)}`;
+
+/** The setlist being played live, in mass mode. */
+export const setlistMassHash = (setlistId: string) =>
+  `#/setlist/${encodeURIComponent(setlistId)}/misa`;
+
+/**
+ * Chips for choosing: voices of a section, kind of transition. They are
+ * buttons, not a native select, and they say what they are with more than
+ * colour (a check when chosen).
+ */
+export const chipButton =
+  'inline-flex items-center gap-1.5 h-9 [@media(pointer:coarse)]:h-11 px-3 rounded-lg border text-[13px] font-semibold uppercase tracking-[0.06em] transition-colors touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40';
+
+export const chipOff =
+  'border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 text-slate-600 dark:text-slate-300 hover:border-[#2464ED] hover:text-[#2464ED] dark:hover:text-sky-400';
+
+export const chipOn = 'border-[#2464ED] bg-[#2464ED] text-white hover:bg-[#1D56D6]';

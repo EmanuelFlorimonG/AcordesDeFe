@@ -1,0 +1,126 @@
+import { createLocalRepository, getBrowserStorage, type KeyValueStorage, type Repository } from '../storage/localRepository';
+import { isSubmissionAttempt, type SubmissionAttempt } from '../catalog/submission';
+import { parseEditorDocument, type EditorDocument } from './songEditorModel';
+
+/**
+ * Songs being written, kept in this browser only. Nothing goes to the backend
+ * until "Enviar para revisión": a draft is local work, saved as you type (with
+ * a pause) so a reload or a closed tab loses nothing.
+ *
+ * Drafts are keyed: 'new' is the song being created now. Corrections of
+ * existing songs will use their own keys later ("update:<songId>").
+ */
+
+export const SONG_DRAFTS_STORAGE_KEY = 'genesaret_song_drafts';
+export const SONG_DRAFTS_BACKUP_KEY = 'genesaret_song_drafts_backup';
+export const SONG_DRAFTS_STORAGE_VERSION = 1;
+export const NEW_SONG_DRAFT_KEY = 'new';
+
+export interface StoredSongDraft {
+  key: string;
+  document: EditorDocument;
+  updatedAt: number;
+  /**
+   * The retry identity of a send that didn't confirm (a network error): kept
+   * so a retry, even after a reload, is recognised by the backend instead of
+   * creating a second proposal. Cleared with the draft once a send succeeds.
+   */
+  attempt: SubmissionAttempt | null;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+export function parseStoredDrafts(raw: string | null): { drafts: StoredSongDraft[]; unreadable: boolean } {
+  if (raw === null || raw === '') return { drafts: [], unreadable: false };
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { drafts: [], unreadable: true };
+  }
+  if (!isRecord(data) || data.version !== SONG_DRAFTS_STORAGE_VERSION || !Array.isArray(data.drafts)) {
+    return { drafts: [], unreadable: true };
+  }
+  const seen = new Set<string>();
+  const drafts = data.drafts.filter(isRecord).flatMap((entry): StoredSongDraft[] => {
+    const document = parseEditorDocument(entry.document);
+    if (typeof entry.key !== 'string' || !entry.key || seen.has(entry.key) || !document) return [];
+    seen.add(entry.key);
+    const updatedAt = typeof entry.updatedAt === 'number' && Number.isFinite(entry.updatedAt) ? entry.updatedAt : 0;
+    return [{ key: entry.key, document, updatedAt, attempt: isSubmissionAttempt(entry.attempt) ? entry.attempt : null }];
+  });
+  return { drafts, unreadable: false };
+}
+
+export function serializeDrafts(drafts: StoredSongDraft[]): string {
+  return JSON.stringify({ version: SONG_DRAFTS_STORAGE_VERSION, drafts });
+}
+
+export interface SongDraftStore {
+  load(key: string): StoredSongDraft | null;
+  /** False when the browser refused to store it (full, blocked): the caller keeps warning before leaving */
+  save(key: string, document: EditorDocument, now?: number): boolean;
+  remove(key: string): void;
+  /** Remembers (or forgets) the retry identity of this draft's send */
+  setAttempt(key: string, attempt: SubmissionAttempt | null): boolean;
+  /** True when stored drafts couldn't be read and were set aside (backed up) */
+  readonly recoveredFromUnreadableData: boolean;
+}
+
+/**
+ * The drafts store. Unreadable data is backed up once and never overwritten
+ * silently; a write that fails is reported, so the editor can say it.
+ */
+export function createSongDraftStore(storage: KeyValueStorage | null = getBrowserStorage()): SongDraftStore {
+  const repository: Repository<StoredSongDraft> = createLocalRepository(
+    storage,
+    SONG_DRAFTS_STORAGE_KEY,
+    SONG_DRAFTS_BACKUP_KEY,
+    (raw) => {
+      const { drafts, unreadable } = parseStoredDrafts(raw);
+      return { items: drafts, unreadable };
+    },
+    serializeDrafts
+  );
+  const initial = repository.load();
+  let drafts = initial.items;
+
+  const persist = (next: StoredSongDraft[]): boolean => {
+    if (!storage) return false;
+    try {
+      storage.setItem(SONG_DRAFTS_STORAGE_KEY, serializeDrafts(next));
+      drafts = next;
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  return {
+    recoveredFromUnreadableData: initial.recoveredFromUnreadableData,
+    load: (key) => drafts.find((entry) => entry.key === key) ?? null,
+    save: (key, document, now = Date.now()) => {
+      const previous = drafts.find((entry) => entry.key === key);
+      return persist([
+        ...drafts.filter((entry) => entry.key !== key),
+        {
+          key,
+          document,
+          updatedAt: now,
+          // A retry identity only stands for the exact song it was sent with:
+          // once the song changes, sending it again is a new proposal.
+          attempt: previous && JSON.stringify(previous.document) === JSON.stringify(document) ? previous.attempt : null,
+        },
+      ]);
+    },
+    setAttempt: (key, attempt) => {
+      const previous = drafts.find((entry) => entry.key === key);
+      if (!previous) return false;
+      return persist(drafts.map((entry) => (entry.key === key ? { ...entry, attempt } : entry)));
+    },
+    remove: (key) => {
+      persist(drafts.filter((entry) => entry.key !== key));
+    },
+  };
+}

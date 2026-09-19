@@ -1,6 +1,13 @@
 import React from 'react';
+import { CornerUpLeft, Square, TriangleAlert } from 'lucide-react';
 import type { ParsedLine, SectionHeader, ViewSettings } from '../../types/song';
 import { groupIntoWords, parseSongSections } from '../../utils/chordParser';
+import {
+  formatVoices,
+  resolvedSectionName,
+  type ResolvedArrangementSection,
+} from '../../utils/arrangement';
+import { memberNames, useMinistryData } from '../../hooks/ministryContext';
 import {
   isChordOnlyLine,
   isRefrainSection,
@@ -23,6 +30,12 @@ interface ChordSheetProps {
   showChords: boolean;
   onChordClick?: (chord: string) => void;
   variant?: ChordSheetVariant;
+  /**
+   * The arrangement of this song for one occasion: its sections in the order
+   * they will be played, with their voices, repeats and instructions. Without
+   * it the song is shown exactly as it is written.
+   */
+  arrangement?: ResolvedArrangementSection[] | null;
 }
 
 interface SizeClasses {
@@ -82,9 +95,8 @@ const ChordButton: React.FC<{
 
 const SectionHeading: React.FC<{
   header: SectionHeader;
-  isRepeat: boolean;
   isStage: boolean;
-}> = ({ header, isRepeat, isStage }) => {
+}> = ({ header, isStage }) => {
   const isRefrain = isRefrainSection(header.kind);
   return (
     <div
@@ -108,9 +120,93 @@ const SectionHeading: React.FC<{
           ×{header.repeat}
         </span>
       )}
-      {isRepeat && <span className="text-xs text-slate-400 dark:text-slate-500">se repite</span>}
       <span aria-hidden="true" className="h-px flex-1 bg-slate-100 dark:bg-dark-800" />
     </div>
+  );
+};
+
+/**
+ * The heading of a block of the arrangement: its name, how many times it is
+ * sung, who sings it and what to remember. The lyric stays the main thing on
+ * the page, so all of it is one quiet line.
+ */
+const ArrangementHeading: React.FC<{ entry: ResolvedArrangementSection; isStage: boolean }> = ({
+  entry,
+  isStage,
+}) => {
+  const isRefrain = entry.section?.header ? isRefrainSection(entry.section.header.kind) : false;
+  // Names come from the member as it is now: renaming someone renames them here.
+  const { membersById } = useMinistryData();
+  const names = memberNames(entry.assignedMemberIds, membersById);
+  return (
+    <div
+      className={`flex flex-wrap items-center [break-after:avoid] ${
+        isStage ? 'gap-x-3 gap-y-1 mb-3 sm:mb-4' : 'gap-x-2.5 gap-y-1 mb-2.5'
+      }`}
+    >
+      <h3
+        className={`shrink-0 font-semibold uppercase ${
+          isStage ? 'text-xs sm:text-[13px] tracking-[0.18em]' : 'text-[11px] tracking-[0.14em]'
+        } ${isRefrain ? 'text-blue-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'}`}
+      >
+        {resolvedSectionName(entry)}
+      </h3>
+      {entry.repeatCount > 1 && (
+        <span
+          className="shrink-0 text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400 px-1.5 rounded border border-slate-200 dark:border-dark-700"
+          title={`Se canta ${entry.repeatCount} veces`}
+        >
+          ×{entry.repeatCount}
+        </span>
+      )}
+      {entry.voices.length > 0 && (
+        <span
+          className={`shrink-0 font-semibold uppercase tracking-[0.1em] text-blue-600 dark:text-sky-400 ${
+            isStage ? 'text-[11px] sm:text-xs' : 'text-[10px]'
+          }`}
+        >
+          {formatVoices(entry.voices)}
+        </span>
+      )}
+      {names.length > 0 && (
+        <span
+          className={`min-w-0 font-semibold text-slate-700 dark:text-slate-200 ${
+            isStage ? 'text-xs sm:text-sm' : 'text-xs'
+          }`}
+        >
+          <span className="sr-only">Canta: </span>
+          {names.join(' · ')}
+        </span>
+      )}
+      {entry.instruction && (
+        <span
+          className={`italic text-slate-400 dark:text-slate-500 ${isStage ? 'text-xs sm:text-sm' : 'text-xs'}`}
+        >
+          {entry.instruction}
+        </span>
+      )}
+      <span aria-hidden="true" className="h-px flex-1 min-w-[1.5rem] bg-slate-100 dark:bg-dark-800" />
+    </div>
+  );
+};
+
+/** What the musicians do when this block ends. It is read, never executed. */
+const TransitionNote: React.FC<{ entry: ResolvedArrangementSection; isStage: boolean }> = ({
+  entry,
+  isStage,
+}) => {
+  if (entry.transition.type === 'continue') return null;
+  const isEnd = entry.transition.type === 'end';
+  const Icon = isEnd ? Square : CornerUpLeft;
+  return (
+    <p
+      className={`mt-3 flex items-center gap-2 font-semibold text-slate-500 dark:text-slate-400 ${
+        isStage ? 'text-xs sm:text-sm' : 'text-xs'
+      }`}
+    >
+      <Icon aria-hidden="true" className={`w-3.5 h-3.5 shrink-0 ${isEnd ? 'fill-current' : ''}`} />
+      {isEnd ? 'Terminar aquí' : `Volver a ${entry.transitionTargetLabel ?? 'otra sección'}`}
+    </p>
   );
 };
 
@@ -212,6 +308,7 @@ export const ChordSheet: React.FC<ChordSheetProps> = ({
   showChords,
   onChordClick,
   variant = 'page',
+  arrangement = null,
 }) => {
   const sections = React.useMemo(() => parseSongSections(content), [content]);
   const isStage = variant === 'stage';
@@ -222,33 +319,60 @@ export const ChordSheet: React.FC<ChordSheetProps> = ({
   const hasAnyChord = React.useMemo(() => songHasChords(sections), [sections]);
   const renderChords = showChords && hasAnyChord;
 
+  /**
+   * What to draw, in order. Each block carries its own identity: with an
+   * arrangement it is the identity of that appearance, so a chorus sung three
+   * times is three blocks, each one its own anchor on the page.
+   */
+  const blocks = React.useMemo(
+    () =>
+      arrangement
+        ? arrangement.map((entry) => ({ id: entry.id, section: entry.section, entry }))
+        : sections.map((section) => ({
+            id: section.id,
+            section,
+            entry: null as ResolvedArrangementSection | null,
+          })),
+    [arrangement, sections]
+  );
+
   return (
     <div
       className={`w-full transition-all select-text ${
         twoColumns ? 'columns-1 md:columns-2 gap-8 [column-fill:balance]' : ''
       }`}
     >
-      {sections.map((section) => {
-        if (!isSectionShown(section, renderChords)) return null;
+      {blocks.map(({ id, section, entry }) => {
+        // A block the arrangement asks for is always drawn: someone decided it
+        // is played there. Without an arrangement, the song's own rules apply.
+        if (!entry && (!section || !isSectionShown(section, renderChords))) return null;
 
-        const isRefrain = section.header ? isRefrainSection(section.header.kind) : false;
+        const isRefrain = section?.header ? isRefrainSection(section.header.kind) : false;
+        const lines = section && (!entry || isSectionShown(section, renderChords)) ? section.lines : [];
 
         return (
           <section
-            key={section.id}
-            data-section-id={section.id}
-            data-section-kind={section.header?.kind}
+            key={id}
+            data-section-id={id}
+            data-section-kind={entry ? (section?.header?.kind ?? 'otro') : section?.header?.kind}
             className={isStage ? 'mt-10 sm:mt-14 first:mt-0' : 'mt-8 first:mt-0'}
           >
-            {section.header && (
-              <SectionHeading
-                header={section.header}
-                isRepeat={Boolean(section.repeatOf)}
-                isStage={isStage}
-              />
+            {entry ? (
+              <ArrangementHeading entry={entry} isStage={isStage} />
+            ) : (
+              section?.header && (
+                <SectionHeading header={section.header} isStage={isStage} />
+              )
             )}
 
-            {section.lines.length > 0 && (
+            {entry && !section && (
+              <p className="flex items-center gap-2 rounded-lg border border-dashed border-amber-300 dark:border-amber-500/40 px-3 py-2 text-xs sm:text-sm text-amber-700 dark:text-amber-400">
+                <TriangleAlert aria-hidden="true" className="w-4 h-4 shrink-0" />
+                Esta sección ya no está en la letra de la canción.
+              </p>
+            )}
+
+            {lines.length > 0 && (
               <div
                 className={
                   isRefrain
@@ -258,11 +382,13 @@ export const ChordSheet: React.FC<ChordSheetProps> = ({
                     : undefined
                 }
               >
-                {section.lines.map((line, index) =>
+                {lines.map((line, index) =>
                   renderLine(line, index, sizes, renderChords, isStage, onChordClick)
                 )}
               </div>
             )}
+
+            {entry && <TransitionNote entry={entry} isStage={isStage} />}
           </section>
         );
       })}

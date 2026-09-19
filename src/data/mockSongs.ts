@@ -638,6 +638,230 @@ Mi liber[Em]tad
 Si por [C]un segundo vieras cómo te [D]miro
 No querrías ver nada [G]más`
   },
+  {
+    id: 'a-ti-te-alabo',
+    title: 'A Ti Te Alabo',
+    artist: 'Hakuna Group Music',
+    originalKey: 'Am',
+    recommendedCapo: 3,
+    categories: ['Hakuna'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: ['C', 'G', 'Am', 'F'],
+    content: `[Estribillo]
+A Ti te [C]alabo Señor en tu templo
+A Ti te [G]alabo con todo el firmamento
+A Ti te [Am]alabo con todo lo que Tú has hecho
+A Ti te [F]alabo Padre, Hijo, amor eterno
+A Ti te [C]alabo con trompas y flautas
+A Ti te [G]alabo con tambores y danzas
+A Ti te [Am]alaban criaturas y animales
+A Ti te [F]alaban las montañas y los mares
+A Ti te a[Am]laa[C]aaa[F]aban
+
+[Verso]
+[Am]A ese ser que [C]creó este
+Mundo por a[F]mor
+
+No lo encontraba
+[Am]No creía que [C]fuera posible
+Este [F]don
+
+Un Dios
+[F]Todo lo que veo a mi alrede[C]dor
+[Am]Grita que aquí estás y esconde [F]mi temor
+[F]Todo ser que aliente, alabe [C]al Señor
+Y grite bien [G]fuerte
+
+[Estribillo]
+A Ti te [C]alabo Señor en tu templo
+A Ti te [G]alabo con todo el firmamento
+A Ti te [Am]alabo con todo lo que Tú has hecho
+A Ti te [F]alabo Padre, Hijo, amor eterno
+A Ti te [C]alabo con trompas y flautas
+A Ti te [G]alabo con tambores y danzas
+A Ti te [Am]alaban criaturitas y animales
+A Ti te [F]alaban las montañas y los mares
+A Ti te a[Am]laa[C]aaa[F]aban
+
+[Final]
+A Ti te alabo, [C]aunque te escondas, aunque yo no pueda verte
+A Ti te [F]alabo, que me salvas de la muerte
+A Ti te alabo en el si[G]lencio de un amor que ya no siente
+A Ti te alabo, eres mi [Am]Dios, eres mi vida, eres mi fuerte
+A Ti te alabo en [C]lo sencillo, cotidiano, indiferente
+A Ti te [F]alabo con el vivo que que te busca ansiadamente
+A Ti te [G]alabo con el muerto que te espera nuevamente
+A Ti te [Am]alabo, eres mi Dios, eres mi [G]vida
+
+A Ti te a[F]laaaaa[Am]abo[G]
+A Ti te a[F]laaaaa[Am]abo[G]
+A Ti te a[F]laaaaa[Am]abo[G]
+A Ti te [F]alabo`
+  },
+  {
+    id: 'nada',
+    title: 'Nada',
+    artist: 'Hakuna Group Music',
+    originalKey: 'C',
+    categories: ['Hakuna'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: ['C', 'Am', 'F', 'G', 'Dm', 'Bb'],
+    content: `[Primera Parte]
+[C]Deja de he[C]rirte
+Deja [Am]de poner en mi boca
+Palabras que nunca [F]di[G]je
+
+Deja de pen[C]sar que estoy enfadado
+Deja de de[Am]cir
+Que [F]soy yo el que se está
+[G]Alejando de ti
+
+Y es que no lo [Am]ves
+[G]Me entrego por [C]ti
+Una y otra vez
+Tú [F]siempre serás mi favo[G]rita
+
+Nunca te [Am]deja[G]ré
+[C]Nunca te [F]deja[G]ré
+
+[Estribillo]
+Y es que no hay [C]nada
+Nada, nada, [Am]nada
+Que puedas [F]hacer
+Para que te deje [G]de querer
+
+Y es que no hay [C]nada
+Hagas lo que ha[Am]gas
+Por [F]favor
+Deja de [G]decir
+
+Que no eres amada por mí
+
+( [C]  [Am]  [F]  [G] )
+
+[Segunda Parte]
+[C]No hay nada en tu alma
+Que haga que en ti[Am]
+
+Deje de pensar
+Estos muros [F]que te destrozan
+Son entre tú y [G]tu libertad
+Házme caso [Am]hija mía
+Yo solo quiero [C]verte feliz
+[F]Tú siempre tendrás Mi perdón[G]
+Te falta perdo[Am]narte A ti[G]
+
+[Estribillo]
+Y es que no hay [C]nada
+Nada, nada, [Am]nada
+Que puedas [F]hacer
+Para que te [G]deje de querer
+
+Y es que no hay [C]nada
+Hagas lo que [Am]hagas
+Por [F]favor Deja de [G]decir
+Que no eres amada por [C]mí
+
+[Solo]
+[Dm]  [C]  [G]  [Am]
+[Dm]  [F]  [G]
+
+[Tercera Parte]
+Y es que aunque [Am]peques y me cambies
+Por [G]las cosas terrenales
+Aunque te [F]alejes y me olvides
+Y [G]me borres de tu planes
+Aunque te [Am]rindas y te caigas
+Y no [G]sepas levantarte
+Si estás per[F]dido pide ayu[G]da
+
+Y es que aunque [C]peques y me cambies
+Por [Bb]las cosas terrenales
+Aunque te ale[F]jes y me olvides
+Y me [G]borres de tu planes
+Aunque te rin[C]das y te caigas
+Y no [Bb]sepas levantarte
+Si estás per[F]dido pide ayu[G]da
+
+[Estribillo]
+Y es que no hay [C]nada
+Nada, nada, [Am]nada
+Que puedas [F]hacer
+Para que te deje [G]de querer
+
+Y es que no hay [C]nada
+Hagas lo que [Am]hagas
+Por [F]favor deja de [G]decir
+Que no eres amada por [C]mi`
+  },
+  {
+    id: 'sencillamente',
+    title: 'Sencillamente',
+    artist: 'Hakuna Group Music',
+    originalKey: 'Em',
+    recommendedCapo: 1,
+    categories: ['Hakuna'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: ['Em', 'C', 'G', 'B7'],
+    content: `[Em]Creo sencilla[C]mente
+[G]Quiero disfrutar de [B7]la serenidad del [Em]creer
+[Em]Desligar el [C]creer del sentir
+[G]Creo, mi Dios ¡[B7]y basta!
+
+[Em]Te creo en tus misterios
+[C]Sin entenderlos
+[G]Te creo en mí y [B7]en el Pan Blanco
+En el [Em]prójimo y en [C]la creación
+[G]Sin verte en nin[B7]gún lado
+
+[Em]Creo, Señor, sencilla[C]mente
+[G]Porque creer es confiar
+[B7]¡Y cómo me gusta creerte
+Sintiendo [Em]dudas
+Sintiendo [C]dudas
+Sintiendo [G]dudas![B7]
+
+( [Em]  [C]  [G]  [B7] )
+
+[Em]Digo que eres amor
+[C]Escucho que soy tu amado
+[G]No siento y ¡qué más da!
+[B7]¡Te quiero y eso basta!
+
+[Estribillo 2]
+[Em]Amo, Señor, sencilla[C]mente
+[G]Porque amar, es entregarse
+[B7]¡Cómo me gusta amarte
+Estando [Em]frío
+Estando [C]frío
+Estando [G]frío![B7]
+
+[Em]Espero en tu Palabra
+[C]Vivo en tu Promesa
+[G]Gozo en ti lo que [B7]aún me falta!
+
+[Em]Espero, Señor, sencilla[C]mente
+[G]Porque esperar es descansar
+[B7]Y como me gusta, esperaré
+Sintiendo [Em]miedo
+Sintiendo [C]miedo
+Sintiendo [G]miedo![B7]
+
+[Em]Creo, [C]amo, [G]espero
+[B7]¡Cómo me gusta seguirte
+Sintiendo [C]dudas
+Estando [G]frío
+Sintiendo [B7]miedo!
+¡Cómo me [Em]gusta!
+¡Cómo me [C]gusta!
+[G]Quererte, amarte y es[B7]perarte
+
+[Final]
+[Em]Te sigo sencillamente`
+  },
 {
     id: 'vienen-con-alegria',
     title: 'Vienen con Alegría',
@@ -656,7 +880,9 @@ A un mundo cargado de ansiedad
 A un mundo que busca y que no alcanza
 Caminos de amor y de amistad
 
-(Se repite el coro tantas veces sea necesario)`
+Coro
+
+* Se repite tantas veces sea necesario`
   },
   {
     id: 'bendecire-al-senor',
@@ -1641,7 +1867,9 @@ De un ocaso en una cruz
 Si una nueva vida
 Tengo que enseñar
 
-(Se repite el coro cuanto se necesite)`
+Coro
+
+* Se repite cuanto se necesite`
   },
   {
     id: 'jesus-amigo',
@@ -2483,38 +2711,56 @@ Qué bien se está aquí, en tu presencia.`
   {
     id: 'tu-el-unico-rey',
     title: 'Tú, el Único Rey',
+    artist: 'Hakuna Group Music',
     originalKey: 'C',
     categories: ['Alabanza', 'Adoración'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: [],
-    chordsUsed: [],
-    content: `Tú, el Único Rey que tiene que reinar,
-el Único Señor al que voy a alabar.
-Hoy levanto el corazón al que lo conquistó,
-simplemente porque Tú eres Dios.
+    chordsUsed: ['C', 'Am', 'Fm7', 'G', 'F', 'C/E', 'Dm'],
+    content: `[C]Tú, el Único Rey [Am]que tiene que [Fm7]reinar
+El Único Se[G]ñor al que voy [C]a alabar
+Hoy levanto el cora[Am]zón al que lo conquis[F]tó
+Simplemen[C]te porque [G]Tú eres [C]Dios
 
-Quiero ponerte por encima de todo,
-en cada momento sentarte en el trono.
-Que tu alabanza esté siempre en mi boca
-y reconocer que Tú eres Dios.
+Quiero ponerte por encima de [F]todo
+En cada mo[C]men[Am]to sentarte en [G]el trono
+Que tu ala[C]banza esté siempre [F]en mi boca
+[C]Y recono[Am]cer que Tú [G]eres Dios
 
-Que alabarte a Ti, Señor,
-sea siempre lo primero.
-Fijo mi mirada en el cielo.
+Que alabar[F]te a Ti, Se[G]ñor
+Sea [C]siempre lo [Am]primero
+[Fm7]Fijo mi mirada en el [G]cielo
 
-Tú, el Único Rey que tiene que reinar,
-el Único Señor al que voy a alabar.
-Hoy levanto el corazón al que lo conquistó,
-simplemente porque Tú eres Dios.
+[C]Tú, el Único Rey [Am]que tiene que [Fm7]reinar
+El Único Se[G]ñor al que voy [C]a alabar
+Hoy levanto el cora[Am]zón al que lo conquis[F]tó
+Simplemen[C]te porque [G]Tú eres [C]Dios
 
-Y a Ti, toda la alabanza,
-todo el poder y el honor,
-toda la gloria al Señor. (x4)
+Y a Ti, [F]toda la alabanza[C/E]
+Todo el po[Dm]der y el honor
+Toda [G]la gloria al Señor
 
-Tú, el Único Rey que tiene que reinar,
-el Único Señor al que voy a alabar.
-Hoy levanto el corazón al que lo conquistó,
-simplemente porque Tú eres Dios.`
+Y a Ti, [F]toda la alabanza[C/E]
+Todo el po[Dm]der y el honor
+Toda [G]la gloria al Señor
+
+Y a Ti, [F]toda la alabanza[C/E]
+Todo el po[Dm]der y el honor
+Toda [G]la gloria al Señor
+
+Y a Ti, [F]toda la alabanza[C/E]
+Todo el po[Dm]der y el honor
+Toda [G]la gloria al Señor
+
+[C]Tú, el Único Rey [Am]que tiene que [Fm7]reinar
+El Único Se[G]ñor al que voy [C]a alabar
+Hoy levanto el cora[Am]zón al que lo conquis[F]tó
+Simplemen[C]te porque [G]Tú eres [C]Dios
+
+[C]Tú, el Único Rey [Am]que tiene que [Fm7]reinar
+El Único Se[G]ñor al que voy [C]a alabar
+Hoy levanto el cora[Am]zón al que lo conquis[F]tó
+Simplemen[C]te porque [G]Tú eres [C]Dios`
   },
   {
     id: 'puedo-entrar',
