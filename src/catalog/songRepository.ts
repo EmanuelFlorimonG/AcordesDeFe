@@ -10,6 +10,11 @@ import type { Song } from '../types/song';
 
 export type CatalogSource = 'bundled' | 'remote';
 
+/** The published version of a song; the bundled songs (and older cached ones) are version 1. */
+export function songVersionOf(song: Pick<Song, 'version'>): number {
+  return song.version ?? 1;
+}
+
 export interface SongRepository {
   readonly source: CatalogSource;
   /** Every published song */

@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import type { Song } from '../src/types/song';
 import { MOCK_SONGS } from '../src/data/mockSongs';
 import { bundledSongRepository } from '../src/catalog/bundledCatalog';
-import { fetchRemoteCatalog, type SongRepository } from '../src/catalog/songRepository';
+import { fetchRemoteCatalog, songVersionOf, type SongRepository } from '../src/catalog/songRepository';
 import {
   SONG_COLUMNS,
+  SONG_READ_COLUMNS,
   createSupabaseSongRepository,
+  fetchSongForEdit,
   songFromRow,
   songToRow,
   type SongRow,
@@ -31,6 +33,7 @@ import {
 import {
   buildSubmissionPayload,
   parseSubmissionPayload,
+  songDraftChanges,
   toPublicStatus,
   validateSubmissionPayload,
   type SongSubmission,
@@ -39,6 +42,7 @@ import {
   SubmissionError,
   createMemorySubmissionRepository,
   createSupabaseSubmissionRepository,
+  draftFromSnapshot,
 } from '../src/catalog/submissionRepository';
 import { SONG_ID_PATTERN, isSongId, slugifySongId, suggestSongId } from '../src/catalog/songId';
 import {
@@ -320,9 +324,9 @@ describe('Propuestas', () => {
   it('validar: destino, correo, tamaño y la canción', () => {
     const errors = (payload: ReturnType<typeof buildSubmissionPayload>) =>
       validateSubmissionPayload(payload, { publishedSongIds: published }).errors.map((error) => error.code);
-    eq(errors(buildSubmissionPayload(draftOf(), { type: 'update' })), ['target-required']);
-    eq(errors(buildSubmissionPayload(draftOf(), { type: 'update', targetSongId: 'inventada' })), ['target-unknown']);
-    eq(errors(buildSubmissionPayload(draftOf(), { type: 'update', targetSongId: 'huracan-hakuna' })), []);
+    eq(errors(buildSubmissionPayload(draftOf(), { type: 'update', baseVersion: 1 })), ['target-required']);
+    eq(errors(buildSubmissionPayload(draftOf(), { type: 'update', targetSongId: 'inventada', baseVersion: 1 })), ['target-unknown']);
+    eq(errors(buildSubmissionPayload(draftOf(), { type: 'update', targetSongId: 'huracan-hakuna', baseVersion: 1 })), []);
     eq(errors(buildSubmissionPayload(draftOf(), { type: 'create', contributor: { email: 'no-es-correo' } })), ['contributor-email-invalid']);
     eq(errors(buildSubmissionPayload(draftOf({ title: '' }), { type: 'create' })), ['song-invalid']);
     eq(errors(buildSubmissionPayload(draftOf({ content: 'x'.repeat(19_000), notes: undefined, tags: ['y'.repeat(50_000)] } as Partial<SongDraft>), { type: 'create' })), ['too-large']);
@@ -614,5 +618,158 @@ describe('Ids de canciones nuevas', () => {
     eq(suggestSongId('Huracán', new Set(['huracan'])), 'huracan-2');
     eq(suggestSongId('Huracán', new Set(['huracan', 'huracan-2'])), 'huracan-3');
     eq(suggestSongId('Huracán', new Set()), 'huracan');
+  });
+});
+
+// --- Edits of a published song: its version ---------------------------------------------
+
+describe('Versión publicada de una canción', () => {
+  const row = (overrides: Partial<SongRow> = {}): SongRow => ({ ...songToRow(MOCK_SONGS[0]), ...overrides });
+
+  it('llega de current_version; sin ella (catálogo incluido) cuenta como 1', () => {
+    eq(songFromRow(row({ current_version: 4 }))?.version, 4);
+    for (const current_version of [undefined, null, 0, -2, 1.5, '3' as unknown as number]) {
+      eq('version' in (songFromRow(row({ current_version })) as Song), false);
+    }
+    eq(songVersionOf(MOCK_SONGS[0]), 1);
+    eq(songVersionOf({ version: 7 }), 7);
+    // La importación y las instantáneas no llevan la versión: solo la base de datos la sube.
+    eq('current_version' in songToRow({ ...MOCK_SONGS[0], version: 5 }), false);
+    eq(SONG_READ_COLUMNS, [...SONG_COLUMNS, 'current_version']);
+  });
+
+  it('el catálogo remoto pide la versión de cada canción', async () => {
+    const { client, queries } = fakeClient({ select: () => [row({ current_version: 2 })] });
+    const songs = await createSupabaseSongRepository(client).listSongs();
+    eq(songs[0].version, 2);
+    eq(queries[0].includes('current_version'), true);
+  });
+
+  it('getSongForEdit: la canción publicada de ahora con su versión; oculta o inexistente, null', async () => {
+    const found = fakeClient({ select: () => [row({ current_version: 3 })] });
+    const result = await fetchSongForEdit(found.client, MOCK_SONGS[0].id);
+    eq([result?.version, result?.song.id, result?.song.version], [3, MOCK_SONGS[0].id, 3]);
+    eq(found.queries[0].includes('status=eq.published'), true);
+    eq(found.queries[0].includes(`id=eq.${MOCK_SONGS[0].id}`), true);
+    eq(await fetchSongForEdit(fakeClient({ select: () => [] }).client, 'oculta'), null);
+    // Sin versión no se adivina: nunca se propone sobre una versión supuesta.
+    await assert.rejects(fetchSongForEdit(fakeClient({ select: () => [row()] }).client, MOCK_SONGS[0].id));
+    checks++;
+  });
+});
+
+describe('Propuestas de edición: versión base', () => {
+  const song = songToDraft(MOCK_SONGS[0]);
+  const target = MOCK_SONGS[0].id;
+  const published = new Set([target]);
+
+  it('una corrección lleva su versión base; una canción nueva no', () => {
+    eq(buildSubmissionPayload(song, { type: 'update', targetSongId: target, baseVersion: 2 }).baseVersion, 2);
+    eq('baseVersion' in buildSubmissionPayload(song, { type: 'create', baseVersion: 2 }), false);
+    const back = parseSubmissionPayload(JSON.parse(JSON.stringify(buildSubmissionPayload(song, { type: 'update', targetSongId: target, baseVersion: 2 }))));
+    eq(back?.baseVersion, 2);
+    eq('baseVersion' in (parseSubmissionPayload({ ...buildSubmissionPayload(song, { type: 'update', targetSongId: target }), baseVersion: '2' }) ?? {}), false);
+  });
+
+  it('validar: la versión base es obligatoria y entera en una corrección, y prohibida en una canción nueva', () => {
+    const codes = (payload: ReturnType<typeof buildSubmissionPayload>) =>
+      validateSubmissionPayload(payload, { publishedSongIds: published }).errors.map((error) => error.code);
+    const edited = { ...song, title: `${song.title} (corregida)` };
+    eq(codes(buildSubmissionPayload(edited, { type: 'update', targetSongId: target, baseVersion: 1 })), []);
+    for (const baseVersion of [undefined, 0, -1, 1.5, 1e9]) {
+      eq(codes(buildSubmissionPayload(edited, { type: 'update', targetSongId: target, baseVersion })), ['base-version-invalid']);
+    }
+    eq(codes({ ...buildSubmissionPayload(edited, { type: 'create' }), baseVersion: 1 }), ['base-version-invalid']);
+  });
+
+  it('una corrección que no cambia nada se detecta antes de enviarla', () => {
+    const codes = (proposed: SongDraft) =>
+      validateSubmissionPayload(buildSubmissionPayload(proposed, { type: 'update', targetSongId: target, baseVersion: 1 }), { publishedSong: song }).errors.map(
+        (error) => error.code
+      );
+    eq(codes(song), ['no-changes']);
+    // Espacios alrededor del título y campos vacíos cuentan como nada, igual que en la base de datos.
+    eq(codes({ ...song, title: ` ${song.title} ` }), ['no-changes']);
+    eq(songDraftChanges(song, { ...song, year: song.year ?? '' }), false);
+    eq(codes({ ...song, content: `${song.content}\n[C]Una línea más` }), []);
+    eq(codes({ ...song, tempo: (song.tempo ?? 60) + 1 }), []);
+    eq(songDraftChanges(song, { ...song, tags: [...song.tags, 'nueva'] }), true);
+  });
+
+  it('getForEdit trae el destino, la versión base y cómo era esa versión', async () => {
+    const snapshot = { ...songToRow(MOCK_SONGS[0]), current_version: 2, status: 'published' };
+    const { client } = fakeClient({
+      rpc: () => [
+        { tracking_code: 'GS-2345-6789', type: 'update', status: 'changes_requested', review_note: 'Revisa', proposed_song: song, target_song_id: target, base_version: 2, base_snapshot: snapshot },
+      ],
+    });
+    const forEdit = await createSupabaseSubmissionRepository(client).getForEdit('GS-2345-6789', 'a'.repeat(64));
+    eq([forEdit?.targetSongId, forEdit?.baseVersion, forEdit?.baseSong], [target, 2, songToDraft(MOCK_SONGS[0])]);
+    // Una corrección antigua (sin versión) o una canción nueva: sin base.
+    const legacy = fakeClient({
+      rpc: () => [
+        { tracking_code: 'GS-2345-6789', type: 'update', status: 'changes_requested', review_note: null, proposed_song: song, target_song_id: target, base_version: null, base_snapshot: null },
+      ],
+    });
+    const old = await createSupabaseSubmissionRepository(legacy.client).getForEdit('GS-2345-6789', 'a'.repeat(64));
+    eq([old?.baseVersion, old?.baseSong], [null, null]);
+    eq(draftFromSnapshot({ id: 'x' }), null);
+    eq(draftFromSnapshot('texto'), null);
+  });
+
+  it('el reenvío lleva la versión base; el que no la tiene no la inventa', async () => {
+    const sent: Record<string, unknown>[] = [];
+    const { client } = fakeClient({
+      invoke: (_fn, body) => {
+        sent.push(body);
+        return { trackingCode: 'GS-2345-6789', status: 'pending' };
+      },
+    });
+    const repository = createSupabaseSubmissionRepository(client);
+    await repository.resubmit({ trackingCode: 'GS-2345-6789', editToken: 'a'.repeat(64), song, baseVersion: 3 }, { humanCheck: 't' });
+    await repository.resubmit({ trackingCode: 'GS-2345-6789', editToken: 'a'.repeat(64), song }, { humanCheck: 't' });
+    eq([sent[0].baseVersion, 'baseVersion' in sent[1]], [3, false]);
+  });
+
+  it('canción cambiada, sin cambios u oculta: errores que la app puede explicar', async () => {
+    const payload = buildSubmissionPayload(song, { type: 'update', targetSongId: target, baseVersion: 1 });
+    const failingWith = (message: string, status: number) =>
+      createSupabaseSubmissionRepository({
+        select: async () => [],
+        rpc: async <T,>() => [] as T,
+        count: async () => 0,
+        invoke: async () => {
+          throw new SupabaseRequestError(message, status, null);
+        },
+      });
+    for (const [message, status, reason] of [
+      ['GENESARET:stale', 409, 'stale'],
+      ['GENESARET:invalid:no_changes', 400, 'no-changes'],
+      ['GENESARET:invalid:target', 400, 'target-hidden'],
+      ['GENESARET:invalid:base_version', 400, 'invalid'],
+    ] as const) {
+      await assert.rejects(failingWith(message, status).submit(payload), (error: unknown) => error instanceof SubmissionError && error.reason === reason);
+      await assert.rejects(
+        failingWith(message, status).resubmit({ trackingCode: 'GS-2345-6789', editToken: 'a'.repeat(64), song, baseVersion: 1 }),
+        (error: unknown) => error instanceof SubmissionError && error.reason === reason
+      );
+      checks += 2;
+    }
+  });
+
+  it('en memoria, las mismas comprobaciones que la base de datos', async () => {
+    const v1 = song;
+    const v2 = { ...song, title: `${song.title} v2` };
+    const publishedSongs = new Map([[target, { version: 2, song: v2, versions: new Map([[1, v1], [2, v2]]) }]]);
+    const repository = createMemorySubmissionRepository({ publishedSongs });
+    const edited = { ...v2, tags: [...v2.tags, 'editada'] };
+    const reasonOf = (promise: Promise<unknown>) => promise.then(() => 'ok', (error: SubmissionError) => error.reason);
+    eq(await reasonOf(repository.submit(buildSubmissionPayload(edited, { type: 'update', targetSongId: target, baseVersion: 1 }))), 'stale');
+    eq(await reasonOf(repository.submit(buildSubmissionPayload(v2, { type: 'update', targetSongId: target, baseVersion: 2 }))), 'no-changes');
+    eq(await reasonOf(repository.submit(buildSubmissionPayload(edited, { type: 'update', targetSongId: 'otra', baseVersion: 2 }))), 'target-hidden');
+    const attempt = { requestId: '0f8fad5b-d9cb-469f-a165-70867728950e', editToken: 'c'.repeat(64) };
+    const receipt = await repository.submit(buildSubmissionPayload(edited, { type: 'update', targetSongId: target, baseVersion: 2, attempt }));
+    const forEdit = await repository.getForEdit(receipt.trackingCode, attempt.editToken);
+    eq([forEdit?.targetSongId, forEdit?.baseVersion, forEdit?.baseSong], [target, 2, v2]);
   });
 });

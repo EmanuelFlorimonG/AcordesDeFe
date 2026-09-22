@@ -1,6 +1,9 @@
+/// <reference types="vite/client" />
 import { getSupabaseClient } from '../lib/supabase';
 import { getTurnstileSiteKey } from '../lib/turnstile';
+import { fetchSongForEdit, type SongForEdit } from './supabaseSongRepository';
 import { createSupabaseSubmissionRepository, type SongSubmissionRepository } from './submissionRepository';
+import { readCatalogSource } from './useCatalog';
 
 /**
  * The submission services, or null when this build has no backend
@@ -28,4 +31,15 @@ export function getSubmissionSender(): { repository: SongSubmissionRepository; t
   const repository = getSubmissionRepository();
   const turnstileSiteKey = getTurnstileSiteKey();
   return repository && turnstileSiteKey ? { repository, turnstileSiteKey } : null;
+}
+
+/**
+ * Reading a published song as it is now, to propose an edit of it. Null when
+ * this build has no backend, or runs on the bundled songs only
+ * (VITE_CATALOG_SOURCE=bundled): an edit needs the song's current version.
+ */
+export function getSongEditSource(): { getSongForEdit(id: string, options?: { signal?: AbortSignal }): Promise<SongForEdit | null> } | null {
+  if (readCatalogSource(import.meta.env.VITE_CATALOG_SOURCE) === 'bundled') return null;
+  const client = getSupabaseClient();
+  return client ? { getSongForEdit: (id, options) => fetchSongForEdit(client, id, options) } : null;
 }

@@ -32,8 +32,11 @@ export interface SongRow {
   difficulty: string | null;
   year: string | null;
   youtube_id: string | null;
+  /** Read, never written by songToRow: only the database raises it */
+  current_version?: number | null;
 }
 
+/** The song's own columns: what the import writes and what a version snapshot holds. */
 export const SONG_COLUMNS: Array<keyof SongRow> = [
   'id',
   'title',
@@ -52,6 +55,11 @@ export const SONG_COLUMNS: Array<keyof SongRow> = [
   'year',
   'youtube_id',
 ];
+
+/** What the app reads: the song and the version it is at. */
+export const SONG_READ_COLUMNS: Array<keyof SongRow> = [...SONG_COLUMNS, 'current_version'];
+
+const isVersion = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1;
 
 /** A Song for the app, with exactly the optional fields the bundled catalog would have. Null if unusable. */
 export function songFromRow(row: SongRow): Song | null {
@@ -78,6 +86,7 @@ export function songFromRow(row: SongRow): Song | null {
   }
   if (row.year !== null) song.year = row.year;
   if (row.youtube_id !== null) song.youtubeId = row.youtube_id;
+  if (isVersion(row.current_version)) song.version = row.current_version;
   return song;
 }
 
@@ -104,11 +113,31 @@ export function songToRow(song: Song): SongRow {
   };
 }
 
-const SELECT = `select=${SONG_COLUMNS.join(',')}`;
+const SELECT = `select=${SONG_READ_COLUMNS.join(',')}`;
 /** PostgREST returns at most this many rows per request (max_rows in the project). */
 export const SONG_PAGE_SIZE = 1000;
 /** A safety stop: 50 pages is 50 000 songs. */
 const MAX_PAGES = 50;
+
+/** A published song as it is right now, to start an edit from: always asked to Supabase, never the cache. */
+export interface SongForEdit {
+  song: Song;
+  /** The version the edit is made on (its baseVersion) */
+  version: number;
+}
+
+/**
+ * The song to edit, read now from Supabase. Null when it isn't published
+ * (hidden, or it never existed). Throws when Supabase can't be reached, or
+ * answers without a version: an edit must never guess the version it is based on.
+ */
+export async function fetchSongForEdit(client: SupabaseClient, id: string, options?: { signal?: AbortSignal }): Promise<SongForEdit | null> {
+  const rows = await client.select<SongRow>('songs', `${SELECT}&status=eq.published&id=eq.${encodeURIComponent(id)}&limit=1`, options);
+  if (!rows[0]) return null;
+  const song = songFromRow(rows[0]);
+  if (!song || song.version === undefined) throw new Error('La canción llegó sin versión.');
+  return { song, version: song.version };
+}
 
 export function createSupabaseSongRepository(client: SupabaseClient): SongRepository {
   const toSongs = (rows: SongRow[]) => rows.map(songFromRow).filter((song): song is Song => song !== null);

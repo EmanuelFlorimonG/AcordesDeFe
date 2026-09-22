@@ -14,11 +14,13 @@ import { songFromRow, songToRow, type SongRow } from './supabaseSongRepository';
  * It is replaced whole, and only by a remote answer that was valid; it never
  * expires by age (it is the last thing known for certain, and the app says
  * when it was saved). A new format version, or another Supabase project,
- * makes it unusable instead of mixing catalogs.
+ * makes it unusable instead of mixing catalogs. Version 2 added each song's
+ * published version: a version 1 cache is dropped (it can't say which version
+ * its songs are) and replaced by the next remote answer.
  */
 
 export const CATALOG_CACHE_KEY = 'genesaret_catalog_cache';
-export const CATALOG_CACHE_VERSION = 1;
+export const CATALOG_CACHE_VERSION = 2;
 /** Above this the catalog is not cached (today it is about 100 KB). */
 export const MAX_CATALOG_CACHE_BYTES = 3 * 1024 * 1024;
 
@@ -82,7 +84,7 @@ export function createCatalogCache(storage: KeyValueStorage | null, projectUrl: 
     },
     write(songs, now = new Date()) {
       if (!storage || songs.length === 0) return false;
-      const stored: StoredCatalog = { version: CATALOG_CACHE_VERSION, projectUrl, savedAt: now.toISOString(), rows: songs.map(songToRow) };
+      const stored: StoredCatalog = { version: CATALOG_CACHE_VERSION, projectUrl, savedAt: now.toISOString(), rows: songs.map((song) => ({ ...songToRow(song), current_version: song.version ?? null })) };
       const json = JSON.stringify(stored);
       if (json.length * 2 > MAX_CATALOG_CACHE_BYTES) return false;
       try {

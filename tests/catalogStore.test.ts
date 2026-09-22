@@ -92,9 +92,24 @@ describe('Caché del último catálogo remoto válido', () => {
 
   it('las filas ilegibles se descartan; si no queda ninguna, no hay caché', () => {
     const rows: unknown[] = [songToRow(MOCK_SONGS[0]), { id: 'sin-titulo' }, null, songToRow(MOCK_SONGS[0])];
-    const storage = memoryStorage({ [CATALOG_CACHE_KEY]: JSON.stringify({ version: 1, projectUrl: PROJECT, savedAt: 'x', rows }) });
+    const storage = memoryStorage({ [CATALOG_CACHE_KEY]: JSON.stringify({ version: CATALOG_CACHE_VERSION, projectUrl: PROJECT, savedAt: 'x', rows }) });
     eq(createCatalogCache(storage, PROJECT).read()?.songs.map((song) => song.id), [MOCK_SONGS[0].id]);
-    storage.data.set(CATALOG_CACHE_KEY, JSON.stringify({ version: 1, projectUrl: PROJECT, savedAt: 'x', rows: [null] }));
+    storage.data.set(CATALOG_CACHE_KEY, JSON.stringify({ version: CATALOG_CACHE_VERSION, projectUrl: PROJECT, savedAt: 'x', rows: [null] }));
+    eq(createCatalogCache(storage, PROJECT).read(), null);
+  });
+
+  it('guarda la versión publicada de cada canción y la devuelve igual', () => {
+    const storage = memoryStorage();
+    const versioned = [{ ...REMOTE_97[0], version: 3 }, REMOTE_97[1]];
+    createCatalogCache(storage, PROJECT).write(versioned);
+    const stored = JSON.parse(storage.data.get(CATALOG_CACHE_KEY)!);
+    eq([stored.version, stored.rows[0].current_version, stored.rows[1].current_version], [2, 3, null]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs, versioned);
+  });
+
+  it('una caché del formato 1 (sin versiones) no se usa: no puede decir en qué versión está cada canción', () => {
+    const rows = MOCK_SONGS.slice(0, 2).map(songToRow);
+    const storage = memoryStorage({ [CATALOG_CACHE_KEY]: JSON.stringify({ version: 1, projectUrl: PROJECT, savedAt: 'x', rows }) });
     eq(createCatalogCache(storage, PROJECT).read(), null);
   });
 

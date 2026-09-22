@@ -102,6 +102,12 @@ export interface Song {
   difficulty?: 'Fácil' | 'Intermedio' | 'Avanzado';
   year?: string;
   youtubeId?: string; // YouTube video id used for in-app audio playback
+  /**
+   * The published version (current_version in Supabase), raised by every
+   * approved edit. Absent in the bundled songs, which are version 1: read it
+   * through songVersionOf().
+   */
+  version?: number;
 }
 
 export interface Playlist {

@@ -40,6 +40,12 @@ export interface SongSubmissionPayload {
   type: SongSubmissionType;
   /** The published song a correction is for; null for a new song */
   targetSongId: string | null;
+  /**
+   * A correction only: the published version it was made on. The database
+   * stores it only while it is still the current version ("stale" otherwise),
+   * and publishes the correction only if it still is when approved.
+   */
+  baseVersion?: number;
   song: SongDraft;
   contributor: SongSubmissionContributor;
   /**
@@ -120,9 +126,12 @@ export function buildSubmissionPayload(
     targetSongId = null,
     contributor = { name: null, email: null },
     attempt,
+    baseVersion,
   }: {
     type: SongSubmissionType;
     targetSongId?: string | null;
+    /** Required for a correction: the version of the song it was made on */
+    baseVersion?: number;
     contributor?: Partial<SongSubmissionContributor>;
     /** The retry identity of this proposal (see SubmissionAttempt) */
     attempt?: SubmissionAttempt;
@@ -133,6 +142,7 @@ export function buildSubmissionPayload(
     schemaVersion: SUBMISSION_PAYLOAD_SCHEMA_VERSION,
     type,
     targetSongId: type === 'update' ? targetSongId : null,
+    ...(type === 'update' && baseVersion !== undefined ? { baseVersion } : {}),
     song,
     contributor: { name: clean(contributor.name), email: clean(contributor.email)?.toLowerCase() ?? null },
     ...(attempt ? { requestId: attempt.requestId, editToken: attempt.editToken } : {}),
@@ -143,6 +153,38 @@ export function buildSubmissionPayload(
 export interface SubmissionAttempt {
   requestId: string;
   editToken: string;
+}
+
+/** Same bounds as the database: a positive integer of at most nine digits. */
+export function isBaseVersion(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 999_999_999;
+}
+
+/**
+ * Whether a proposed song changes anything of the published one: the fields
+ * the database compares before storing a correction (it refuses one that
+ * changes nothing). The chord list is left out, it follows the content.
+ */
+export function songDraftChanges(published: SongDraft, proposed: SongDraft): boolean {
+  const text = (value: string | null) => (value === null || value.trim() === '' ? null : value.trim());
+  const blank = (value: string | null) => (value === '' ? null : value);
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  return !(
+    proposed.title.trim() === published.title &&
+    text(proposed.artist) === published.artist &&
+    blank(proposed.originalKey) === published.originalKey &&
+    proposed.recommendedCapo === published.recommendedCapo &&
+    blank(proposed.timeSignature) === published.timeSignature &&
+    proposed.tempo === published.tempo &&
+    blank(proposed.rhythmPattern) === published.rhythmPattern &&
+    same(proposed.categories, published.categories) &&
+    same(proposed.liturgicalSeasons, published.liturgicalSeasons) &&
+    same(proposed.tags, published.tags) &&
+    proposed.content === published.content &&
+    proposed.difficulty === published.difficulty &&
+    blank(proposed.year) === published.year &&
+    blank(proposed.youtubeId) === published.youtubeId
+  );
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -171,6 +213,8 @@ export type SubmissionIssueCode =
   | 'type-invalid'
   | 'target-required'
   | 'target-unknown'
+  | 'base-version-invalid'
+  | 'no-changes'
   | 'contributor-name-too-long'
   | 'contributor-email-invalid'
   | 'too-large'
@@ -192,7 +236,11 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
  */
 export function validateSubmissionPayload(
   payload: SongSubmissionPayload,
-  options: SongValidationOptions & { publishedSongIds?: ReadonlySet<string> } = {}
+  options: SongValidationOptions & {
+    publishedSongIds?: ReadonlySet<string>;
+    /** A correction: the song as published, so a proposal that changes nothing is caught before sending */
+    publishedSong?: SongDraft;
+  } = {}
 ): SubmissionValidationResult {
   const errors: SubmissionValidationResult['errors'] = [];
   if (payload.type !== 'create' && payload.type !== 'update') errors.push({ code: 'type-invalid', message: 'Tipo de propuesta desconocido.' });
@@ -201,6 +249,14 @@ export function validateSubmissionPayload(
     else if (options.publishedSongIds && !options.publishedSongIds.has(payload.targetSongId)) {
       errors.push({ code: 'target-unknown', message: 'La canción que se corrige no está en el catálogo.' });
     }
+    if (!isBaseVersion(payload.baseVersion)) {
+      errors.push({ code: 'base-version-invalid', message: 'Falta la versión de la canción sobre la que se hizo la corrección.' });
+    }
+    if (options.publishedSong && !songDraftChanges(options.publishedSong, payload.song)) {
+      errors.push({ code: 'no-changes', message: 'La propuesta no cambia nada de la canción publicada.' });
+    }
+  } else if (payload.baseVersion !== undefined) {
+    errors.push({ code: 'base-version-invalid', message: 'Una canción nueva no tiene versión base.' });
   }
   const { name, email } = payload.contributor;
   if (name && name.length > MAX_CONTRIBUTOR_NAME_LENGTH) {
@@ -230,6 +286,7 @@ export function parseSubmissionPayload(value: unknown): SongSubmissionPayload | 
     schemaVersion: SUBMISSION_PAYLOAD_SCHEMA_VERSION,
     type: entry.type,
     targetSongId: typeof entry.targetSongId === 'string' ? entry.targetSongId : null,
+    ...(entry.type === 'update' && isBaseVersion(entry.baseVersion) ? { baseVersion: entry.baseVersion } : {}),
     song,
     contributor: {
       name: typeof contributor.name === 'string' ? contributor.name : null,
@@ -250,12 +307,20 @@ export interface SubmissionForEdit {
   reviewNote: string | null;
   /** Null when what is stored can't be read as a song */
   song: SongDraft | null;
+  /** A correction: the published song it is for */
+  targetSongId: string | null;
+  /** A correction: the version it was made on (null for older corrections, which predate versions) */
+  baseVersion: number | null;
+  /** That version as it was published, to show the author their own changes; null when unknown */
+  baseSong: SongDraft | null;
 }
 
 export interface ResubmitInput {
   trackingCode: string;
   editToken: string;
   song: SongDraft;
+  /** A correction: the published version the corrected proposal is made on now */
+  baseVersion?: number;
 }
 
 export interface ResubmitReceipt {

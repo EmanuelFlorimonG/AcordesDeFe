@@ -1,7 +1,10 @@
 import { SupabaseRequestError, type SupabaseClient } from '../lib/supabase';
-import { parseSongDraft } from './songDraft';
+import { parseSongDraft, songToDraft, type SongDraft } from './songDraft';
+import { songFromRow, type SongRow } from './supabaseSongRepository';
 import {
+  isBaseVersion,
   parseSubmissionPayload,
+  songDraftChanges,
   toPublicStatus,
   validateSubmissionPayload,
   type PublicSubmissionStatus,
@@ -33,7 +36,20 @@ export interface SongSubmissionRepository {
   resubmit(input: ResubmitInput, options?: { humanCheck?: string }): Promise<ResubmitReceipt>;
 }
 
-export type SubmissionFailure = 'invalid' | 'rate-limited' | 'human-check' | 'not-editable' | 'unavailable';
+export type SubmissionFailure =
+  | 'invalid'
+  | 'rate-limited'
+  | 'human-check'
+  | 'not-editable'
+  | 'unavailable'
+  /** A correction: the song got a newer version since the proposal was made on it */
+  | 'stale'
+  /** A correction that changes nothing of the published song */
+  | 'no-changes'
+  /** A correction of a song that is no longer published */
+  | 'target-hidden';
+
+export const STALE_MESSAGE = 'La canción cambió desde que empezaste tu propuesta: alguien publicó una versión más reciente.';
 
 export class SubmissionError extends Error {
   readonly reason: SubmissionFailure;
@@ -55,6 +71,20 @@ interface EditRow {
   status: SongSubmissionStatus;
   review_note: string | null;
   proposed_song: unknown;
+  target_song_id: string | null;
+  base_version: number | null;
+  base_snapshot: unknown;
+}
+
+/** A published version's snapshot (a songs row) as a draft, or null when it can't be read. */
+export function draftFromSnapshot(snapshot: unknown): SongDraft | null {
+  if (typeof snapshot !== 'object' || snapshot === null) return null;
+  try {
+    const song = songFromRow(snapshot as SongRow);
+    return song ? songToDraft(song) : null;
+  } catch {
+    return null;
+  }
 }
 
 const EDIT_TOKEN = /^[0-9a-f]{64}$/;
@@ -77,6 +107,13 @@ function toSubmissionError(error: unknown): SubmissionError {
     }
     if (error.message.includes('GENESARET:captcha')) {
       return new SubmissionError('human-check', 'No se pudo completar la verificación de seguridad. Vuelve a intentarlo.');
+    }
+    if (error.message.includes('GENESARET:stale')) return new SubmissionError('stale', STALE_MESSAGE);
+    if (error.message.includes('GENESARET:invalid:no_changes')) {
+      return new SubmissionError('no-changes', 'La propuesta no cambia nada de la canción publicada.');
+    }
+    if (error.message.includes('GENESARET:invalid:target')) {
+      return new SubmissionError('target-hidden', 'Esta canción ya no está publicada en el cancionero: no se pueden proponer cambios.');
     }
     if (error.message.includes('GENESARET:rate_limited')) {
       return new SubmissionError('rate-limited', 'Demasiados intentos seguidos desde esta conexión. Espera unos minutos y vuelve a intentarlo.');
@@ -138,7 +175,16 @@ export function createSupabaseSubmissionRepository(client: SupabaseClient): Song
       }
       const row = rows[0];
       return row
-        ? { trackingCode: row.tracking_code, type: row.type, status: row.status, reviewNote: row.review_note, song: parseSongDraft(row.proposed_song) }
+        ? {
+            trackingCode: row.tracking_code,
+            type: row.type,
+            status: row.status,
+            reviewNote: row.review_note,
+            song: parseSongDraft(row.proposed_song),
+            targetSongId: row.target_song_id ?? null,
+            baseVersion: isBaseVersion(row.base_version) ? row.base_version : null,
+            baseSong: draftFromSnapshot(row.base_snapshot),
+          }
         : null;
     },
     async resubmit(input, options) {
@@ -149,6 +195,7 @@ export function createSupabaseSubmissionRepository(client: SupabaseClient): Song
           trackingCode: input.trackingCode,
           editToken: input.editToken,
           song: input.song,
+          ...(input.baseVersion !== undefined ? { baseVersion: input.baseVersion } : {}),
           turnstileToken: options?.humanCheck ?? '',
         });
       } catch (error) {
@@ -182,8 +229,28 @@ export function createMemorySubmissionRepository({
   now = () => new Date(),
   random,
   publishedSongIds,
-}: { now?: () => Date; random?: RandomBytes; publishedSongIds?: ReadonlySet<string> } = {}): MemorySubmissionRepository {
-  const stored: SongSubmission[] = [];
+  publishedSongs,
+}: {
+  now?: () => Date;
+  random?: RandomBytes;
+  publishedSongIds?: ReadonlySet<string>;
+  /**
+   * The published songs a correction can be for, with their current version
+   * (like the songs table). Given, corrections are checked like the database
+   * does: published, on the current version, and changing something.
+   */
+  publishedSongs?: ReadonlyMap<string, { version: number; song: SongDraft; versions?: ReadonlyMap<number, SongDraft> }>;
+} = {}): MemorySubmissionRepository {
+  const stored: Array<SongSubmission & { baseVersion: number | null }> = [];
+  /** The database's checks for a correction on a base version; nothing when no songs were given. */
+  const checkCorrection = (targetSongId: string | null, baseVersion: number | undefined, song: SongDraft) => {
+    if (!publishedSongs) return;
+    const target = targetSongId ? publishedSongs.get(targetSongId) : undefined;
+    if (!isBaseVersion(baseVersion)) throw new SubmissionError('invalid', 'La propuesta no es válida.');
+    if (!target) throw new SubmissionError('target-hidden', 'Esta canción ya no está publicada en el cancionero: no se pueden proponer cambios.');
+    if (target.version !== baseVersion) throw new SubmissionError('stale', STALE_MESSAGE);
+    if (!songDraftChanges(target.song, song)) throw new SubmissionError('no-changes', 'La propuesta no cambia nada de la canción publicada.');
+  };
   // Retries of one proposal: requestId -> its code and the token that proves it's the same sender.
   const byRequest = new Map<string, { trackingCode: string; editToken: string }>();
   const bytes: RandomBytes = random ?? ((length) => crypto.getRandomValues(new Uint8Array(length)));
@@ -209,6 +276,12 @@ export function createMemorySubmissionRepository({
             status: entry.status,
             reviewNote: entry.status === 'pending' ? null : entry.reviewNote,
             song: structuredClone(entry.proposedSong),
+            targetSongId: entry.targetSongId,
+            baseVersion: entry.baseVersion,
+            baseSong:
+              entry.targetSongId && entry.baseVersion !== null
+                ? structuredClone(publishedSongs?.get(entry.targetSongId)?.versions?.get(entry.baseVersion) ?? null)
+                : null,
           }
         : null;
     },
@@ -221,6 +294,9 @@ export function createMemorySubmissionRepository({
       }
       const check = parseSubmissionPayload({ schemaVersion: 1, type: entry.type, targetSongId: entry.targetSongId, song: input.song, contributor: { name: null, email: null } });
       if (!check) throw new SubmissionError('invalid', 'La propuesta no es válida.');
+      if (entry.type === 'update') checkCorrection(entry.targetSongId, input.baseVersion, input.song);
+      else if (input.baseVersion !== undefined) throw new SubmissionError('invalid', 'La propuesta no es válida.');
+      if (entry.type === 'update' && input.baseVersion !== undefined) entry.baseVersion = input.baseVersion;
       entry.proposedSong = structuredClone(input.song);
       entry.status = 'pending';
       entry.updatedAt = now().toISOString();
@@ -237,6 +313,7 @@ export function createMemorySubmissionRepository({
           return { trackingCode: previous.trackingCode, editToken: previous.editToken };
         }
       }
+      if (payload.type === 'update') checkCorrection(payload.targetSongId, payload.baseVersion, payload.song);
       let trackingCode = generateTrackingCode(bytes);
       while (stored.some((entry) => entry.trackingCode === trackingCode)) trackingCode = generateTrackingCode(bytes);
       const editToken =
@@ -248,6 +325,7 @@ export function createMemorySubmissionRepository({
         id: `mem-${stored.length + 1}`,
         type: payload.type,
         targetSongId: payload.targetSongId,
+        baseVersion: payload.type === 'update' ? payload.baseVersion ?? null : null,
         proposedSong: structuredClone(payload.song),
         status: 'pending',
         contributorName: payload.contributor.name,
