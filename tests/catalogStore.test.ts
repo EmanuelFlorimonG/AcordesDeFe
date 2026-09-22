@@ -122,10 +122,10 @@ describe('Caché del último catálogo remoto válido', () => {
       genesaret_performance_history: JSON.stringify({ version: 1, records: [{ id: 'r1' }] }),
     });
     const cache = createCatalogCache(storage, PROJECT);
-    eq(cache.read(), null, 'la caché del formato 1 no se usa');
-    eq(storage.data.get('genesaret_favorites'), JSON.stringify(['huracan-hakuna']), 'las favoritas siguen ahí');
-    eq(JSON.parse(storage.data.get('genesaret_setlists')!).setlists[0].items[0].songId, 'huracan-hakuna', 'los Setlists siguen apuntando a sus canciones');
-    eq(JSON.parse(storage.data.get('genesaret_performance_history')!).records.length, 1, 'el historial sigue ahí');
+    eq(cache.read(), null);
+    eq(storage.data.get('genesaret_favorites'), JSON.stringify(['huracan-hakuna']));
+    eq(JSON.parse(storage.data.get('genesaret_setlists')!).setlists[0].items[0].songId, 'huracan-hakuna');
+    eq(JSON.parse(storage.data.get('genesaret_performance_history')!).records.length, 1);
     // Y en cuanto vuelve la conexión, la respuesta remota la reemplaza.
     cache.write(REMOTE_97, new Date('2026-09-20T05:00:00Z'));
     eq(cache.read()?.songs.length, REMOTE_97.length);
