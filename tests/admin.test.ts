@@ -316,6 +316,63 @@ describe('Repositorio editorial', () => {
     eq(log, []);
   });
 
+  it('una edición trae la versión sobre la que se hizo, y su canción destino cómo está ahora', async () => {
+    const detail = fakeClient({
+      select: () => [
+        {
+          ...listRow,
+          type: 'update',
+          target_song_id: 'sencillamente-dios',
+          base_version: 2,
+          proposed_song: { schemaVersion: 1, title: 'Sencillamente Dios', content: '[G]Hola', categories: [], tags: [], chordsUsed: ['G'] },
+          review_note: null,
+          reviewed_by: null,
+          published_song_id: null,
+          published_version: null,
+          resubmission_count: 0,
+          resubmitted_at: null,
+        },
+      ],
+    });
+    const repository = createEditorialRepository(detail.client);
+    eq((await repository.getSubmission(SUBMISSION))?.baseVersion, 2);
+    eq(detail.log[0].includes('base_version'), true);
+    // Una propuesta anterior a las versiones no inventa ninguna.
+    for (const base_version of [null, 0, 'dos']) {
+      const old = fakeClient({ select: () => [{ ...listRow, base_version, proposed_song: null, resubmission_count: 0 }] });
+      eq((await createEditorialRepository(old.client).getSubmission(SUBMISSION))?.baseVersion, null);
+    }
+
+    const target = fakeClient({
+      select: () => [
+        {
+          id: 'sencillamente-dios',
+          title: 'Sencillamente Dios',
+          artist: null,
+          original_key: 'G',
+          recommended_capo: null,
+          time_signature: null,
+          tempo: null,
+          rhythm_pattern: null,
+          categories: [],
+          liturgical_seasons: null,
+          tags: [],
+          content: '[G]Hola',
+          chords_used: ['G'],
+          difficulty: null,
+          year: null,
+          youtube_id: null,
+          current_version: 3,
+          status: 'hidden',
+        },
+      ],
+    });
+    const found = await createEditorialRepository(target.client).getTargetSong('sencillamente-dios');
+    eq([found?.status, found?.currentVersion, found?.song.version], ['hidden', 3, 3]);
+    eq(target.log[0].includes('current_version,status'), true);
+    eq(await createEditorialRepository(fakeClient({ select: () => [] }).client).getTargetSong('no-existe'), null);
+  });
+
   it('las negativas de la base de datos llegan con un motivo claro', () => {
     const reasons = [
       new SupabaseRequestError('GENESARET:forbidden', 403, '42501'),
@@ -324,10 +381,12 @@ describe('Repositorio editorial', () => {
       new SupabaseRequestError('GENESARET:not_reviewable', 400, 'P0001'),
       new SupabaseRequestError('GENESARET:song_id_taken', 400, 'P0001'),
       new SupabaseRequestError('GENESARET:not_found', 400, 'P0001'),
+      new SupabaseRequestError('GENESARET:stale', 400, 'P0001'),
+      new SupabaseRequestError('GENESARET:invalid:target', 400, 'P0001'),
       new SupabaseRequestError('new row violates check constraint', 400, '23514'),
       new Error('offline'),
     ].map((error) => toEditorialError(error).reason);
-    eq(reasons, ['forbidden', 'forbidden', 'session', 'not-reviewable', 'song-id-taken', 'not-found', 'invalid', 'unavailable']);
+    eq(reasons, ['forbidden', 'forbidden', 'session', 'not-reviewable', 'song-id-taken', 'not-found', 'stale', 'target-hidden', 'invalid', 'unavailable']);
   });
 });
 

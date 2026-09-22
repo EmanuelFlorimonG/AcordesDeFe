@@ -125,6 +125,8 @@ export const ApproveDialog: React.FC<ApproveDialogProps> = ({
 
 interface NoteDialogProps {
   kind: 'changes' | 'reject';
+  /** A starting text the reviewer can change or delete (an outdated edit suggests one) */
+  suggestedNote?: string;
   busy: boolean;
   error: string;
   onConfirm: (note: string) => void;
@@ -132,9 +134,9 @@ interface NoteDialogProps {
 }
 
 /** Asking for changes, or rejecting: both need a message, and both keep the proposal (nothing is deleted). */
-export const NoteDialog: React.FC<NoteDialogProps> = ({ kind, busy, error, onConfirm, onClose }) => {
+export const NoteDialog: React.FC<NoteDialogProps> = ({ kind, suggestedNote = '', busy, error, onConfirm, onClose }) => {
   const ids = { note: useId(), hint: useId() };
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(suggestedNote);
   const [touched, setTouched] = useState(false);
   const empty = note.trim().length === 0;
   const changes = kind === 'changes';

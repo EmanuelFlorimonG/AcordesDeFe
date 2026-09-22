@@ -2,7 +2,7 @@ import React from 'react';
 import { CalendarDays, ChevronRight, Hash, Music2, Tag, UserRound, UserX } from 'lucide-react';
 import type { SubmissionListItem as Item } from '../../admin/editorialRepository';
 import { formatDateTime } from '../../admin/format';
-import { TYPE_LABELS } from '../../admin/labels';
+import { TYPE_SHORT_LABELS } from '../../admin/labels';
 import { adminHash } from '../../admin/routes';
 import { adminCardLink } from './AdminNotice';
 import { SubmissionStatusBadge } from './SubmissionStatusBadge';
@@ -45,7 +45,7 @@ export const SubmissionListItem: React.FC<{ item: Item }> = ({ item }) => {
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Tag aria-hidden="true" className="h-3.5 w-3.5" />
-              {TYPE_LABELS[item.type]}
+              {TYPE_SHORT_LABELS[item.type]}
             </span>
             <span className="inline-flex items-center gap-1.5 font-mono">
               <Hash aria-hidden="true" className="h-3.5 w-3.5" />

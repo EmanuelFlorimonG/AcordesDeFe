@@ -7,6 +7,9 @@ export const ADMIN_STATUS_LABELS: Record<SongSubmissionStatus, string> = {
   pending: 'Pendiente',
 };
 
-export const TYPE_LABELS: Record<SongSubmissionType, string> = { create: 'Nueva canción', update: 'Corrección' };
+export const TYPE_LABELS: Record<SongSubmissionType, string> = { create: 'Nueva canción', update: 'Edición de canción existente' };
+
+/** The same, short enough for a list row. */
+export const TYPE_SHORT_LABELS: Record<SongSubmissionType, string> = { create: 'Nueva canción', update: 'Edición' };
 
 export const ROLE_LABELS: Record<EditorialRole, string> = { admin: 'Administrador', reviewer: 'Revisor' };

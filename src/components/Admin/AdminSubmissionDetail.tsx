@@ -6,6 +6,7 @@ import {
   CircleCheck,
   CircleX,
   Hash,
+  History,
   Lock,
   Mail,
   MessageSquareWarning,
@@ -56,14 +57,27 @@ interface AdminSubmissionDetailProps {
 /**
  * One proposal, loaded by its id (never by its tracking code): what was sent,
  * checked again, previewed with the songbook's renderer, compared with the
- * published version when it is a correction, and the three decisions.
+ * published version when it is an edit, and the three decisions.
+ *
+ * An edit is published only on the version it was made on (its base). If the
+ * song moved on since, the two comparisons are shown separately — what the
+ * contributor changed, and what changed in the song afterwards — nothing is
+ * merged, and approving is not offered: the way out is to ask the
+ * contributor for changes so they redo them on the current version.
  */
 export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ repository, id, userId }) => {
   const loaded = useLoad(async () => {
     const submission = await repository.getSubmission(id);
-    if (!submission || submission.type !== 'update' || !submission.targetSongId) return { submission, published: null, nextVersion: null };
-    const [published, versions] = await Promise.all([repository.getSong(submission.targetSongId), repository.listVersions(submission.targetSongId)]);
-    return { submission, published, nextVersion: (versions[0]?.version ?? 0) + 1 };
+    if (!submission || submission.type !== 'update' || !submission.targetSongId) {
+      return { submission, target: null, baseSong: null, nextVersion: null };
+    }
+    const [target, versions] = await Promise.all([
+      repository.getTargetSong(submission.targetSongId),
+      repository.listVersions(submission.targetSongId),
+    ]);
+    // The version the proposal was made on, as it was published then.
+    const base = submission.baseVersion === null ? null : versions.find((entry) => entry.version === submission.baseVersion)?.song ?? null;
+    return { submission, target, baseSong: base, nextVersion: (versions[0]?.version ?? 0) + 1 };
   }, `submission:${id}`);
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
@@ -76,11 +90,22 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
   const draft = submission?.proposedSong ?? null;
   const validation = useMemo(() => (draft ? validateSongDraft(draft, { knownCategories: KNOWN_CATEGORIES }) : null), [draft]);
   const previewSong = useMemo(() => (draft ? draftToSong(draft, PREVIEW_SONG_ID) : null), [draft]);
-  const published = loaded.state === 'ready' ? loaded.value.published : null;
+  const target = loaded.state === 'ready' ? loaded.value.target : null;
+  const published = target?.status === 'published' ? target.song : null;
+  const baseSong = loaded.state === 'ready' ? loaded.value.baseSong : null;
+  // An edit is on the current version, or behind it (older proposals carry no
+  // base version at all, which counts as behind: they can't be published).
+  const outdated = Boolean(submission?.type === 'update' && published && submission.baseVersion !== target?.currentVersion);
   const comparison = useMemo(() => {
-    if (!draft || !published) return null;
+    if (!draft || !published || outdated) return null;
     return compareSongs(songToDraft(published), draft);
-  }, [draft, published]);
+  }, [draft, published, outdated]);
+  /** Behind the current version: what the contributor changed, and what changed afterwards. */
+  const baseComparisons = useMemo(() => {
+    if (!draft || !published || !outdated || !baseSong) return null;
+    const base = songToDraft(baseSong);
+    return { proposed: compareSongs(base, draft), current: compareSongs(base, songToDraft(published)) };
+  }, [draft, published, outdated, baseSong]);
 
   if (loaded.state === 'loading') return <AdminLoading />;
   if (loaded.state === 'error') return <AdminError message={loaded.error.message} onRetry={loaded.reload} />;
@@ -117,8 +142,9 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
       loaded.reload();
     } catch (error) {
       const failure = error as { reason?: string; message?: string };
-      if (failure.reason === 'not-reviewable') {
-        // Someone else decided first: show what the proposal is now.
+      // Someone else decided first, or the song moved on (or was hidden) in
+      // between: nothing was published, so show what things are now.
+      if (failure.reason === 'not-reviewable' || failure.reason === 'stale' || failure.reason === 'target-hidden') {
         setDialog(null);
         setFlash({ tone: 'warning', text: failure.message ?? '' });
         loaded.reload();
@@ -131,7 +157,10 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
   };
 
   const reviewable = submission.status === 'pending' || submission.status === 'changes_requested';
-  const blocking = !draft || (validation?.errors.length ?? 0) > 0;
+  const targetHidden = submission.type === 'update' && target?.status !== 'published';
+  // Publishing an edit needs its base to be the current version: the database
+  // refuses anything else, and the panel never offers what it would refuse.
+  const blocking = !draft || (validation?.errors.length ?? 0) > 0 || outdated || targetHidden;
   const openNote = (kind: 'changes' | 'reject') => {
     setActionError('');
     setDialog(kind);
@@ -221,10 +250,23 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
                 Se pidieron cambios. Si el colaborador no puede reenviarla, puedes publicarla tal como está o rechazarla.
               </p>
             )}
-            {reviewable && blocking && (
+            {reviewable && blocking && (!draft || (validation?.errors.length ?? 0) > 0) && (
               <p className="font-medium text-red-700 dark:text-red-300">
                 Tiene errores de validación: no se puede publicar así.{' '}
                 {submission.status === 'pending' ? 'Pide cambios o recházala.' : 'Espera la corrección del colaborador o recházala.'}
+              </p>
+            )}
+            {reviewable && targetHidden && (
+              <p className="font-medium text-amber-700 dark:text-amber-300">
+                {target ? 'La canción de esta propuesta está oculta' : 'La canción de esta propuesta ya no existe'}: no se puede publicar. Vuelve a
+                publicarla en el cancionero o rechaza la propuesta.
+              </p>
+            )}
+            {reviewable && outdated && !targetHidden && (
+              <p className="font-medium text-amber-700 dark:text-amber-300">
+                Desactualizada: {submission.baseVersion ? `se hizo sobre la versión ${submission.baseVersion}` : 'se hizo antes de que las ediciones guardaran su versión'} y la publicada es la
+                versión {target?.currentVersion}. No se puede publicar sin perder lo que cambió después: pide cambios para que el colaborador la
+                rehaga sobre la versión actual.
               </p>
             )}
           </div>
@@ -277,8 +319,42 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
                 </p>
               ) : comparison ? (
                 <SongComparisonView comparison={comparison} />
+              ) : !published ? (
+                <AdminError message="La canción que edita esta propuesta ya no está publicada." />
+              ) : baseComparisons ? (
+                <>
+                  <p className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                    <History aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      Se hizo sobre la versión {submission.baseVersion} y la publicada es la {target?.currentVersion}. Abajo, por separado: lo que
+                      cambió el colaborador y lo que cambió después. No se combinan.
+                    </span>
+                  </p>
+                  <SongComparisonView
+                    comparison={baseComparisons.proposed}
+                    title={`Lo que cambió el colaborador (versión ${submission.baseVersion} → propuesta)`}
+                    beforeLabel={`Versión ${submission.baseVersion}`}
+                    afterLabel="Propuesta"
+                    identicalText="La propuesta no cambia nada de aquella versión."
+                  />
+                  <SongComparisonView
+                    comparison={baseComparisons.current}
+                    title={`Lo que cambió después (versión ${submission.baseVersion} → publicada)`}
+                    beforeLabel={`Versión ${submission.baseVersion}`}
+                    afterLabel={`Versión ${target?.currentVersion}`}
+                    identicalText="La canción no cambió desde entonces."
+                  />
+                </>
               ) : (
-                <AdminError message="La canción que corrige esta propuesta ya no está publicada." />
+                <p className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                  <History aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    {submission.baseVersion
+                      ? `Se hizo sobre la versión ${submission.baseVersion}, que ya no está guardada, así que no se puede comparar con ella.`
+                      : 'Se hizo antes de que las ediciones guardaran su versión, así que no se sabe con cuál compararla.'}{' '}
+                    Pide cambios para que el colaborador la rehaga sobre la versión {target?.currentVersion}.
+                  </span>
+                </p>
               )}
               {previewSong && <SongPreview song={previewSong} subtitle="Así se verá si se publica, con el mismo visor del cancionero." />}
             </>
@@ -320,6 +396,11 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
       {(dialog === 'changes' || dialog === 'reject') && (
         <NoteDialog
           kind={dialog}
+          suggestedNote={
+            dialog === 'changes' && outdated
+              ? `La canción se actualizó a la versión ${target?.currentVersion} mientras tu propuesta esperaba. Revisa tus cambios sobre la versión actual y vuelve a enviarla.`
+              : ''
+          }
           busy={busy}
           error={actionError}
           onClose={() => setDialog(null)}

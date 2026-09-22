@@ -1,7 +1,7 @@
 import type { EditorialRole } from '../catalog/reviewContract';
 import { parseSongDraft, type SongDraft } from '../catalog/songDraft';
 import type { SongSubmissionStatus, SongSubmissionType } from '../catalog/submission';
-import { songFromRow, SONG_COLUMNS, type SongRow } from '../catalog/supabaseSongRepository';
+import { songFromRow, SONG_READ_COLUMNS, type SongRow } from '../catalog/supabaseSongRepository';
 import { SupabaseRequestError, type SupabaseClient } from '../lib/supabase';
 import type { Song } from '../types/song';
 
@@ -34,6 +34,12 @@ export interface SubmissionDetail {
   type: SongSubmissionType;
   status: SongSubmissionStatus;
   targetSongId: string | null;
+  /**
+   * An edit: the published version it was made on. It is published only while
+   * that is still the current version; older proposals (before versions
+   * existed) have none and can't be approved without a rebase.
+   */
+  baseVersion: number | null;
   /** Null when the stored proposal can't be read as a song (it is then shown as unreadable, never guessed) */
   proposedSong: SongDraft | null;
   contributorName: string | null;
@@ -48,6 +54,13 @@ export interface SubmissionDetail {
   /** How many times the author sent it back corrected, and the last time */
   resubmissionCount: number;
   resubmittedAt: string | null;
+}
+
+/** The song an edit is for, as the reviewer sees it now. */
+export interface TargetSong {
+  song: Song;
+  status: 'published' | 'hidden';
+  currentVersion: number;
 }
 
 export interface AdminSongItem {
@@ -82,6 +95,10 @@ export type EditorialFailure =
   | 'not-found'
   | 'not-reviewable'
   | 'song-id-taken'
+  /** An edit made on a version that is no longer the published one */
+  | 'stale'
+  /** An edit of a song that is no longer published */
+  | 'target-hidden'
   | 'invalid'
   | 'unavailable';
 
@@ -100,6 +117,8 @@ const MESSAGES: Record<EditorialFailure, string> = {
   'not-found': 'Esta propuesta ya no existe.',
   'not-reviewable': 'Esta propuesta ya fue revisada por alguien más. Se muestran sus datos actuales.',
   'song-id-taken': 'Ya existe una canción con ese identificador. Elige otro.',
+  stale: 'La canción tiene una versión más reciente que la propuesta. No se publicó nada: pide al colaborador que la actualice.',
+  'target-hidden': 'La canción de esta propuesta ya no está publicada. No se publicó nada.',
   invalid: 'Los datos no son válidos. Revisa el mensaje y la canción.',
   unavailable: 'No se pudo completar la operación. Inténtalo de nuevo.',
 };
@@ -119,9 +138,13 @@ export function toEditorialError(error: unknown): EditorialError {
               ? 'not-reviewable'
               : text.includes('GENESARET:song_id_taken')
                 ? 'song-id-taken'
-                : text.includes('GENESARET:invalid') || error.code === '23514' || error.code === '22P02'
-                  ? 'invalid'
-                  : 'unavailable';
+                : text.includes('GENESARET:stale')
+                  ? 'stale'
+                  : text.includes('GENESARET:invalid:target')
+                    ? 'target-hidden'
+                    : text.includes('GENESARET:invalid') || error.code === '23514' || error.code === '22P02'
+                      ? 'invalid'
+                      : 'unavailable';
     return new EditorialError(reason, MESSAGES[reason]);
   }
   return new EditorialError('unavailable', MESSAGES.unavailable);
@@ -153,6 +176,7 @@ interface ListRow extends SubmissionRow {
 }
 
 interface DetailRow extends SubmissionRow {
+  base_version: number | null;
   proposed_song: unknown;
   contributor_name: string | null;
   contributor_email: string | null;
@@ -167,7 +191,7 @@ interface DetailRow extends SubmissionRow {
 const LIST_SELECT =
   'select=id,type,status,target_song_id,tracking_code,submitted_at,reviewed_at,title:proposed_song->>title,artist:proposed_song->>artist,contributor_name,contributor_email';
 const DETAIL_SELECT =
-  'select=id,type,status,target_song_id,tracking_code,submitted_at,reviewed_at,proposed_song,contributor_name,contributor_email,review_note,reviewed_by,published_song_id,published_version,resubmission_count,resubmitted_at';
+  'select=id,type,status,target_song_id,base_version,tracking_code,submitted_at,reviewed_at,proposed_song,contributor_name,contributor_email,review_note,reviewed_by,published_song_id,published_version,resubmission_count,resubmitted_at';
 
 /** How far back "recently" reaches on the summary. */
 export const RECENT_DAYS = 30;
@@ -184,6 +208,8 @@ export interface EditorialRepository {
   /** Every id in `songs`, published or hidden: what a new song's id must not collide with */
   listSongIds(): Promise<string[]>;
   getSong(id: string): Promise<Song | null>;
+  /** The song an edit is for: its content now, whether it is published, and its version */
+  getTargetSong(id: string): Promise<TargetSong | null>;
   listVersions(songId: string): Promise<SongVersionItem[]>;
 }
 
@@ -240,6 +266,7 @@ export function createEditorialRepository(client: SupabaseClient): EditorialRepo
           type: row.type,
           status: row.status,
           targetSongId: row.target_song_id,
+          baseVersion: Number.isInteger(row.base_version) && (row.base_version as number) >= 1 ? row.base_version : null,
           proposedSong: parseSongDraft(row.proposed_song),
           contributorName: row.contributor_name,
           contributorEmail: row.contributor_email,
@@ -306,8 +333,19 @@ export function createEditorialRepository(client: SupabaseClient): EditorialRepo
 
     getSong: (id) =>
       guard(async () => {
-        const rows = await client.select<SongRow>('songs', `select=${SONG_COLUMNS.join(',')}&id=eq.${encodeURIComponent(id)}&limit=1`);
+        const rows = await client.select<SongRow>('songs', `select=${SONG_READ_COLUMNS.join(',')}&id=eq.${encodeURIComponent(id)}&limit=1`);
         return rows[0] ? songFromRow(rows[0]) : null;
+      }),
+
+    getTargetSong: (id) =>
+      guard(async () => {
+        const rows = await client.select<SongRow & { status: 'published' | 'hidden' }>(
+          'songs',
+          `select=${SONG_READ_COLUMNS.join(',')},status&id=eq.${encodeURIComponent(id)}&limit=1`
+        );
+        const row = rows[0];
+        const song = row ? songFromRow(row) : null;
+        return row && song ? { song, status: row.status, currentVersion: song.version ?? 1 } : null;
       }),
 
     listVersions: (songId) =>
