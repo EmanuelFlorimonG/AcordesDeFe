@@ -229,7 +229,7 @@ const StatusCard: React.FC<{ status: PublicSubmissionStatus; canEdit: boolean; o
     <article className="rounded-2xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 p-5 shadow-sm">
       <p className="font-mono text-xs text-slate-500 dark:text-slate-400">{status.trackingCode}</p>
       <h2 className="mt-1 text-lg font-bold text-[#10203A] dark:text-white break-words">{status.title}</h2>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{status.type === 'create' ? 'Canción nueva' : 'Corrección de una canción'}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{status.type === 'create' ? 'Canción nueva' : 'Edición de una canción publicada'}</p>
       <p className={`mt-3 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-semibold ${style.className}`}>
         <Icon aria-hidden="true" className="w-4 h-4" />
         {SUBMISSION_STATUS_LABELS[status.status] ?? status.status}

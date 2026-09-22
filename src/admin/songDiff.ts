@@ -89,6 +89,12 @@ function markLines(mine: string[], other: string[] | null): DiffLine[] {
 
 const displayKey = (section: ComparableSection) => section.label || 'Sin encabezado';
 
+/**
+ * Known limitation: lines are compared by position, not matched up, so
+ * inserting one line marks the ones below it as changed too. The reviewer
+ * reads both versions side by side and nothing is decided from this, so it is
+ * left as it is instead of adding a line-matching algorithm.
+ */
 export function compareSongs(published: SongDraft, proposed: SongDraft): SongComparison {
   const before = toComparableSong(published);
   const after = toComparableSong(proposed);

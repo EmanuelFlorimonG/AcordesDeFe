@@ -252,13 +252,15 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
             )}
             {reviewable && submission.status === 'changes_requested' && (
               <p className="text-slate-600 dark:text-slate-300">
-                Se pidieron cambios. Si el colaborador no puede reenviarla, puedes publicarla tal como está o rechazarla.
+                {blocking
+                  ? 'Se pidieron cambios y todavía no se puede publicar: espera a que el colaborador la reenvíe, o recházala.'
+                  : 'Se pidieron cambios. Si el colaborador no puede reenviarla, puedes publicarla tal como está o rechazarla.'}
               </p>
             )}
             {reviewable && blocking && (!draft || (validation?.errors.length ?? 0) > 0) && (
               <p className="font-medium text-red-700 dark:text-red-300">
                 Tiene errores de validación: no se puede publicar así.{' '}
-                {submission.status === 'pending' ? 'Pide cambios o recházala.' : 'Espera la corrección del colaborador o recházala.'}
+                {submission.status === 'pending' ? 'Pide cambios o recházala.' : 'Espera a que el colaborador la reenvíe corregida, o recházala.'}
               </p>
             )}
             {reviewable && targetHidden && (

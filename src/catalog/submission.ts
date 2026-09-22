@@ -253,7 +253,7 @@ export function validateSubmissionPayload(
       errors.push({ code: 'target-unknown', message: 'La canción que se corrige no está en el catálogo.' });
     }
     if (!isBaseVersion(payload.baseVersion)) {
-      errors.push({ code: 'base-version-invalid', message: 'Falta la versión de la canción sobre la que se hizo la corrección.' });
+      errors.push({ code: 'base-version-invalid', message: 'Falta la versión de la canción sobre la que se hizo la edición.' });
     }
     if (options.publishedSong && !songDraftChanges(options.publishedSong, payload.song)) {
       errors.push({ code: 'no-changes', message: 'La propuesta no cambia nada de la canción publicada.' });

@@ -64,7 +64,7 @@ export const ApproveDialog: React.FC<ApproveDialogProps> = ({
           </button>
           <button type="submit" disabled={busy} className={primaryButton}>
             {busy && <LoaderCircle aria-hidden="true" className="h-4 w-4 motion-safe:animate-spin" />}
-            {busy ? 'Publicando…' : kind === 'create' ? 'Publicar canción' : 'Publicar corrección'}
+            {busy ? 'Publicando…' : kind === 'create' ? 'Publicar canción' : 'Publicar edición'}
           </button>
         </>
       }
