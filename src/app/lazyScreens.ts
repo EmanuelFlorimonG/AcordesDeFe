@@ -97,3 +97,6 @@ export const TrackingScreen = lazy(() =>
 export const ProposalEditScreen = lazy(() =>
   import('../components/Submissions/ProposalEditScreen').then((module) => ({ default: module.ProposalEditScreen }))
 );
+export const SongEditProposalScreen = lazy(() =>
+  import('../components/Submissions/SongEditProposalScreen').then((module) => ({ default: module.SongEditProposalScreen }))
+);

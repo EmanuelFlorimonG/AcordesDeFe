@@ -28,7 +28,9 @@ import {
   CatalogFallbackNotice,
   SongUnavailableScreen,
   ProposalEditScreen,
+  SongEditProposalScreen,
 } from './app/lazyScreens';
+import { parseSuggestEditHash, suggestEditHash } from './catalog/editAvailability';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
@@ -94,7 +96,9 @@ type AppPage =
   | 'contact'
   | 'songEditor'
   | 'tracking'
-  | 'proposalEdit';
+  | 'proposalEdit'
+  /** Suggesting an edit of a published song: #/song/<id>/sugerir */
+  | 'songEdit';
 
 /** The public editor: #/canciones/nueva */
 const NEW_SONG_ROUTE = '#/canciones/nueva';
@@ -115,7 +119,7 @@ const isSongbookRoute = (hash: string) =>
   hash === '#/favoritas' ||
   hash.startsWith('#/categoria/') ||
   hash.startsWith('#/autor/');
-const isSongRoute = (hash: string) => hash.startsWith('#/song/') || SETLIST_SONG_ROUTE.test(hash);
+const isSongRoute = (hash: string) => (hash.startsWith('#/song/') && parseSuggestEditHash(hash) === null) || SETLIST_SONG_ROUTE.test(hash);
 /** The calendar, optionally on one day: #/calendario or #/calendario/2026-09-20 */
 const CALENDAR_ROUTE = /^#\/calendario(?:\/(\d{4}-\d{2}-\d{2}))?$/;
 /** One activity, optionally one date of a repeating one: #/actividad/<id>[/2026-09-20] */
@@ -133,6 +137,8 @@ export function App() {
   const [page, setPage] = useState<AppPage>('app');
   /** The code in #/propuesta/<code>, if any */
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
+  /** The song in #/song/<id>/sugerir */
+  const [editSongId, setEditSongId] = useState<string | null>(null);
   const [section, setSection] = useState<SidebarSection>('cancionero');
   const [activeSong, setActiveSong] = useState<Song | null>(null);
   /** A song the address asks for that the catalog shown doesn't have (yet): waiting for Supabase, or offline */
@@ -312,7 +318,7 @@ export function App() {
       setIsFavoritesRoute(hash === '#/favoritas');
       const setlistSongMatch = hash.match(SETLIST_SONG_ROUTE);
       // Rehearsal mode survives moving between songs, including along a setlist.
-      if (!hash.startsWith('#/song/') && !setlistSongMatch) setIsRehearsing(false);
+      if ((!hash.startsWith('#/song/') || parseSuggestEditHash(hash) !== null) && !setlistSongMatch) setIsRehearsing(false);
       setSetlistSongRoute(null);
       setMassSetlistId(null);
       setOpenEventRoute(null);
@@ -327,6 +333,13 @@ export function App() {
       if (hash === NEW_SONG_ROUTE) {
         setPage('songEditor');
         setSection('cancionero');
+        return;
+      }
+      const suggestEditId = parseSuggestEditHash(hash);
+      if (suggestEditId !== null) {
+        setPage('songEdit');
+        setSection('cancionero');
+        setEditSongId(suggestEditId);
         return;
       }
       const proposalEditMatch = hash.match(PROPOSAL_EDIT_ROUTE);
@@ -851,6 +864,7 @@ export function App() {
       onToggleInPlaylist={handleToggleInPlaylist}
       onCreatePlaylist={handleCreatePlaylist}
       onShare={handleShareSong}
+      onSuggestEdit={() => navigateTo(suggestEditHash(song.id))}
       isRehearsing={isRehearsing}
       onRehearsalChange={setIsRehearsing}
       player={compactPlayer}
@@ -1222,6 +1236,16 @@ export function App() {
           <SongEditorScreen
             categories={catalogCategories}
             onBackToSongbook={handleBackToDashboard}
+            onCheckStatus={(code) => navigateTo(`#/propuesta/${code}`)}
+          />
+        );
+      case 'songEdit':
+        return (
+          <SongEditProposalScreen
+            key={editSongId ?? ''}
+            songId={editSongId ?? ''}
+            categories={catalogCategories}
+            onBack={() => navigateTo(`#/song/${encodeURIComponent(editSongId ?? '')}`)}
             onCheckStatus={(code) => navigateTo(`#/propuesta/${code}`)}
           />
         );

@@ -10,10 +10,12 @@ interface SubmissionSuccessProps {
   /** Absent after a resubmission: the same proposal went back to review */
   onAddAnother?: () => void;
   resubmitted?: boolean;
+  /** A suggested edit of a published song */
+  edited?: boolean;
 }
 
 /** After a confirmed send: the tracking code, clearly, and where to go next. Never the edit token. */
-export const SubmissionSuccess: React.FC<SubmissionSuccessProps> = ({ trackingCode, title, onCheckStatus, onBackToSongbook, onAddAnother, resubmitted = false }) => {
+export const SubmissionSuccess: React.FC<SubmissionSuccessProps> = ({ trackingCode, title, onCheckStatus, onBackToSongbook, onAddAnother, resubmitted = false, edited = false }) => {
   const [copied, setCopied] = useState<'yes' | 'no' | null>(null);
 
   const copy = async () => {
@@ -30,11 +32,13 @@ export const SubmissionSuccess: React.FC<SubmissionSuccessProps> = ({ trackingCo
       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-500/10">
         <CircleCheck aria-hidden="true" className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
       </div>
-      <h1 className="text-2xl font-extrabold tracking-tight text-[#10203A] dark:text-white">{resubmitted ? 'Propuesta reenviada' : 'Canción enviada'}</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight text-[#10203A] dark:text-white">{resubmitted ? 'Propuesta reenviada' : edited ? 'Cambios enviados' : 'Canción enviada'}</h1>
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
         {resubmitted
           ? `Tus cambios en «${title}» volvieron a revisión. El código de seguimiento es el mismo.`
-          : `Tu propuesta de «${title}» fue enviada para revisión. No se publica hasta que el equipo la apruebe.`}
+          : edited
+            ? `Tus cambios en «${title}» fueron enviados para revisión. La canción no cambia hasta que el equipo los apruebe.`
+            : `Tu propuesta de «${title}» fue enviada para revisión. No se publica hasta que el equipo la apruebe.`}
       </p>
 
       <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">Código de seguimiento</p>

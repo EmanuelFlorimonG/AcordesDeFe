@@ -36,8 +36,10 @@ import {
   Share2,
   Printer,
   MicVocal,
+  Pencil,
   StickyNote,
 } from 'lucide-react';
+import { canSuggestEdits } from '../../catalog/editAvailability';
 
 // The chord detail opens only when a chord is tapped: loaded then, not with the page.
 const ChordDetailModal = lazy(() => import('./ChordDetailModal').then((module) => ({ default: module.ChordDetailModal })));
@@ -70,6 +72,23 @@ interface SongViewerProps extends SongSetlistActions {
   setlist?: SetlistPlayback | null;
   /** Where the song was really sung, from the history of performances */
   history?: React.ReactNode;
+  /** Opens the editor to suggest changes to this song ("Agregar acordes" / "Sugerir edición") */
+  onSuggestEdit?: () => void;
+}
+
+/** Whether the browser says it is online; a suggestion needs the song's current version from Supabase. */
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false));
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine !== false);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+  return online;
 }
 
 // The key a song was left in stays for the rest of the browser session, so
@@ -117,7 +136,10 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   onAddToSetlist,
   onCreateSetlistWithSong,
   history,
+  onSuggestEdit,
 }) => {
+  const online = useOnline();
+  const editsAvailable = useMemo(() => canSuggestEdits(), []);
   const [localSettings, setLocalSettings] = useState<ViewSettings>(() => {
     // Opened from a setlist, the song starts in that setlist's key, not in
     // whatever key it was last left in elsewhere.
@@ -462,6 +484,19 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             <span>Imprimir</span>
           </button>
 
+          {onSuggestEdit && editsAvailable && (
+            <button
+              type="button"
+              onClick={onSuggestEdit}
+              disabled={!online}
+              aria-describedby={!online ? 'sugerir-sin-conexion' : undefined}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white dark:disabled:hover:bg-dark-900"
+            >
+              <Pencil className="w-4 h-4" />
+              <span>{hasChords ? 'Sugerir edición' : 'Agregar acordes'}</span>
+            </button>
+          )}
+
           <SongRowMenu
             song={song}
             playlists={playlists}
@@ -474,11 +509,18 @@ export const SongViewer: React.FC<SongViewerProps> = ({
           />
         </div>
 
-        {!hasChords && (
-          <p className="text-xs text-slate-400 dark:text-slate-500 italic">
-            Aún no se han agregado los acordes de esta canción.
-          </p>
-        )}
+        <div className="flex flex-col gap-1 lg:items-end">
+          {!hasChords && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 italic">
+              Aún no se han agregado los acordes de esta canción.
+            </p>
+          )}
+          {onSuggestEdit && editsAvailable && !online && (
+            <p id="sugerir-sin-conexion" className="text-xs text-slate-500 dark:text-slate-400">
+              Para sugerir cambios hace falta conexión: se parte de la versión publicada ahora.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Tabs + Transpose toolbar */}

@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CloudOff, FileClock, HardDriveDownload, Send } from 'lucide-react';
+import { ArrowLeft, CloudOff, FileClock, HardDriveDownload, History, Send } from 'lucide-react';
 import { getSubmissionSender } from '../../catalog/services';
-import type { SongDraft } from '../../catalog/songDraft';
-import type { SubmissionReceipt } from '../../catalog/submission';
+import { draftToSong, type SongDraft } from '../../catalog/songDraft';
+import { songDraftChanges, type SubmissionReceipt } from '../../catalog/submission';
 import { validateSongDraft } from '../../catalog/validateSongDraft';
-import { NEW_SONG_DRAFT_KEY, createSongDraftStore, type StoredSongDraft } from '../../editor/draftStorage';
+import { NEW_SONG_DRAFT_KEY, createSongDraftStore, updateDraftKey, type DraftBase, type StoredSongDraft } from '../../editor/draftStorage';
 import { createMySubmissionsStore } from '../../editor/mySubmissions';
 import {
   contentToEditor,
@@ -20,7 +20,7 @@ import { ResubmitDialog } from './ResubmitDialog';
 import { primaryButton, secondaryButton, sectionHeading } from '../Setlists/ui';
 import { SectionsEditor } from './SectionsEditor';
 import { SongMetaForm } from './SongMetaForm';
-import { SongPreviewPanel } from './SongPreviewPanel';
+import { SongPreview, SongPreviewPanel } from './SongPreviewPanel';
 import { SubmissionSuccess } from './SubmissionSuccess';
 import { SubmitDialog } from './SubmitDialog';
 import { ValidationPanel } from './ValidationPanel';
@@ -34,13 +34,28 @@ export interface ResubmissionContext {
   song: SongDraft;
 }
 
+/** Suggesting an edit of a published song: made on the version published now. */
+export interface EditContext {
+  songId: string;
+  /** The song as it is published now, the starting point */
+  published: SongDraft;
+  /** Its version: the edit is sent as made on it (baseVersion) */
+  baseVersion: number;
+}
+
 interface SongEditorScreenProps {
   /** The catalog's categories, offered as choices */
   categories: string[];
   onBackToSongbook: () => void;
+  /** What the back button says; "Cancionero" by default */
+  backLabel?: string;
   onCheckStatus: (trackingCode: string) => void;
   /** Present when editing a proposal to send it back: same editor, its own draft */
   resubmission?: ResubmissionContext;
+  /** Present when suggesting an edit of a published song: same editor, its own draft */
+  edit?: EditContext;
+  /** The song got a newer version while editing: open the current one (the draft is kept) */
+  onReloadPublished?: () => void;
 }
 
 /** The proposal as the editor's document: its text read by the parser, its metadata as sent. */
@@ -52,6 +67,8 @@ function documentFor(song: SongDraft): EditorDocument {
 
 type Phase =
   | { kind: 'recover'; stored: StoredSongDraft }
+  /** An edit draft made on another version of the song: never continued without saying so */
+  | { kind: 'outdated'; stored: StoredSongDraft }
   | { kind: 'editing' }
   | { kind: 'sent'; receipt: SubmissionReceipt; title: string };
 
@@ -65,17 +82,37 @@ const AUTOSAVE_DELAY_MS = 800;
  * it for review. The draft lives in this browser until it is sent; nothing
  * reaches the backend before "Enviar para revisión".
  */
-export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, onBackToSongbook, onCheckStatus, resubmission }) => {
+export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
+  categories,
+  onBackToSongbook,
+  backLabel = 'Cancionero',
+  onCheckStatus,
+  resubmission,
+  edit: editOf,
+  onReloadPublished,
+}) => {
   const store = useMemo(() => createSongDraftStore(), []);
   const mine = useMemo(() => createMySubmissionsStore(), []);
   const sender = useMemo(() => getSubmissionSender(), []);
-  // A new song and each proposal being corrected keep separate drafts.
-  const draftKey = resubmission ? `edit:${resubmission.trackingCode}` : NEW_SONG_DRAFT_KEY;
-  const [startingDocument] = useState<EditorDocument>(() => (resubmission ? documentFor(resubmission.song) : createEditorDocument()));
+  // A new song, each proposal being corrected and each song being edited keep separate drafts.
+  const draftKey = resubmission ? `edit:${resubmission.trackingCode}` : editOf ? updateDraftKey(editOf.songId) : NEW_SONG_DRAFT_KEY;
+  const base = useMemo<DraftBase | undefined>(
+    () => (editOf ? { songId: editOf.songId, version: editOf.baseVersion } : undefined),
+    [editOf]
+  );
+  const [startingDocument] = useState<EditorDocument>(() =>
+    resubmission ? documentFor(resubmission.song) : editOf ? documentFor(editOf.published) : createEditorDocument()
+  );
+  /** Changes left unsent on an older version, shown only as a reference once the current version is opened */
+  const [previous, setPrevious] = useState<{ document: EditorDocument; version: number } | null>(null);
 
   const [phase, setPhase] = useState<Phase>(() => {
     const stored = store.load(draftKey);
-    return stored && hasEditorContent(stored.document) ? { kind: 'recover', stored } : { kind: 'editing' };
+    if (!stored || !hasEditorContent(stored.document)) return { kind: 'editing' };
+    if (editOf && stored.base?.version !== editOf.baseVersion) return { kind: 'outdated', stored };
+    // An edit draft identical to the published song holds nothing to recover.
+    if (editOf && JSON.stringify(stored.document) === JSON.stringify(startingDocument)) return { kind: 'editing' };
+    return { kind: 'recover', stored };
   });
   const [doc, setDoc] = useState<EditorDocument>(startingDocument);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -97,18 +134,19 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
   const saveNow = useCallback((): boolean => {
     const current = latest.current;
     if (!current.pending) return !current.failed;
-    const ok = store.save(draftKey, current.doc);
+    const ok = store.save(draftKey, current.doc, undefined, base);
     current.pending = false;
     current.failed = !ok;
     setSaveState(ok ? 'saved' : 'failed');
     return ok;
-  }, [store, draftKey]);
+  }, [store, draftKey, base]);
 
   const editing = phase.kind === 'editing';
   useEffect(() => {
     if (!editing) return;
     // An untouched song isn't worth a draft (nor a recovery prompt next time).
-    if ((!hasEditorContent(doc) || doc === startingDocument) && !store.load(draftKey)) {
+    // Unsent changes on an older version stay stored until something is written on the current one.
+    if ((!hasEditorContent(doc) || doc === startingDocument) && (!store.load(draftKey) || (previous && doc === startingDocument))) {
       latest.current.pending = false;
       const timer = window.setTimeout(() => setSaveState('idle'), AUTOSAVE_DELAY_MS);
       return () => window.clearTimeout(timer);
@@ -116,7 +154,7 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
     latest.current.pending = true;
     const timer = window.setTimeout(saveNow, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [doc, editing, saveNow, store, draftKey, startingDocument]);
+  }, [doc, editing, saveNow, store, draftKey, startingDocument, previous]);
 
   useEffect(() => {
     // Leaving the page: write what's pending right away. Only if the browser
@@ -139,7 +177,9 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
   const draft = useMemo(() => editorToSongDraft(doc), [doc]);
   const songCheck = useMemo(() => validateSongDraft(draft, { knownCategories: categories }), [draft, categories]);
   const editorIssues = useMemo(() => validateEditorDocument(doc), [doc]);
-  const canSend = songCheck.ok && !editorIssues.some((issue) => issue.severity === 'error');
+  // An edit must change something of the published song (the database refuses one that doesn't).
+  const changesSomething = !editOf || songDraftChanges(editOf.published, draft);
+  const canSend = songCheck.ok && !editorIssues.some((issue) => issue.severity === 'error') && changesSomething;
   const suggestions = useMemo(() => draft.chordsUsed.filter(isRecognizedChord).slice(0, 16), [draft.chordsUsed]);
 
   const goToSection = (sectionId: string) => {
@@ -167,7 +207,7 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
       className="mb-6 inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800"
     >
       <ArrowLeft className="w-4 h-4 text-blue-600" />
-      Cancionero
+      {backLabel}
     </button>
   );
 
@@ -178,10 +218,11 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
           trackingCode={phase.receipt.trackingCode}
           title={phase.title}
           resubmitted={Boolean(resubmission)}
+          edited={Boolean(editOf)}
           onCheckStatus={() => onCheckStatus(phase.receipt.trackingCode)}
           onBackToSongbook={onBackToSongbook}
           onAddAnother={
-            resubmission
+            resubmission || editOf
               ? undefined
               : () => {
                   setDoc(createEditorDocument());
@@ -190,6 +231,60 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
                 }
           }
         />
+      </div>
+    );
+  }
+
+  if (phase.kind === 'outdated' && editOf) {
+    const { stored } = phase;
+    const madeOn = stored.base?.version;
+    return (
+      <div className="w-full px-5 py-6 sm:px-10 sm:py-8">
+        {backButton}
+        <div role="region" aria-labelledby="borrador-desactualizado" className="mx-auto max-w-xl rounded-2xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 p-6 shadow-sm">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-500/10">
+            <History aria-hidden="true" className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <h1 id="borrador-desactualizado" className="text-xl font-extrabold tracking-tight text-[#10203A] dark:text-white">
+            La canción cambió desde tus cambios sin enviar
+          </h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            Empezaste a editar {madeOn ? `la versión ${madeOn}` : 'una versión anterior'} de «{editOf.published.title}» y la publicada ahora es la
+            versión {editOf.baseVersion}. Tus cambios no se aplican solos sobre la versión nueva: se abre la versión actual y puedes ver los
+            tuyos al lado para volver a hacerlos.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              autoFocus
+              onClick={() => {
+                setPrevious({ document: stored.document, version: madeOn ?? 0 });
+                setPhase({ kind: 'editing' });
+              }}
+              className={primaryButton}
+            >
+              Abrir la versión actual
+            </button>
+            <button type="button" onClick={() => setDialog('discard')} className={secondaryButton}>
+              Descartar mis cambios
+            </button>
+          </div>
+        </div>
+        {dialog === 'discard' && (
+          <ConfirmDialog
+            title="¿Descartar tus cambios?"
+            message="Se borran los cambios sin enviar guardados en este navegador. No se puede deshacer."
+            confirmLabel="Descartar cambios"
+            cancelLabel="Conservar"
+            onConfirm={() => {
+              store.remove(draftKey);
+              setDoc(startingDocument);
+              setSaveState('idle');
+              setPhase({ kind: 'editing' });
+            }}
+            onClose={() => setDialog(null)}
+          />
+        )}
       </div>
     );
   }
@@ -255,9 +350,16 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#10203A] dark:text-white">
-            {resubmission ? 'Editar propuesta' : 'Agregar canción'}
+            {resubmission ? 'Editar propuesta' : editOf ? (editOf.published.chordsUsed.length > 0 ? 'Sugerir edición' : 'Agregar acordes') : 'Agregar canción'}
           </h1>
-          {resubmission ? (
+          {editOf ? (
+            <>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Propón cambios a «{editOf.published.title}». Partes de la versión {editOf.baseVersion}, la publicada ahora.
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">El equipo revisa los cambios antes de publicarlos.</p>
+            </>
+          ) : resubmission ? (
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
               Corrige tu propuesta <span className="font-mono">{resubmission.trackingCode}</span> y reenvíala a revisión.
             </p>
@@ -292,6 +394,20 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800 dark:text-amber-300">Cambios que pidió la revisión</p>
           <p className="mt-1 whitespace-pre-line text-sm text-amber-950 dark:text-amber-100">{resubmission.reviewNote}</p>
         </div>
+      )}
+
+      {previous && (
+        <details className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <summary className="cursor-pointer text-sm font-semibold text-amber-900 dark:text-amber-200">
+            Tus cambios anteriores, sin enviar{previous.version ? ` (sobre la versión ${previous.version})` : ''}
+          </summary>
+          <p className="mt-2 text-xs text-amber-900/80 dark:text-amber-200/80">
+            Solo para consultarlos: no se copian a la versión actual. Se reemplazan en este navegador en cuanto escribas algo aquí.
+          </p>
+          <div className="mt-3 rounded-xl bg-white p-3 dark:bg-dark-900">
+            <SongPreview song={draftToSong(editorToSongDraft(previous.document), 'cambios-anteriores')} heading="Tus cambios anteriores" />
+          </div>
+        </details>
       )}
 
       {store.recoveredFromUnreadableData && (
@@ -331,7 +447,11 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
       <div ref={validationRef} tabIndex={-1} className="mt-6 space-y-4 focus:outline-none">
         <ValidationPanel meta={doc.meta} song={songCheck} editor={editorIssues} onGoToSection={goToSection} />
         <div className="flex flex-wrap items-center justify-end gap-3">
-          {!canSend && <p className="text-sm text-slate-500 dark:text-slate-400">Corrige lo marcado para poder enviar.</p>}
+          {!canSend && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {changesSomething ? 'Corrige lo marcado para poder enviar.' : 'Todavía no cambiaste nada de la canción publicada.'}
+            </p>
+          )}
           <button type="button" onClick={requestSend} aria-disabled={!canSend} className={`${primaryButton} ${canSend ? '' : 'opacity-60'}`}>
             <Send className="w-4 h-4" />
             {resubmission ? 'Reenviar para revisión' : 'Enviar para revisión'}
@@ -360,7 +480,9 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({ categories, 
           draft={draft}
           sender={sender}
           drafts={store}
-          draftKey={NEW_SONG_DRAFT_KEY}
+          draftKey={draftKey}
+          edit={editOf}
+          onReloadPublished={onReloadPublished}
           mine={mine}
           onSent={(receipt) => {
             latest.current.pending = false;

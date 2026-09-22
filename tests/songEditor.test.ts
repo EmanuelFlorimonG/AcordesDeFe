@@ -56,12 +56,14 @@ import {
   SONG_DRAFTS_BACKUP_KEY,
   SONG_DRAFTS_STORAGE_KEY,
   createSongDraftStore,
+  updateDraftKey,
 } from '../src/editor/draftStorage';
+import { parseSuggestEditHash, suggestEditHash } from '../src/catalog/editAvailability';
 import { MY_SUBMISSIONS_STORAGE_KEY, createMySubmissionsStore } from '../src/editor/mySubmissions';
 import { createSubmitter, sendDraft } from '../src/editor/submitter';
 import { parseYouTubeId } from '../src/editor/youtube';
 import { parseSongSections, transposeSongContent } from '../src/utils/chordParser';
-import { draftToSong } from '../src/catalog/songDraft';
+import { draftToSong, songToDraft } from '../src/catalog/songDraft';
 
 let checks = 0;
 const eq = <T>(actual: T, expected: T, message?: string) => {
@@ -693,5 +695,86 @@ describe('YouTube: id o enlace', () => {
     eq(parseYouTubeId('https://www.youtube.com/watch?v=corto'), null);
     eq(parseYouTubeId(''), null);
     eq(parseYouTubeId('javascript:alert(1)'), null);
+  });
+});
+
+// --- Suggesting an edit of a published song -----------------------------------------------
+
+describe('Sugerir una edición de una canción publicada', () => {
+  const song = MOCK_SONGS[0];
+  const key = updateDraftKey(song.id);
+
+  it('el borrador de una edición guarda sobre qué canción y versión se hizo', () => {
+    const storage = memoryStorage();
+    const store = createSongDraftStore(storage);
+    eq(store.save(key, sampleDocument(), 1000, { songId: song.id, version: 3 }), true);
+    eq(createSongDraftStore(storage).load(key)?.base, { songId: song.id, version: 3 });
+    // Sin base, o con la de otra canción, no se guarda: nunca se continuaría sobre una versión supuesta.
+    eq(store.save(key, sampleDocument()), false);
+    eq(store.save(key, sampleDocument(), 1000, { songId: 'otra', version: 3 }), false);
+    // Las canciones nuevas no llevan base.
+    eq(store.save(NEW_SONG_DRAFT_KEY, sampleDocument()), true);
+    eq('base' in (createSongDraftStore(storage).load(NEW_SONG_DRAFT_KEY) ?? {}), false);
+  });
+
+  it('un borrador de edición guardado sin base (o con una base rota) no se recupera', () => {
+    const document = sampleDocument();
+    for (const base of [undefined, { songId: song.id }, { songId: song.id, version: 0 }, { songId: 'otra', version: 2 }]) {
+      const storage = memoryStorage({
+        [SONG_DRAFTS_STORAGE_KEY]: JSON.stringify({ version: 1, drafts: [{ key, document, updatedAt: 1, attempt: null, base }] }),
+      });
+      eq(createSongDraftStore(storage).load(key), null);
+    }
+  });
+
+  it('otra versión es otro envío: la identidad de reintento no pasa de una versión a otra', () => {
+    const storage = memoryStorage();
+    const store = createSongDraftStore(storage);
+    const doc = sampleDocument();
+    store.save(key, doc, 1, { songId: song.id, version: 2 });
+    const attempt = createSubmissionAttempt();
+    store.setAttempt(key, attempt);
+    store.save(key, doc, 2, { songId: song.id, version: 2 });
+    eq(store.load(key)?.attempt, attempt);
+    store.save(key, doc, 3, { songId: song.id, version: 3 });
+    eq(store.load(key)?.attempt, null);
+  });
+
+  it('se envía como corrección de esa canción, sobre la versión de la que partió', async () => {
+    const published = songToDraft(song);
+    const backend = createMemorySubmissionRepository({ publishedSongs: new Map([[song.id, { version: 2, song: published }]]) });
+    const storage = memoryStorage();
+    const drafts = createSongDraftStore(storage);
+    const mine = createMySubmissionsStore(memoryStorage());
+    const edited = { ...published, tags: [...published.tags, 'con acordes'] };
+    drafts.save(key, contentToEditor(edited.content, edited), 1, { songId: song.id, version: 2 });
+    const outcome = await sendDraft({
+      submitter: createSubmitter(backend),
+      payload: buildSubmissionPayload(edited, { type: 'update', targetSongId: song.id, baseVersion: 2, attempt: createSubmissionAttempt() }),
+      drafts,
+      draftKey: key,
+      mine,
+      title: edited.title,
+    });
+    eq(outcome.ok, true);
+    eq(drafts.load(key), null);
+    // Sobre una versión que ya no es la actual: nada se guarda y el borrador sigue.
+    drafts.save(key, contentToEditor(edited.content, edited), 2, { songId: song.id, version: 1 });
+    const stale = await sendDraft({
+      submitter: createSubmitter(backend),
+      payload: buildSubmissionPayload(edited, { type: 'update', targetSongId: song.id, baseVersion: 1 }),
+      drafts,
+      draftKey: key,
+      mine,
+      title: edited.title,
+    });
+    eq([stale.ok, stale.ok ? null : stale.error.reason, drafts.load(key)?.base?.version], [false, 'stale', 1]);
+  });
+
+  it('la ruta del editor de una canción', () => {
+    eq(suggestEditHash('alfarero'), '#/song/alfarero/sugerir');
+    eq(parseSuggestEditHash('#/song/alfarero/sugerir'), 'alfarero');
+    eq(parseSuggestEditHash('#/song/alfarero'), null);
+    eq(parseSuggestEditHash('#/song/a/b/sugerir'), null);
   });
 });

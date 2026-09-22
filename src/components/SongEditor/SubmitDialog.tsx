@@ -24,6 +24,10 @@ interface SubmitDialogProps {
   drafts: SongDraftStore;
   draftKey: string;
   mine: MySubmissionsStore;
+  /** A suggested edit of a published song: sent as a correction on this version */
+  edit?: { songId: string; baseVersion: number; published: SongDraft };
+  /** After "the song changed": opens the current version (the draft is kept) */
+  onReloadPublished?: () => void;
   onSent: (receipt: SubmissionReceipt) => void;
   onClose: () => void;
 }
@@ -43,7 +47,7 @@ const HUMAN_CHECK_ACTION = 'submit-song';
  * is safe: the backend recognises the retry and never stores the proposal
  * twice.
  */
-export const SubmitDialog: React.FC<SubmitDialogProps> = ({ draft, sender, drafts, draftKey, mine, onSent, onClose }) => {
+export const SubmitDialog: React.FC<SubmitDialogProps> = ({ draft, sender, drafts, draftKey, mine, edit, onReloadPublished, onSent, onClose }) => {
   const ids = { name: useId(), email: useId(), emailHint: useId(), error: useId() };
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -52,6 +56,7 @@ export const SubmitDialog: React.FC<SubmitDialogProps> = ({ draft, sender, draft
   const [emailError, setEmailError] = useState('');
   const [humanCheck, setHumanCheck] = useState<string | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
+  const [stale, setStale] = useState(false);
   const repository = sender?.repository ?? null;
   const submitter = useMemo(() => (repository ? createSubmitter(repository) : null), [repository]);
 
@@ -63,9 +68,18 @@ export const SubmitDialog: React.FC<SubmitDialogProps> = ({ draft, sender, draft
     }
     setError('');
     const song = finalDraft(draft);
-    const check = validateSubmissionPayload(buildSubmissionPayload(song, { type: 'create', contributor: { name, email } }));
+    const kind = edit
+      ? { type: 'update' as const, targetSongId: edit.songId, baseVersion: edit.baseVersion }
+      : { type: 'create' as const };
+    const check = validateSubmissionPayload(buildSubmissionPayload(song, { ...kind, contributor: { name, email } }), {
+      publishedSong: edit?.published,
+    });
     if (check.errors.some((issue) => issue.code === 'contributor-email-invalid')) {
       setEmailError('Revisa el correo, o déjalo vacío.');
+      return;
+    }
+    if (check.errors.some((issue) => issue.code === 'no-changes')) {
+      setError('Todavía no cambiaste nada de la canción publicada.');
       return;
     }
     if (!check.ok) {
@@ -78,7 +92,7 @@ export const SubmitDialog: React.FC<SubmitDialogProps> = ({ draft, sender, draft
     setSending(true);
     const outcome = await sendDraft({
       submitter,
-      payload: buildSubmissionPayload(song, { type: 'create', contributor: { name, email }, attempt }),
+      payload: buildSubmissionPayload(song, { ...kind, contributor: { name, email }, attempt }),
       drafts,
       draftKey,
       mine,
@@ -89,13 +103,18 @@ export const SubmitDialog: React.FC<SubmitDialogProps> = ({ draft, sender, draft
     if (outcome.ok) return onSent(outcome.receipt);
     // The token was spent on this attempt: a retry needs a new one.
     setResetSignal((value) => value + 1);
-    setError(`${outcome.error.message} Tu canción sigue guardada en este navegador.`);
+    setStale(outcome.error.reason === 'stale');
+    setError(
+      outcome.error.reason === 'stale'
+        ? `${outcome.error.message} Tus cambios siguen guardados en este navegador: abre la versión actual para volver a hacerlos sobre ella.`
+        : `${outcome.error.message} ${edit ? 'Tus cambios siguen guardados' : 'Tu canción sigue guardada'} en este navegador.`
+    );
   };
 
   return (
     <Dialog
       title="Enviar para revisión"
-      description="Un último paso. La canción no se publica todavía: primero se revisa."
+      description={edit ? 'Un último paso. La canción no cambia todavía: primero se revisan tus cambios.' : 'Un último paso. La canción no se publica todavía: primero se revisa.'}
       onClose={() => {
         if (!sending) onClose();
       }}
@@ -105,10 +124,16 @@ export const SubmitDialog: React.FC<SubmitDialogProps> = ({ draft, sender, draft
           <button type="button" onClick={onClose} disabled={sending} className={secondaryButton}>
             Volver al editor
           </button>
-          <button type="submit" disabled={!sender || sending || !humanCheck} aria-describedby={error ? ids.error : undefined} className={primaryButton}>
-            {sending && <LoaderCircle aria-hidden="true" className="w-4 h-4 motion-safe:animate-spin" />}
-            {sending ? 'Enviando…' : error ? 'Reintentar' : 'Enviar para revisión'}
-          </button>
+          {stale && onReloadPublished ? (
+            <button type="button" onClick={onReloadPublished} className={primaryButton}>
+              Abrir la versión actual
+            </button>
+          ) : (
+            <button type="submit" disabled={!sender || sending || !humanCheck} aria-describedby={error ? ids.error : undefined} className={primaryButton}>
+              {sending && <LoaderCircle aria-hidden="true" className="w-4 h-4 motion-safe:animate-spin" />}
+              {sending ? 'Enviando…' : error ? 'Reintentar' : 'Enviar para revisión'}
+            </button>
+          )}
         </>
       }
     >

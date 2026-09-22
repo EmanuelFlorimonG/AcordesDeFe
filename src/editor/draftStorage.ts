@@ -7,14 +7,31 @@ import { parseEditorDocument, type EditorDocument } from './songEditorModel';
  * until "Enviar para revisión": a draft is local work, saved as you type (with
  * a pause) so a reload or a closed tab loses nothing.
  *
- * Drafts are keyed: 'new' is the song being created now. Corrections of
- * existing songs will use their own keys later ("update:<songId>").
+ * Drafts are keyed: 'new' is the song being created now, "edit:<code>" a
+ * proposal being corrected, and "update:<songId>" a suggested edit of a
+ * published song. An edit is made on one version of the song, so its draft
+ * always says which (its base); one without a base is not kept.
  */
 
 export const SONG_DRAFTS_STORAGE_KEY = 'genesaret_song_drafts';
 export const SONG_DRAFTS_BACKUP_KEY = 'genesaret_song_drafts_backup';
 export const SONG_DRAFTS_STORAGE_VERSION = 1;
 export const NEW_SONG_DRAFT_KEY = 'new';
+
+/** The draft of a suggested edit of a published song. */
+export const updateDraftKey = (songId: string) => `update:${songId}`;
+
+/** The published version an edit draft was started on. */
+export interface DraftBase {
+  songId: string;
+  version: number;
+}
+
+const isDraftBase = (value: unknown): value is DraftBase => {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.songId === 'string' && entry.songId !== '' && Number.isInteger(entry.version) && (entry.version as number) >= 1;
+};
 
 export interface StoredSongDraft {
   key: string;
@@ -26,6 +43,12 @@ export interface StoredSongDraft {
    * creating a second proposal. Cleared with the draft once a send succeeds.
    */
   attempt: SubmissionAttempt | null;
+  /**
+   * An edit of a published song ("update:<songId>"): the song and version it
+   * was made on. Required for those keys: the editor never continues such a
+   * draft on another version without saying so.
+   */
+  base?: DraftBase;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -46,9 +69,12 @@ export function parseStoredDrafts(raw: string | null): { drafts: StoredSongDraft
   const drafts = data.drafts.filter(isRecord).flatMap((entry): StoredSongDraft[] => {
     const document = parseEditorDocument(entry.document);
     if (typeof entry.key !== 'string' || !entry.key || seen.has(entry.key) || !document) return [];
+    const base = isDraftBase(entry.base) ? { songId: entry.base.songId, version: entry.base.version } : undefined;
+    // An edit draft that doesn't say which song and version it was made on can't be continued safely.
+    if (entry.key.startsWith('update:') && (!base || updateDraftKey(base.songId) !== entry.key)) return [];
     seen.add(entry.key);
     const updatedAt = typeof entry.updatedAt === 'number' && Number.isFinite(entry.updatedAt) ? entry.updatedAt : 0;
-    return [{ key: entry.key, document, updatedAt, attempt: isSubmissionAttempt(entry.attempt) ? entry.attempt : null }];
+    return [{ key: entry.key, document, updatedAt, attempt: isSubmissionAttempt(entry.attempt) ? entry.attempt : null, ...(base ? { base } : {}) }];
   });
   return { drafts, unreadable: false };
 }
@@ -59,8 +85,12 @@ export function serializeDrafts(drafts: StoredSongDraft[]): string {
 
 export interface SongDraftStore {
   load(key: string): StoredSongDraft | null;
-  /** False when the browser refused to store it (full, blocked): the caller keeps warning before leaving */
-  save(key: string, document: EditorDocument, now?: number): boolean;
+  /**
+   * False when the browser refused to store it (full, blocked): the caller
+   * keeps warning before leaving. `base` is required for an edit draft
+   * ("update:<songId>"), which is refused without it.
+   */
+  save(key: string, document: EditorDocument, now?: number, base?: DraftBase): boolean;
   remove(key: string): void;
   /** Remembers (or forgets) the retry identity of this draft's send */
   setAttempt(key: string, attempt: SubmissionAttempt | null): boolean;
@@ -100,8 +130,11 @@ export function createSongDraftStore(storage: KeyValueStorage | null = getBrowse
   return {
     recoveredFromUnreadableData: initial.recoveredFromUnreadableData,
     load: (key) => drafts.find((entry) => entry.key === key) ?? null,
-    save: (key, document, now = Date.now()) => {
+    save: (key, document, now = Date.now(), base) => {
       const previous = drafts.find((entry) => entry.key === key);
+      if (key.startsWith('update:') && (!base || updateDraftKey(base.songId) !== key)) return false;
+      // Another version is another starting point: what was being sent before is not this send.
+      const sameBase = previous?.base?.version === base?.version;
       return persist([
         ...drafts.filter((entry) => entry.key !== key),
         {
@@ -110,7 +143,8 @@ export function createSongDraftStore(storage: KeyValueStorage | null = getBrowse
           updatedAt: now,
           // A retry identity only stands for the exact song it was sent with:
           // once the song changes, sending it again is a new proposal.
-          attempt: previous && JSON.stringify(previous.document) === JSON.stringify(document) ? previous.attempt : null,
+          attempt: previous && sameBase && JSON.stringify(previous.document) === JSON.stringify(document) ? previous.attempt : null,
+          ...(base ? { base: { songId: base.songId, version: base.version } } : {}),
         },
       ]);
     },
