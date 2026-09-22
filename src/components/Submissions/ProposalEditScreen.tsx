@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, LoaderCircle } from 'lucide-react';
-import { getSubmissionRepository } from '../../catalog/services';
+import { getSongEditSource, getSubmissionRepository } from '../../catalog/services';
+import { songToDraft } from '../../catalog/songDraft';
 import { SUBMISSION_STATUS_LABELS, type SubmissionForEdit } from '../../catalog/submission';
 import { SubmissionError } from '../../catalog/submissionRepository';
 import { normalizeTrackingCode } from '../../catalog/trackingCode';
 import { createMySubmissionsStore } from '../../editor/mySubmissions';
-import { SongEditorScreen } from '../SongEditor/SongEditorScreen';
+import { SongEditorScreen, type ResubmissionTarget } from '../SongEditor/SongEditorScreen';
 import { secondaryButton } from '../Setlists/ui';
 
 interface ProposalEditScreenProps {
@@ -21,19 +22,35 @@ type Loaded =
   | { state: 'no-token' }
   | { state: 'not-found' }
   | { state: 'not-editable'; status: SubmissionForEdit['status'] }
+  /** An edit of a song that is no longer published: there is nothing to correct */
+  | { state: 'target-hidden' }
   | { state: 'error'; message: string }
-  | { state: 'ready'; proposal: SubmissionForEdit & { song: NonNullable<SubmissionForEdit['song']> }; editToken: string };
+  | {
+      state: 'ready';
+      proposal: SubmissionForEdit & { song: NonNullable<SubmissionForEdit['song']> };
+      editToken: string;
+      /** For an edit: the song as it is published now (and whether the proposal is behind it) */
+      target: ResubmissionTarget | null;
+    };
 
 /**
  * "Editar propuesta": the author's own proposal, recovered with the tracking
  * code and the edit token this browser kept when it was sent, opened in the
  * same song editor. Without the token here, the proposal can still be
  * checked, but not edited.
+ *
+ * An edit of a published song is always corrected against the version
+ * published now: if the song moved on while the proposal waited, the editor
+ * opens that version and shows the author their own earlier changes beside
+ * it. Nothing is merged, and the resubmission says which version it is made
+ * on (the database checks it again).
  */
 export const ProposalEditScreen: React.FC<ProposalEditScreenProps> = ({ code: rawCode, categories, onCheckStatus, onBackToSongbook }) => {
   const repository = useMemo(() => getSubmissionRepository(), []);
   const code = normalizeTrackingCode(rawCode) ?? rawCode;
   const editToken = useMemo(() => createMySubmissionsStore().editTokenFor(code), [code]);
+  const editSource = useMemo(() => getSongEditSource(), []);
+  const [attempt, setAttempt] = useState(0);
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' });
 
   useEffect(() => {
@@ -45,7 +62,20 @@ export const ProposalEditScreen: React.FC<ProposalEditScreenProps> = ({ code: ra
         const proposal = await repository.getForEdit(code, editToken);
         if (!proposal || !proposal.song) return { state: 'not-found' };
         if (proposal.status !== 'changes_requested') return { state: 'not-editable', status: proposal.status };
-        return { state: 'ready', proposal: { ...proposal, song: proposal.song }, editToken };
+        const ready = { state: 'ready' as const, proposal: { ...proposal, song: proposal.song }, editToken };
+        if (proposal.type !== 'update' || !proposal.targetSongId) return { ...ready, target: null };
+        if (!editSource) return { state: 'error', message: 'La edición de canciones publicadas no está disponible aquí.' };
+        const found = await editSource.getSongForEdit(proposal.targetSongId);
+        if (!found) return { state: 'target-hidden' };
+        return {
+          ...ready,
+          target: {
+            songId: found.song.id,
+            published: songToDraft(found.song),
+            version: found.version,
+            outdated: proposal.baseVersion === found.version ? null : { baseVersion: proposal.baseVersion, baseSong: proposal.baseSong },
+          },
+        };
       })
       .catch((error: unknown): Loaded => ({
         state: 'error',
@@ -57,19 +87,26 @@ export const ProposalEditScreen: React.FC<ProposalEditScreenProps> = ({ code: ra
     return () => {
       cancelled = true;
     };
-  }, [code, editToken, repository]);
+  }, [code, editToken, repository, editSource, attempt]);
 
   if (loaded.state === 'ready') {
     return (
       <SongEditorScreen
+        // A newer version of the song is a new starting point.
+        key={`${loaded.proposal.trackingCode}:${loaded.target?.version ?? 0}`}
         categories={categories}
         onBackToSongbook={onBackToSongbook}
         onCheckStatus={onCheckStatus}
+        onReloadPublished={() => {
+          setLoaded({ state: 'loading' });
+          setAttempt((value) => value + 1);
+        }}
         resubmission={{
           trackingCode: loaded.proposal.trackingCode,
           editToken: loaded.editToken,
           reviewNote: loaded.proposal.reviewNote,
           song: loaded.proposal.song,
+          ...(loaded.target ? { target: loaded.target } : {}),
         }}
       />
     );
@@ -80,11 +117,13 @@ export const ProposalEditScreen: React.FC<ProposalEditScreenProps> = ({ code: ra
       ? 'Este navegador no conserva la clave para editar esta propuesta (solo se guarda en el navegador desde el que se envió). Puedes seguir consultando su estado.'
       : loaded.state === 'not-found'
         ? 'No se pudo recuperar esta propuesta desde este navegador.'
-        : loaded.state === 'not-editable'
-          ? `Esta propuesta ya no admite cambios. Su estado es: ${SUBMISSION_STATUS_LABELS[loaded.status]}.`
-          : loaded.state === 'error'
-            ? loaded.message
-            : '';
+        : loaded.state === 'target-hidden'
+          ? 'La canción que corrige esta propuesta ya no está publicada en el cancionero, así que no se pueden reenviar cambios sobre ella.'
+          : loaded.state === 'not-editable'
+            ? `Esta propuesta ya no admite cambios. Su estado es: ${SUBMISSION_STATUS_LABELS[loaded.status]}.`
+            : loaded.state === 'error'
+              ? loaded.message
+              : '';
 
   return (
     <div className="w-full px-5 py-6 sm:px-10 sm:py-8">

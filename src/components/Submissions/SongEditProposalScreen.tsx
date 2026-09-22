@@ -38,7 +38,6 @@ export const SongEditProposalScreen: React.FC<SongEditProposalScreenProps> = ({ 
   useEffect(() => {
     if (!source) return;
     const controller = new AbortController();
-    setLoad({ state: 'loading' });
     source
       .getSongForEdit(songId, { signal: controller.signal })
       .then((found) => setLoad(found ? { state: 'ready', found } : { state: 'missing' }))
@@ -59,7 +58,10 @@ export const SongEditProposalScreen: React.FC<SongEditProposalScreenProps> = ({ 
         backLabel="Volver a la canción"
         onCheckStatus={onCheckStatus}
         edit={{ songId: song.id, published: songToDraft(song), baseVersion: version }}
-        onReloadPublished={() => setAttempt((value) => value + 1)}
+        onReloadPublished={() => {
+          setLoad({ state: 'loading' });
+          setAttempt((value) => value + 1);
+        }}
       />
     );
   }
@@ -109,7 +111,14 @@ export const SongEditProposalScreen: React.FC<SongEditProposalScreenProps> = ({ 
             {message.text}
           </p>
           {load.state === 'error' && (
-            <button type="button" onClick={() => setAttempt((value) => value + 1)} className={`${secondaryButton} mt-5`}>
+            <button
+              type="button"
+              onClick={() => {
+                setLoad({ state: 'loading' });
+                setAttempt((value) => value + 1);
+              }}
+              className={`${secondaryButton} mt-5`}
+            >
               <RotateCcw aria-hidden="true" className="h-4 w-4" />
               Reintentar
             </button>

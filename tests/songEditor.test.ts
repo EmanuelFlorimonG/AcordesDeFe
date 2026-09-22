@@ -771,6 +771,32 @@ describe('Sugerir una edición de una canción publicada', () => {
     eq([stale.ok, stale.ok ? null : stale.error.reason, drafts.load(key)?.base?.version], [false, 'stale', 1]);
   });
 
+  it('rebase: corregir la propuesta sobre la versión publicada ahora', async () => {
+    const v1 = songToDraft(song);
+    const v2 = { ...v1, title: `${v1.title} (revisada)` };
+    const published = new Map([[song.id, { version: 1, song: v1, versions: new Map([[1, v1], [2, v2]]) }]]);
+    const backend = createMemorySubmissionRepository({ publishedSongs: published });
+    const attempt = createSubmissionAttempt();
+    const mine = { ...v1, tags: [...v1.tags, 'propuesta'] };
+    const receipt = await backend.submit(buildSubmissionPayload(mine, { type: 'update', targetSongId: song.id, baseVersion: 1, attempt }));
+    backend.requestChanges(receipt.trackingCode, 'Revisa los acordes del coro.');
+
+    // Mientras esperaba, se publicó la versión 2.
+    published.set(song.id, { version: 2, song: v2, versions: new Map([[1, v1], [2, v2]]) });
+    const forEdit = await backend.getForEdit(receipt.trackingCode, attempt.editToken);
+    eq([forEdit?.baseVersion, forEdit?.baseSong], [1, v1], 'el colaborador ve sobre qué versión la hizo');
+
+    const reasonOf = (promise: Promise<unknown>) => promise.then(() => 'ok', (error: SubmissionError) => error.reason);
+    const corrected = { ...v2, tags: [...v2.tags, 'propuesta'] };
+    const input = { trackingCode: receipt.trackingCode, editToken: attempt.editToken };
+    eq(await reasonOf(backend.resubmit({ ...input, song: corrected, baseVersion: 1 })), 'stale');
+    eq(await reasonOf(backend.resubmit({ ...input, song: corrected })), 'invalid', 'sin versión base no se reenvía una corrección');
+    eq(await reasonOf(backend.resubmit({ ...input, song: v2, baseVersion: 2 })), 'no-changes');
+    eq(await backend.resubmit({ ...input, song: corrected, baseVersion: 2 }), { trackingCode: receipt.trackingCode, status: 'pending' });
+    const after = await backend.getForEdit(receipt.trackingCode, attempt.editToken);
+    eq([after?.status, after?.baseVersion, after?.baseSong], ['pending', 2, v2], 'queda pendiente sobre la versión nueva');
+  });
+
   it('la ruta del editor de una canción', () => {
     eq(suggestEditHash('alfarero'), '#/song/alfarero/sugerir');
     eq(parseSuggestEditHash('#/song/alfarero/sugerir'), 'alfarero');

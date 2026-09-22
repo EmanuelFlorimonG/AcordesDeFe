@@ -15,6 +15,8 @@ import {
   validateEditorDocument,
   type EditorDocument,
 } from '../../editor/songEditorModel';
+import { compareSongs } from '../../admin/songDiff';
+import { SongComparisonView } from '../Admin/SongComparisonView';
 import { ConfirmDialog } from '../Setlists/ConfirmDialog';
 import { ResubmitDialog } from './ResubmitDialog';
 import { primaryButton, secondaryButton, sectionHeading } from '../Setlists/ui';
@@ -32,6 +34,22 @@ export interface ResubmissionContext {
   editToken: string;
   reviewNote: string | null;
   song: SongDraft;
+  /** Set when the proposal is an edit of a published song: what it is for, now */
+  target?: ResubmissionTarget;
+}
+
+/** The published song a proposal corrects, as it is right now. */
+export interface ResubmissionTarget {
+  songId: string;
+  published: SongDraft;
+  /** Its version now: what the corrected proposal is sent as made on */
+  version: number;
+  /**
+   * Set when the proposal was made on an older version: the editor then opens
+   * the published one and shows the author their own changes, without merging
+   * anything. Null when the proposal is already on the current version.
+   */
+  outdated: { baseVersion: number | null; baseSong: SongDraft | null } | null;
 }
 
 /** Suggesting an edit of a published song: made on the version published now. */
@@ -96,12 +114,26 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
   const sender = useMemo(() => getSubmissionSender(), []);
   // A new song, each proposal being corrected and each song being edited keep separate drafts.
   const draftKey = resubmission ? `edit:${resubmission.trackingCode}` : editOf ? updateDraftKey(editOf.songId) : NEW_SONG_DRAFT_KEY;
+  // A proposal for a published song is always made on one version: its own
+  // draft says which, so it is never continued on another one in silence.
+  const target = resubmission?.target;
   const base = useMemo<DraftBase | undefined>(
-    () => (editOf ? { songId: editOf.songId, version: editOf.baseVersion } : undefined),
-    [editOf]
+    () =>
+      editOf
+        ? { songId: editOf.songId, version: editOf.baseVersion }
+        : target
+          ? { songId: target.songId, version: target.version }
+          : undefined,
+    [editOf, target]
   );
   const [startingDocument] = useState<EditorDocument>(() =>
-    resubmission ? documentFor(resubmission.song) : editOf ? documentFor(editOf.published) : createEditorDocument()
+    resubmission
+      ? // Made on an older version: the current one is the starting point, and
+        // the author's own changes are shown beside it, never merged.
+        documentFor(target?.outdated ? target.published : resubmission.song)
+      : editOf
+        ? documentFor(editOf.published)
+        : createEditorDocument()
   );
   /** Changes left unsent on an older version, shown only as a reference once the current version is opened */
   const [previous, setPrevious] = useState<{ document: EditorDocument; version: number } | null>(null);
@@ -109,9 +141,9 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
   const [phase, setPhase] = useState<Phase>(() => {
     const stored = store.load(draftKey);
     if (!stored || !hasEditorContent(stored.document)) return { kind: 'editing' };
-    if (editOf && stored.base?.version !== editOf.baseVersion) return { kind: 'outdated', stored };
-    // An edit draft identical to the published song holds nothing to recover.
-    if (editOf && JSON.stringify(stored.document) === JSON.stringify(startingDocument)) return { kind: 'editing' };
+    if (base && stored.base?.version !== base.version) return { kind: 'outdated', stored };
+    // A draft identical to what the editor opens with holds nothing to recover.
+    if (base && JSON.stringify(stored.document) === JSON.stringify(startingDocument)) return { kind: 'editing' };
     return { kind: 'recover', stored };
   });
   const [doc, setDoc] = useState<EditorDocument>(startingDocument);
@@ -178,7 +210,8 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
   const songCheck = useMemo(() => validateSongDraft(draft, { knownCategories: categories }), [draft, categories]);
   const editorIssues = useMemo(() => validateEditorDocument(doc), [doc]);
   // An edit must change something of the published song (the database refuses one that doesn't).
-  const changesSomething = !editOf || songDraftChanges(editOf.published, draft);
+  const published = editOf?.published ?? target?.published;
+  const changesSomething = !published || songDraftChanges(published, draft);
   const canSend = songCheck.ok && !editorIssues.some((issue) => issue.severity === 'error') && changesSomething;
   const suggestions = useMemo(() => draft.chordsUsed.filter(isRecognizedChord).slice(0, 16), [draft.chordsUsed]);
 
@@ -235,7 +268,7 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
     );
   }
 
-  if (phase.kind === 'outdated' && editOf) {
+  if (phase.kind === 'outdated' && published && base) {
     const { stored } = phase;
     const madeOn = stored.base?.version;
     return (
@@ -249,8 +282,8 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
             La canción cambió desde tus cambios sin enviar
           </h1>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Empezaste a editar {madeOn ? `la versión ${madeOn}` : 'una versión anterior'} de «{editOf.published.title}» y la publicada ahora es la
-            versión {editOf.baseVersion}. Tus cambios no se aplican solos sobre la versión nueva: se abre la versión actual y puedes ver los
+            Empezaste a editar {madeOn ? `la versión ${madeOn}` : 'una versión anterior'} de «{published.title}» y la publicada ahora es la
+            versión {base.version}. Tus cambios no se aplican solos sobre la versión nueva: se abre la versión actual y puedes ver los
             tuyos al lado para volver a hacerlos.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -360,9 +393,18 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
               <p className="text-sm text-slate-500 dark:text-slate-400">El equipo revisa los cambios antes de publicarlos.</p>
             </>
           ) : resubmission ? (
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Corrige tu propuesta <span className="font-mono">{resubmission.trackingCode}</span> y reenvíala a revisión.
-            </p>
+            <>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Corrige tu propuesta <span className="font-mono">{resubmission.trackingCode}</span> y reenvíala a revisión.
+              </p>
+              {target && (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {target.outdated
+                    ? `«${target.published.title}» se actualizó: partes de la versión ${target.version}, la publicada ahora.`
+                    : `Cambios en «${target.published.title}», sobre la versión ${target.version}.`}
+                </p>
+              )}
+            </>
           ) : (
             <>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Comparte una canción con la comunidad.</p>
@@ -394,6 +436,37 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800 dark:text-amber-300">Cambios que pidió la revisión</p>
           <p className="mt-1 whitespace-pre-line text-sm text-amber-950 dark:text-amber-100">{resubmission.reviewNote}</p>
         </div>
+      )}
+
+      {target?.outdated && (
+        <section aria-labelledby="cambios-anteriores" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <h2 id="cambios-anteriores" className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            La canción cambió mientras esperaba revisión
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+            Tu propuesta se hizo sobre {target.outdated.baseVersion ? `la versión ${target.outdated.baseVersion}` : 'una versión anterior'} y la
+            publicada ahora es la {target.version}. Arriba tienes la versión actual para editarla; abajo, tus cambios anteriores, para volver a
+            hacerlos donde corresponda. Nada se combina solo.
+          </p>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm font-semibold text-amber-900 dark:text-amber-200">Tus cambios anteriores</summary>
+            <div className="mt-3">
+              {target.outdated.baseSong ? (
+                <SongComparisonView
+                  comparison={compareSongs(target.outdated.baseSong, resubmission?.song ?? draft)}
+                  title="Tus cambios anteriores"
+                  beforeLabel={`Versión ${target.outdated.baseVersion ?? ''}`.trim()}
+                  afterLabel="Tu propuesta"
+                  identicalText="Tu propuesta no cambiaba nada de aquella versión."
+                />
+              ) : (
+                <div className="rounded-xl bg-white p-3 dark:bg-dark-900">
+                  <SongPreview song={draftToSong(resubmission?.song ?? draft, 'propuesta-anterior')} heading="Tu propuesta anterior" />
+                </div>
+              )}
+            </div>
+          </details>
+        </section>
       )}
 
       {previous && (
@@ -465,6 +538,8 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
           sender={sender}
           trackingCode={resubmission.trackingCode}
           editToken={resubmission.editToken}
+          target={target}
+          onReloadPublished={onReloadPublished}
           drafts={store}
           draftKey={draftKey}
           onSent={(receipt) => {
