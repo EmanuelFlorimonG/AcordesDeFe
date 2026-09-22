@@ -14,21 +14,6 @@ export function readCatalogSource(value: string | undefined): 'bundled' | 'remot
   return value?.trim().toLowerCase() === 'bundled' ? 'bundled' : 'remote';
 }
 
-// TEMPORARY verification hook (dev only), removed after the browser tests.
-function simulateTemp(repository: import('./songRepository').SongRepository | null) {
-  if (!repository || !import.meta.env.DEV) return repository;
-  return {
-    ...repository,
-    listSongs: async (options?: { signal?: AbortSignal }) => {
-      const current = localStorage.getItem('genesaret_simulate_catalog_temp') ?? '';
-      if (current === 'offline') throw new Error('simulated offline');
-      if (current.startsWith('delay:')) await new Promise((resolve) => setTimeout(resolve, Number(current.slice(6))));
-      const songs = await repository.listSongs(options);
-      return current.startsWith('hide:') ? songs.filter((song) => song.id !== current.slice(5)) : songs;
-    },
-  };
-}
-
 let store: CatalogStore | null = null;
 
 export function getCatalogStore(): CatalogStore {
@@ -38,7 +23,7 @@ export function getCatalogStore(): CatalogStore {
     store = createCatalogStore({
       bundled: bundledSongRepository.getAll(),
       // The reader (and the REST client) load on the first refresh, after the first render.
-      remote: useRemote ? () => import('./remoteCatalog').then((module) => simulateTemp(module.createRemoteSongRepository())) : null,
+      remote: useRemote ? () => import('./remoteCatalog').then((module) => module.createRemoteSongRepository()) : null,
       cache: useRemote && status.state === 'configured' ? getCatalogCache(status.config.url) : null,
     });
   }
