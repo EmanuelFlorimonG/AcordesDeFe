@@ -513,6 +513,54 @@ describe('Guardar y volver a abrir', () => {
   });
 });
 
+// --- Local data written before any of this ------------------------------------------
+
+describe('Los datos ya guardados en el navegador se siguen leyendo igual', () => {
+  it('un Setlist guardado antes de las versiones conserva sus ids y su arreglo', () => {
+    const stored = {
+      version: SETLIST_STORAGE_VERSION,
+      setlists: [
+        {
+          id: 'setlist-guardado',
+          name: 'Misa Domingo',
+          date: '2026-09-20',
+          description: '',
+          participantIds: ['maria'],
+          items: [
+            {
+              id: 'item-guardado',
+              songId: 'huracan-hakuna',
+              moment: 'Entrada',
+              transposeSteps: 2,
+              capoFret: 1,
+              notes: 'Entrar suave',
+              arrangement: {
+                sections: [
+                  { id: 'bloque-1', sourceSectionId: 'section-1', label: 'Verso 1', repeatCount: 1, voices: ['women'], assignedMemberIds: ['maria'], instruction: '', transition: { type: 'continue' } },
+                  { id: 'bloque-2', sourceSectionId: 'section-2', label: 'Coro', repeatCount: 2, voices: [], assignedMemberIds: [], instruction: 'Fuerte', transition: { type: 'end' } },
+                ],
+              },
+            },
+          ],
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      ],
+    };
+    const [setlist] = parseStoredSetlists(JSON.stringify(stored)).setlists;
+    const item = setlist.items[0];
+    eq([setlist.id, item.id, item.songId], ['setlist-guardado', 'item-guardado', 'huracan-hakuna'], 'nada se reasigna al leerlo');
+    eq([item.transposeSteps, item.capoFret, item.notes], [2, 1, 'Entrar suave']);
+    eq(item.arrangement?.sections.map((section) => [section.id, section.sourceSectionId, section.label]), [
+      ['bloque-1', 'section-1', 'Verso 1'],
+      ['bloque-2', 'section-2', 'Coro'],
+    ]);
+    eq([item.arrangement?.songVersion, item.arrangement?.songStructure], [undefined, undefined], 'sin versión ni estructura: cuenta como la 1');
+    // En la versión 1 de su canción se toca tal cual, como siempre.
+    eq(bindArrangement(SECTIONS, item.arrangement, 1).state, 'current');
+  });
+});
+
 // --- The song got a new version ------------------------------------------------------
 
 describe('El arreglo después de una nueva versión de la canción', () => {

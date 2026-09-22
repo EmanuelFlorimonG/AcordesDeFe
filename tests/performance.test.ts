@@ -357,6 +357,20 @@ describe('El historial no cambia con lo que venga después', () => {
     eq(record.songs[2].key, 'Bb');
   });
 
+  it('publicar otra versión de la canción, o revisar su arreglo, no toca lo ya registrado', () => {
+    const record = snapshot();
+    const before = JSON.stringify(record);
+    // La canción pasa a la versión 2 y su arreglo queda pendiente de revisar.
+    const v2 = new Map([...SONGS, [SENCILLAMENTE.id, { ...SENCILLAMENTE, version: 2, content: `${SENCILLAMENTE.content}
+
+[Coro]
+Otra letra` }]]);
+    const later = snapshot({ songsById: v2 }, 'v');
+    eq(later.songs.find((entry) => entry.songId === 'sencillamente-dios')?.sections, null, 'un cierre nuevo no usa un arreglo pendiente');
+    eq(JSON.stringify(record), before, 'y el registro anterior sigue igual');
+    eq(record.songs[2].sections?.map((entry) => entry.label), ['Verso 1', 'Coro'], 'con el arreglo que se tocó aquel día');
+  });
+
   it('renombrar a María: el registro dice María Rodríguez, los datos activos María Pérez', () => {
     const record = snapshot();
     const renamed = new Map(MEMBERS);
