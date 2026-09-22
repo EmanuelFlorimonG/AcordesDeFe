@@ -213,6 +213,56 @@ describe('submit-song: reenvío corregido por su autor', () => {
     }
   });
 
+  it('una edición reenviada lleva su versión base hasta la base de datos', async () => {
+    const { deps, resubmitted } = setup();
+    const response = await handleSubmitSong(post({ ...resubmit, baseVersion: 3, turnstileToken: 'tok' }), deps);
+    eq(response.status, 200);
+    eq(resubmitted, [{ input: { trackingCode: 'GS-2345-6789', editToken: 'b'.repeat(64), song, baseVersion: 3 }, clientIp: '203.0.113.7' }]);
+    // Sin versión (o null): una canción nueva; la base de datos decide si hacía falta.
+    for (const baseVersion of [undefined, null]) {
+      const plain = setup();
+      await handleSubmitSong(post({ ...resubmit, baseVersion, turnstileToken: 'tok' }), plain.deps);
+      eq(plain.resubmitted, [{ input: { trackingCode: 'GS-2345-6789', editToken: 'b'.repeat(64), song }, clientIp: '203.0.113.7' }]);
+    }
+  });
+
+  it('una versión base mal formada se rechaza antes de preguntar a Cloudflare', async () => {
+    for (const baseVersion of [0, -1, 1.5, '2', true, [], {}, 1e9, Number.MAX_SAFE_INTEGER]) {
+      const { deps, verified, resubmitted } = setup();
+      const response = await handleSubmitSong(post({ ...resubmit, baseVersion, turnstileToken: 'tok' }), deps);
+      eq([response.status, await messageOf(response), verified.length, resubmitted.length], [400, 'GENESARET:invalid:base_version', 0, 0]);
+    }
+  });
+
+  it('canción cambiada, sin cambios, versión o destino inválidos: códigos que la app puede explicar', async () => {
+    for (const [thrown, status, message] of [
+      [new GenesaretError('GENESARET:stale'), 409, 'GENESARET:stale'],
+      [new GenesaretError('GENESARET:invalid:no_changes'), 400, 'GENESARET:invalid:no_changes'],
+      [new GenesaretError('GENESARET:invalid:base_version'), 400, 'GENESARET:invalid:base_version'],
+      [new GenesaretError('GENESARET:invalid:target'), 400, 'GENESARET:invalid:target'],
+      // El resto de detalles sigue sin salir.
+      [new GenesaretError('GENESARET:invalid:too_many_resubmissions'), 400, 'GENESARET:invalid'],
+      [new GenesaretError('GENESARET:stale:x'), 503, 'GENESARET:unavailable'],
+    ] as const) {
+      for (const action of ['submit', 'resubmit'] as const) {
+        const fail = async () => {
+          throw thrown;
+        };
+        const { deps } = setup(action === 'submit' ? { submit: fail } : { resubmit: fail });
+        const body = action === 'submit' ? { payload, turnstileToken: 'tok' } : { ...resubmit, baseVersion: 2, turnstileToken: 'tok' };
+        const response = await handleSubmitSong(post(body), deps);
+        eq([response.status, await messageOf(response)], [status, message]);
+      }
+    }
+  });
+
+  it('el envío nuevo pasa baseVersion dentro del payload sin tocarlo', async () => {
+    const edit = { ...payload, type: 'update', targetSongId: 'una-cancion', baseVersion: 4 };
+    const { deps, stored } = setup();
+    const response = await handleSubmitSong(post({ payload: edit, turnstileToken: 'tok' }), deps);
+    eq([response.status, stored], [200, [{ payload: edit, clientIp: '203.0.113.7' }]]);
+  });
+
   it('sin "action" sigue siendo un envío nuevo, como en 6B', async () => {
     const { deps, stored, resubmitted } = setup();
     const response = await handleSubmitSong(post({ payload, turnstileToken: 'tok' }), deps);

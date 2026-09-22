@@ -11,7 +11,9 @@
  * Two actions, both behind the same checks:
  *   - "submit" (the default): a new proposal.
  *   - "resubmit": its author sends it again, corrected, after the team asked
- *     for changes; proven by the tracking code and the edit token.
+ *     for changes; proven by the tracking code and the edit token. An edit of
+ *     a published song also says which version it is based on (baseVersion):
+ *     the database refuses it ("stale") unless that is still the current one.
  *
  * This file uses only web standards (Request, Response, fetch) and receives
  * everything else as arguments, so the same code runs in Supabase (Deno,
@@ -40,10 +42,31 @@ export interface ResubmitInput {
   trackingCode: string;
   editToken: string;
   song: object;
+  /** Edits of a published song only: the version the corrected proposal was made on */
+  baseVersion?: number;
 }
 
 const TRACKING_CODE = /^GS-[23456789ABCDEFGHJKMNPQRSTWXYZ]{4}-[23456789ABCDEFGHJKMNPQRSTWXYZ]{4}$/;
 const EDIT_TOKEN = /^[0-9a-f]{64}$/;
+
+/** Same bounds as the database: a positive integer of at most nine digits. */
+const isBaseVersion = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 999_999_999;
+
+/**
+ * The refusals whose detail the app needs to explain what happened. Every
+ * other "invalid:*" detail is collapsed to "invalid".
+ */
+const INVALID_DETAILS = new Set(['invalid:no_changes', 'invalid:base_version', 'invalid:target']);
+
+function databaseRefusal(message: string): { status: number; code: string } | null {
+  const code = message.slice('GENESARET:'.length);
+  if (code.startsWith('rate_limited')) return { status: 429, code: 'rate_limited' };
+  if (code.startsWith('not_editable')) return { status: 409, code: 'not_editable' };
+  // The song changed after the proposal was made on it: nothing was stored.
+  if (code === 'stale') return { status: 409, code: 'stale' };
+  if (code.startsWith('invalid')) return { status: 400, code: INVALID_DETAILS.has(code) ? code : 'invalid' };
+  return null;
+}
 
 /** The action the browser widget declares, so a token solved for anything else is refused. */
 export const TURNSTILE_ACTION = 'submit-song';
@@ -123,14 +146,16 @@ export async function handleSubmitSong(request: Request, deps: SubmitSongDeps): 
     return refuse(400, 'invalid:payload', cors);
   }
   if (typeof body !== 'object' || body === null) return refuse(400, 'invalid:payload', cors);
-  const { action = 'submit', payload, turnstileToken, trackingCode, editToken, song } = body as Record<string, unknown>;
+  const { action = 'submit', payload, turnstileToken, trackingCode, editToken, song, baseVersion } = body as Record<string, unknown>;
   // Everything that can be checked without Cloudflare is checked first.
   let resubmission: ResubmitInput | null = null;
   if (action === 'resubmit') {
     const code = typeof trackingCode === 'string' ? trackingCode.trim().toUpperCase() : '';
     if (!TRACKING_CODE.test(code) || typeof editToken !== 'string' || !EDIT_TOKEN.test(editToken)) return refuse(400, 'invalid', cors);
     if (typeof song !== 'object' || song === null || Array.isArray(song)) return refuse(400, 'invalid:payload', cors);
-    resubmission = { trackingCode: code, editToken, song };
+    // Absent (or null) for a new song; the database decides whether this proposal needs it.
+    if (baseVersion !== undefined && baseVersion !== null && !isBaseVersion(baseVersion)) return refuse(400, 'invalid:base_version', cors);
+    resubmission = isBaseVersion(baseVersion) ? { trackingCode: code, editToken, song, baseVersion } : { trackingCode: code, editToken, song };
   } else if (action !== 'submit') {
     return refuse(400, 'invalid:action', cors);
   } else if (typeof payload !== 'object' || payload === null) {
@@ -159,9 +184,8 @@ export async function handleSubmitSong(request: Request, deps: SubmitSongDeps): 
     return reply(200, result, cors);
   } catch (error) {
     if (error instanceof GenesaretError) {
-      if (error.message.startsWith('GENESARET:rate_limited')) return refuse(429, 'rate_limited', cors);
-      if (error.message.startsWith('GENESARET:not_editable')) return refuse(409, 'not_editable', cors);
-      if (error.message.startsWith('GENESARET:invalid')) return refuse(400, 'invalid', cors);
+      const refusal = databaseRefusal(error.message);
+      if (refusal) return refuse(refusal.status, refusal.code, cors);
     }
     return refuse(503, 'unavailable', cors);
   }

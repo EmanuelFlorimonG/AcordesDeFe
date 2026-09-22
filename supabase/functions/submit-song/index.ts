@@ -69,6 +69,7 @@ async function resubmit(input: ResubmitInput, clientIp: string | null) {
     p_edit_token: input.editToken,
     p_song: input.song,
     p_client_ip: clientIp,
+    p_base_version: input.baseVersion ?? null,
   });
   if (!row?.tracking_code) throw new Error('empty receipt');
   return { trackingCode: String(row.tracking_code), status: String(row.status) };
