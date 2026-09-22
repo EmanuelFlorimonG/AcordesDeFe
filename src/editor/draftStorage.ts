@@ -49,10 +49,27 @@ export interface StoredSongDraft {
    * draft on another version without saying so.
    */
   base?: DraftBase;
+  /**
+   * Changes written on an older version that the author is reapplying by
+   * hand. They are kept here, next to the draft being written, until the
+   * proposal is sent or they are discarded on purpose: autosaving the new
+   * draft must never be what loses them.
+   */
+  previous?: { document: EditorDocument; version: number | null };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** The reference kept during a rebase, or undefined when there isn't a usable one. */
+function parsePrevious(value: unknown): StoredSongDraft['previous'] | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const entry = value as Record<string, unknown>;
+  const document = parseEditorDocument(entry.document);
+  if (!document) return undefined;
+  const version = Number.isInteger(entry.version) && (entry.version as number) >= 1 ? (entry.version as number) : null;
+  return { document, version };
+}
 
 export function parseStoredDrafts(raw: string | null): { drafts: StoredSongDraft[]; unreadable: boolean } {
   if (raw === null || raw === '') return { drafts: [], unreadable: false };
@@ -74,7 +91,17 @@ export function parseStoredDrafts(raw: string | null): { drafts: StoredSongDraft
     if (entry.key.startsWith('update:') && (!base || updateDraftKey(base.songId) !== entry.key)) return [];
     seen.add(entry.key);
     const updatedAt = typeof entry.updatedAt === 'number' && Number.isFinite(entry.updatedAt) ? entry.updatedAt : 0;
-    return [{ key: entry.key, document, updatedAt, attempt: isSubmissionAttempt(entry.attempt) ? entry.attempt : null, ...(base ? { base } : {}) }];
+    const previous = parsePrevious(entry.previous);
+    return [
+      {
+        key: entry.key,
+        document,
+        updatedAt,
+        attempt: isSubmissionAttempt(entry.attempt) ? entry.attempt : null,
+        ...(base ? { base } : {}),
+        ...(previous ? { previous } : {}),
+      },
+    ];
   });
   return { drafts, unreadable: false };
 }
@@ -94,6 +121,14 @@ export interface SongDraftStore {
   remove(key: string): void;
   /** Remembers (or forgets) the retry identity of this draft's send */
   setAttempt(key: string, attempt: SubmissionAttempt | null): boolean;
+  /**
+   * Starts writing `document` on a new base while keeping what was written on
+   * the old one as a reference. Only this and `setPrevious(key, null)` change
+   * that reference: saving the draft never touches it.
+   */
+  startRebase(key: string, document: EditorDocument, base: DraftBase, previous: NonNullable<StoredSongDraft['previous']>, now?: number): boolean;
+  /** Forgets the reference kept during a rebase (the author is done with it) */
+  setPrevious(key: string, previous: null): boolean;
   /** True when stored drafts couldn't be read and were set aside (backed up) */
   readonly recoveredFromUnreadableData: boolean;
 }
@@ -135,6 +170,7 @@ export function createSongDraftStore(storage: KeyValueStorage | null = getBrowse
       if (key.startsWith('update:') && (!base || updateDraftKey(base.songId) !== key)) return false;
       // Another version is another starting point: what was being sent before is not this send.
       const sameBase = previous?.base?.version === base?.version;
+      const reference = previous?.previous;
       return persist([
         ...drafts.filter((entry) => entry.key !== key),
         {
@@ -145,8 +181,24 @@ export function createSongDraftStore(storage: KeyValueStorage | null = getBrowse
           // once the song changes, sending it again is a new proposal.
           attempt: previous && sameBase && JSON.stringify(previous.document) === JSON.stringify(document) ? previous.attempt : null,
           ...(base ? { base: { songId: base.songId, version: base.version } } : {}),
+          // Kept as it is: only startRebase and setPrevious decide about it.
+          ...(reference ? { previous: reference } : {}),
         },
       ]);
+    },
+    startRebase: (key, document, base, previous, now = Date.now()) => {
+      if (updateDraftKey(base.songId) !== key) return false;
+      return persist([
+        ...drafts.filter((entry) => entry.key !== key),
+        { key, document, updatedAt: now, attempt: null, base: { songId: base.songId, version: base.version }, previous },
+      ]);
+    },
+    setPrevious: (key) => {
+      const entry = drafts.find((draft) => draft.key === key);
+      if (!entry) return false;
+      const { previous: _dropped, ...rest } = entry;
+      void _dropped;
+      return persist(drafts.map((draft) => (draft.key === key ? rest : draft)));
     },
     setAttempt: (key, attempt) => {
       const previous = drafts.find((entry) => entry.key === key);

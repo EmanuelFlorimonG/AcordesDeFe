@@ -797,6 +797,49 @@ describe('Sugerir una edición de una canción publicada', () => {
     eq([after?.status, after?.baseVersion, after?.baseSong], ['pending', 2, v2], 'queda pendiente sobre la versión nueva');
   });
 
+  it('durante un rebase manual, los cambios anteriores sobreviven al autoguardado y a recargar', () => {
+    const storage = memoryStorage();
+    const store = createSongDraftStore(storage);
+    const base = { songId: song.id, version: 1 };
+    const withABC = { ...sampleDocument(), meta: { ...sampleDocument().meta, title: 'A + B + C' } };
+    store.save(key, withABC, 1000, base);
+
+    // Se publicó la versión 2: se abre la actual y lo anterior queda como referencia.
+    const onV2 = { ...sampleDocument(), meta: { ...sampleDocument().meta, title: 'Versión 2 publicada' } };
+    eq(store.startRebase(key, onV2, { songId: song.id, version: 2 }, { document: withABC, version: 1 }), true);
+    eq(store.startRebase('update:otra', onV2, { songId: song.id, version: 2 }, { document: withABC, version: 1 }), false);
+
+    // El colaborador reaplica solo A y el borrador se autoguarda varias veces.
+    const withA = { ...onV2, meta: { ...onV2.meta, title: 'Versión 2 con A' } };
+    store.save(key, withA, 2000, { songId: song.id, version: 2 });
+    store.save(key, withA, 2500, { songId: song.id, version: 2 });
+
+    const reopened = createSongDraftStore(storage).load(key);
+    eq(reopened?.document, withA, 'el borrador actual es lo reaplicado');
+    eq(reopened?.base, { songId: song.id, version: 2 });
+    eq(reopened?.previous, { document: withABC, version: 1 }, 'B y C siguen disponibles como referencia');
+
+    // Solo el colaborador decide dejar de conservarlos.
+    eq(createSongDraftStore(storage).setPrevious(key, null), true);
+    eq('previous' in (createSongDraftStore(storage).load(key) ?? {}), false);
+    eq(createSongDraftStore(storage).load(key)?.document, withA, 'y su borrador sigue intacto');
+    // Enviar la propuesta se lleva el borrador entero, referencia incluida.
+    store.save(key, withA, 3000, { songId: song.id, version: 2 });
+    store.remove(key);
+    eq(createSongDraftStore(storage).load(key), null);
+  });
+
+  it('una referencia guardada que no se puede leer no rompe el borrador', () => {
+    const document = sampleDocument();
+    for (const previous of [null, 'texto', { document: { schemaVersion: 9 }, version: 1 }, { version: 1 }]) {
+      const storage = memoryStorage({
+        [SONG_DRAFTS_STORAGE_KEY]: JSON.stringify({ version: 1, drafts: [{ key, document, updatedAt: 1, attempt: null, base: { songId: song.id, version: 2 }, previous }] }),
+      });
+      const loaded = createSongDraftStore(storage).load(key);
+      eq([loaded?.document, 'previous' in (loaded ?? {})], [document, false]);
+    }
+  });
+
   it('la ruta del editor de una canción', () => {
     eq(suggestEditHash('alfarero'), '#/song/alfarero/sugerir');
     eq(parseSuggestEditHash('#/song/alfarero/sugerir'), 'alfarero');

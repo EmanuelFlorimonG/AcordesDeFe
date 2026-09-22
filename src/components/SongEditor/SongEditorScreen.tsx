@@ -135,8 +135,12 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
         ? documentFor(editOf.published)
         : createEditorDocument()
   );
-  /** Changes left unsent on an older version, shown only as a reference once the current version is opened */
-  const [previous, setPrevious] = useState<{ document: EditorDocument; version: number } | null>(null);
+  /**
+   * Changes left unsent on an older version, kept in this browser while the
+   * author reapplies them by hand. They live with the draft, not only here,
+   * so a reload (or the next autosave) never loses them.
+   */
+  const [previous, setPrevious] = useState<StoredSongDraft['previous'] | null>(() => store.load(draftKey)?.previous ?? null);
 
   const [phase, setPhase] = useState<Phase>(() => {
     const stored = store.load(draftKey);
@@ -291,7 +295,12 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
               type="button"
               autoFocus
               onClick={() => {
-                setPrevious({ document: stored.document, version: madeOn ?? 0 });
+                const reference = { document: stored.document, version: madeOn ?? null };
+                // The draft becomes the current version, and what was written on the old one is kept beside it.
+                if (base) store.startRebase(draftKey, startingDocument, base, reference);
+                setPrevious(reference);
+                setDoc(startingDocument);
+                setSaveState('saved');
                 setPhase({ kind: 'editing' });
               }}
               className={primaryButton}
@@ -475,11 +484,22 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
             Tus cambios anteriores, sin enviar{previous.version ? ` (sobre la versión ${previous.version})` : ''}
           </summary>
           <p className="mt-2 text-xs text-amber-900/80 dark:text-amber-200/80">
-            Solo para consultarlos: no se copian a la versión actual. Se reemplazan en este navegador en cuanto escribas algo aquí.
+            Solo para consultarlos: no se copian solos a la versión actual. Se guardan en este navegador hasta que envíes la propuesta o los
+            descartes aquí.
           </p>
           <div className="mt-3 rounded-xl bg-white p-3 dark:bg-dark-900">
             <SongPreview song={draftToSong(editorToSongDraft(previous.document), 'cambios-anteriores')} heading="Tus cambios anteriores" />
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              store.setPrevious(draftKey, null);
+              setPrevious(null);
+            }}
+            className={`${secondaryButton} mt-3`}
+          >
+            Ya no los necesito
+          </button>
         </details>
       )}
 
