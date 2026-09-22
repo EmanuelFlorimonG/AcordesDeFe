@@ -14,7 +14,7 @@ interface ApproveDialogProps {
   suggestedId: string;
   takenIds: ReadonlySet<string>;
   reservedIds: ReadonlySet<string>;
-  /** For a correction: the version that will be published */
+  /** For an edit: the version that will be published */
   nextVersion: number | null;
   busy: boolean;
   error: string;
@@ -43,7 +43,7 @@ export const ApproveDialog: React.FC<ApproveDialogProps> = ({
   return (
     <Dialog
       role="alertdialog"
-      title={kind === 'create' ? '¿Publicar esta canción?' : '¿Publicar esta corrección?'}
+      title={kind === 'create' ? '¿Publicar esta canción?' : '¿Publicar esta edición?'}
       description={
         kind === 'create'
           ? `Se creará una canción oficial en el catálogo: «${songTitle}».`
