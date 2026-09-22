@@ -78,6 +78,14 @@ export interface SetlistArrangement {
    * songs had versions: those were all made on version 1.
    */
   songVersion?: number;
+  /**
+   * The names of every section of the song at that version, in order. Without
+   * it there is no way to tell whether a block's name meant one section or
+   * several back then, and a block can only be moved to a section of a newer
+   * version when it was unambiguous on both sides. Absent in arrangements
+   * saved before this was recorded: those are reviewed by hand.
+   */
+  songStructure?: string[];
 }
 
 export interface SetlistItem {

@@ -156,6 +156,8 @@ const SETLIST: Setlist = {
       notes: 'Entrar suave',
       transitionToNext: { type: 'stop', instruction: '' },
       arrangement: {
+        songVersion: 1,
+        songStructure: ['Verso 1', 'Coro'],
         sections: [
           {
             id: 'a-verso',

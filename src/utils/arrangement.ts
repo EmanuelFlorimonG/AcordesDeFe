@@ -342,6 +342,7 @@ export function duplicateArrangement(
           : { ...section.transition },
     })),
     ...(arrangement.songVersion !== undefined ? { songVersion: arrangement.songVersion } : {}),
+    ...(arrangement.songStructure !== undefined ? { songStructure: [...arrangement.songStructure] } : {}),
   };
 }
 
@@ -401,12 +402,24 @@ export function sanitizeArrangement(
 
   if (sections.length === 0) return undefined;
   const songVersion = Number.isInteger(value.songVersion) && (value.songVersion as number) >= 1 ? (value.songVersion as number) : undefined;
-  return { sections: withoutBrokenJumps(sections), ...(songVersion !== undefined ? { songVersion } : {}) };
+  const songStructure = Array.isArray(value.songStructure) && value.songStructure.every((label) => typeof label === 'string')
+    ? (value.songStructure as string[]).map((label) => label.slice(0, 60))
+    : undefined;
+  return {
+    sections: withoutBrokenJumps(sections),
+    ...(songVersion !== undefined ? { songVersion } : {}),
+    ...(songStructure !== undefined ? { songStructure } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
 // An arrangement after the song got a new version
 // ---------------------------------------------------------------------------
+
+/** The names of a song's sections, in order: what an arrangement records to prove what a name meant. */
+export function songStructureOf(sections: SongSection[]): string[] {
+  return listArrangementSources(sections).map((source) => source.label);
+}
 
 /** The version an arrangement was made on; arrangements older than versions were made on 1. */
 export function arrangementVersionOf(arrangement: SetlistArrangement): number {
@@ -443,13 +456,15 @@ export type ArrangementBinding =
  *
  * Section ids are positions ("section-3"), so after an edit that adds, removes
  * or reorders sections they may point at the wrong place. A block is moved
- * only when there is no doubt at all:
- *   - its name appears exactly once among the sections of the song now
- *     (a bare "Coro" that repeats the chorus is that same section), and
- *   - no other block of the arrangement with that name pointed at a
- *     different section (two different "Coro" in the old version can't both
- *     become the single one now without guessing).
- * Anything else stays pending: a name that is gone, repeated or doubtful.
+ * only when its name meant exactly one section on BOTH sides:
+ *   - the arrangement recorded the song's structure when it was saved, and
+ *     that name appears exactly once in it, and
+ *   - it appears exactly once among the sections of the song now (a bare
+ *     "Coro" that repeats the chorus is that same section).
+ * Anything else stays pending: a name that is gone, repeated, doubtful, or an
+ * arrangement that never recorded what its names meant. Two choruses where one
+ * was dropped must never be matched by name: the block kept "Coro (primero)"
+ * and the one left may be the other one.
  */
 export function bindArrangement(
   sections: SongSection[],
@@ -462,15 +477,16 @@ export function bindArrangement(
   const sources = listArrangementSources(sections);
   const byLabel = new Map<string, ArrangementSource[]>();
   for (const source of sources) byLabel.set(source.label, [...(byLabel.get(source.label) ?? []), source]);
-  const pointedAt = new Map<string, Set<string>>();
-  for (const entry of arrangement.sections) {
-    pointedAt.set(entry.label, (pointedAt.get(entry.label) ?? new Set()).add(entry.sourceSectionId));
-  }
+  // What each name meant in the version this arrangement was made on. Without
+  // it nothing can be proven, and every block is reviewed by hand.
+  const before = new Map<string, number>();
+  for (const label of arrangement.songStructure ?? []) before.set(label, (before.get(label) ?? 0) + 1);
+  const proven = arrangement.songStructure !== undefined;
 
   const pendingIds: string[] = [];
   const rebound = arrangement.sections.map((entry) => {
     const matches = entry.label ? byLabel.get(entry.label) ?? [] : [];
-    if (matches.length !== 1 || (pointedAt.get(entry.label)?.size ?? 0) !== 1) {
+    if (!proven || matches.length !== 1 || before.get(entry.label) !== 1) {
       pendingIds.push(entry.id);
       return entry;
     }
@@ -500,9 +516,13 @@ export function rebindArrangementSection(
   };
 }
 
-/** The arrangement as it is saved: stamped with the version of the song it was checked against. */
-export function stampArrangement(arrangement: SetlistArrangement, songVersion: number): SetlistArrangement {
-  return { ...arrangement, songVersion };
+/**
+ * The arrangement as it is saved: stamped with the version of the song it was
+ * checked against, and with that version's section names, so a later version
+ * can tell what each name meant here.
+ */
+export function stampArrangement(arrangement: SetlistArrangement, songVersion: number, sections: SongSection[]): SetlistArrangement {
+  return { ...arrangement, songVersion, songStructure: songStructureOf(sections) };
 }
 
 // ---------------------------------------------------------------------------

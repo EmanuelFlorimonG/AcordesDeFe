@@ -147,7 +147,7 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
           arrangement:
             arrangement && !matchesSongStructure(songSections, arrangement)
               ? pendingIds.length === 0
-                ? stampArrangement(arrangement, songVersion)
+                ? stampArrangement(arrangement, songVersion, songSections)
                 : arrangement
               : null,
           // While this entry is the last one there is nothing to go into, so
