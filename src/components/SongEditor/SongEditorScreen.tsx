@@ -12,6 +12,7 @@ import {
   editorToSongDraft,
   hasEditorContent,
   isRecognizedChord,
+  proposedSongDraft,
   validateEditorDocument,
   type EditorDocument,
 } from '../../editor/songEditorModel';
@@ -210,7 +211,10 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
   }, [saveNow]);
 
   // --- Checks, with the same engines the app reads songs with ---------------------
-  const draft = useMemo(() => editorToSongDraft(doc), [doc]);
+  // What the editor opened from, when it opened from a song that already
+  // exists: its text is kept exactly while the author doesn't touch the lyrics.
+  const origin = editOf?.published ?? (target?.outdated ? target.published : resubmission?.song) ?? null;
+  const draft = useMemo(() => proposedSongDraft(origin, startingDocument, doc), [origin, startingDocument, doc]);
   const songCheck = useMemo(() => validateSongDraft(draft, { knownCategories: categories }), [draft, categories]);
   const editorIssues = useMemo(() => validateEditorDocument(doc), [doc]);
   // An edit must change something of the published song (the database refuses one that doesn't).

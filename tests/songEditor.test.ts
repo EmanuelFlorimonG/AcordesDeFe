@@ -6,6 +6,7 @@ import { validateSongDraft } from '../src/catalog/validateSongDraft';
 import {
   buildSubmissionPayload,
   createSubmissionAttempt,
+  songDraftChanges,
   isSubmissionAttempt,
   type SongSubmissionPayload,
   type SubmissionReceipt,
@@ -35,6 +36,7 @@ import {
   moveSectionBy,
   parseEditorDocument,
   placeChord,
+  proposedSongDraft,
   remapAnchors,
   removeChord,
   removeSection,
@@ -838,6 +840,55 @@ describe('Sugerir una edición de una canción publicada', () => {
       const loaded = createSongDraftStore(storage).load(key);
       eq([loaded?.document, 'previous' in (loaded ?? {})], [document, false]);
     }
+  });
+
+  it('abrir cualquiera de las 97 y enviar sin tocar nada no propone ningún cambio', () => {
+    const differ: string[] = [];
+    for (const catalogSong of MOCK_SONGS) {
+      const published = songToDraft(catalogSong);
+      const { content, chordsUsed: _derived, ...meta } = published;
+      void _derived;
+      const opened = contentToEditor(content, meta);
+      const proposed = proposedSongDraft(published, opened, opened);
+      // Literalmente lo mismo: es lo que compara la base de datos antes de guardar.
+      if (proposed.content !== published.content || songDraftChanges(published, proposed)) differ.push(catalogSong.id);
+    }
+    eq(differ, [], 'ninguna canción cambia solo por abrirla');
+    checks += 96;
+  });
+
+  it('y sí detecta los cambios de verdad', () => {
+    const published = songToDraft(MOCK_SONGS[0]);
+    const { content, chordsUsed: _derived, ...meta } = published;
+    void _derived;
+    const opened = contentToEditor(content, meta);
+    const changed = (next: EditorDocument) => songDraftChanges(published, proposedSongDraft(published, opened, next));
+
+    // Letra.
+    const words = {
+      ...opened,
+      sections: opened.sections.map((section, index) =>
+        index === 0 ? { ...section, lines: [...section.lines, createLine(idSequence('l'), 'Una línea más')] } : section
+      ),
+    };
+    eq(changed(words), true, 'letra añadida');
+    // Acorde.
+    const withChord = {
+      ...opened,
+      sections: opened.sections.map((section, index) =>
+        index === 0 ? { ...section, lines: section.lines.map((line, at) => (at === 0 ? placeChord(line, 0, 'F#m', idSequence('c')) : line)) } : section
+      ),
+    };
+    eq(changed(withChord), true, 'acorde puesto');
+    // Metadatos.
+    eq(changed({ ...opened, meta: { ...opened.meta, tempo: (opened.meta.tempo ?? 60) + 5 } }), true, 'tempo cambiado');
+    eq(changed({ ...opened, meta: { ...opened.meta, title: `${opened.meta.title} (nueva)` } }), true, 'título cambiado');
+    // Sección añadida, quitada y reordenada.
+    eq(changed(addSection(opened, 'puente')), true, 'sección añadida');
+    eq(changed(removeSection(opened, opened.sections[opened.sections.length - 1].id)), true, 'sección quitada');
+    eq(changed(moveSectionBy(opened, opened.sections[0].id, 1)), true, 'secciones reordenadas');
+    // Y volver a dejarlo como estaba no propone nada.
+    eq(changed(opened), false);
   });
 
   it('la ruta del editor de una canción', () => {

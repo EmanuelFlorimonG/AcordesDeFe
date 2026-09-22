@@ -440,6 +440,22 @@ export function editorToSongDraft(doc: EditorDocument): SongDraft {
 }
 
 /**
+ * The proposal as it will be sent, starting from a song that already exists.
+ *
+ * Writing the editor's model back as text is not always the same text: a
+ * "Coro:" header is written as "[Coro]", blank lines between stanzas are
+ * normalised. That is fine for what the author actually edits, and wrong for
+ * everything else: it would send changes nobody made, and a song opened and
+ * closed without touching anything would count as a new version. So while the
+ * lyrics are exactly as they opened, the original text travels untouched.
+ */
+export function proposedSongDraft(origin: SongDraft | null, opened: EditorDocument, current: EditorDocument): SongDraft {
+  const draft = editorToSongDraft(current);
+  if (!origin || JSON.stringify(current.sections) !== JSON.stringify(opened.sections)) return draft;
+  return { ...draft, content: origin.content, chordsUsed: [...origin.chordsUsed] };
+}
+
+/**
  * Song text into the editor, read by the app's parser. Used to reopen a text
  * and by the tests that prove the editor writes what the parser reads.
  */

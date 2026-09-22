@@ -166,24 +166,27 @@ export function isBaseVersion(value: unknown): value is number {
  * changes nothing). The chord list is left out, it follows the content.
  */
 export function songDraftChanges(published: SongDraft, proposed: SongDraft): boolean {
+  // Both sides are read the same way: "" and null both mean "not set" (the
+  // bundled catalog writes "" for a song with no video, the database null),
+  // and the title and the author are compared trimmed, as they are stored.
   const text = (value: string | null) => (value === null || value.trim() === '' ? null : value.trim());
   const blank = (value: string | null) => (value === '' ? null : value);
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   return !(
-    proposed.title.trim() === published.title &&
-    text(proposed.artist) === published.artist &&
-    blank(proposed.originalKey) === published.originalKey &&
+    proposed.title.trim() === published.title.trim() &&
+    text(proposed.artist) === text(published.artist) &&
+    blank(proposed.originalKey) === blank(published.originalKey) &&
     proposed.recommendedCapo === published.recommendedCapo &&
-    blank(proposed.timeSignature) === published.timeSignature &&
+    blank(proposed.timeSignature) === blank(published.timeSignature) &&
     proposed.tempo === published.tempo &&
-    blank(proposed.rhythmPattern) === published.rhythmPattern &&
+    blank(proposed.rhythmPattern) === blank(published.rhythmPattern) &&
     same(proposed.categories, published.categories) &&
     same(proposed.liturgicalSeasons, published.liturgicalSeasons) &&
     same(proposed.tags, published.tags) &&
     proposed.content === published.content &&
     proposed.difficulty === published.difficulty &&
-    blank(proposed.year) === published.year &&
-    blank(proposed.youtubeId) === published.youtubeId
+    blank(proposed.year) === blank(published.year) &&
+    blank(proposed.youtubeId) === blank(published.youtubeId)
   );
 }
 
