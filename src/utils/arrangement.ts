@@ -501,6 +501,27 @@ export function playableArrangement(binding: ArrangementBinding): SetlistArrange
   return binding.state === 'current' || binding.state === 'rebound' ? binding.arrangement : undefined;
 }
 
+/**
+ * Whether an editing session may save its arrangement, or what is missing.
+ *
+ * An arrangement is saved whole: storing it while a block is still pending
+ * would record blocks nobody checked, and storing it against a version other
+ * than the one reviewed would certify a correspondence nobody looked at.
+ */
+export function arrangementSaveState(session: {
+  /** What would be stored; null when the song is played as written */
+  arrangement: SetlistArrangement | null;
+  pendingIds: readonly string[];
+  /** The version the blocks were checked against in this session */
+  reviewedVersion: number;
+  /** The version of the song right now */
+  currentVersion: number;
+}): 'ready' | 'pending' | 'song-changed' {
+  if (!session.arrangement) return 'ready';
+  if (session.pendingIds.length > 0) return 'pending';
+  return session.reviewedVersion === session.currentVersion ? 'ready' : 'song-changed';
+}
+
 /** Points one pending block at a section of the song as it is now. */
 export function rebindArrangementSection(
   arrangement: SetlistArrangement,

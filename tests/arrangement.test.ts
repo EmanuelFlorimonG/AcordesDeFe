@@ -7,6 +7,7 @@ import type { ArrangementBinding } from '../src/utils/arrangement';
 import {
   MAX_REPEAT_COUNT,
   addArrangementSection,
+  arrangementSaveState,
   arrangementVersionOf,
   bindArrangement,
   clampRepeatCount,
@@ -644,6 +645,69 @@ describe('El arreglo después de una nueva versión de la canción', () => {
     eq(chosen.songStructure, songStructureOf(renamed));
     eq(bindArrangement(renamed, chosen, 2).state, 'current');
     eq(rebindArrangementSection(chosen, 'no-existe', final), chosen);
+  });
+
+  it('el arreglo se guarda entero: ni a medias ni contra otra versión', () => {
+    const twice = parseSongSections(`${SONG}
+
+[Coro]
+Otra letra del coro`);
+    const renamedAndTwice = parseSongSections(`${SONG.replace('[Puente]', '[Final]')}
+
+[Coro]
+Otra letra del coro`);
+    const binding = bindArrangement(renamedAndTwice, custom(), 2);
+    if (binding.state !== 'pending') throw new Error('pendiente');
+    eq(binding.pendingIds, ['arr-3', 'arr-6'], 'dos bloques sin resolver');
+
+    const ready = (arrangement: SetlistArrangement | null, pendingIds: string[], reviewed: number, current: number) =>
+      arrangementSaveState({ arrangement, pendingIds, reviewedVersion: reviewed, currentVersion: current });
+    eq(ready(binding.arrangement, binding.pendingIds, 2, 2), 'pending');
+
+    // Resolver uno solo no certifica el otro: sigue sin poder guardarse.
+    const coro = listArrangementSources(renamedAndTwice).filter((source) => source.label === 'Coro')[0];
+    const half = rebindArrangementSection(binding.arrangement, 'arr-3', coro);
+    eq(ready(half, ['arr-6'], 2, 2), 'pending');
+
+    // Resueltos los dos, se guarda con la versión revisada y su estructura.
+    const final = listArrangementSources(renamedAndTwice).find((source) => source.label === 'Final')!;
+    const whole = stampArrangement(rebindArrangementSection(half, 'arr-6', final), 2, renamedAndTwice);
+    eq(ready(whole, [], 2, 2), 'ready');
+
+    // Guardado y vuelto a leer desde el almacenamiento, no vuelve a quedar pendiente.
+    const setlist = createSetlist({ name: 'Domingo', date: '', description: '' }, { now: NOW, createId: idSequence('s') });
+    const stored = parseStoredSetlists(
+      JSON.stringify({
+        version: SETLIST_STORAGE_VERSION,
+        setlists: [{ ...setlist, items: [{ id: 'i-1', songId: 'x', moment: '', transposeSteps: 0, capoFret: 0, notes: '', arrangement: whole }] }],
+      })
+    ).setlists[0].items[0].arrangement;
+    eq([stored?.songVersion, stored?.songStructure], [2, songStructureOf(renamedAndTwice)]);
+    eq(bindArrangement(renamedAndTwice, stored, 2).state, 'current');
+
+    // Un arreglo guardado mientras quedaban pendientes conserva su versión vieja: sigue pendiente al reabrir.
+    const kept = parseStoredSetlists(
+      JSON.stringify({
+        version: SETLIST_STORAGE_VERSION,
+        setlists: [{ ...setlist, items: [{ id: 'i-1', songId: 'x', moment: '', transposeSteps: 0, capoFret: 0, notes: '', arrangement: half }] }],
+      })
+    ).setlists[0].items[0].arrangement;
+    eq(pendingOf(bindArrangement(renamedAndTwice, kept, 2)), ['arr-3', 'arr-6']);
+    eq(bindArrangement(twice, custom(), 2).state, 'pending', 'y el caso original sigue pendiente');
+  });
+
+  it('una canción que cambia con el editor abierto no certifica lo revisado contra la anterior', () => {
+    const reviewed = stampArrangement(custom(), 1, SECTIONS);
+    const state = (current: number) =>
+      arrangementSaveState({ arrangement: reviewed, pendingIds: [], reviewedVersion: 1, currentVersion: current });
+    eq(state(1), 'ready');
+    eq(state(2), 'song-changed', 'la canción cambió mientras se revisaba: no se guarda');
+    // Sin arreglo propio no hay nada que certificar.
+    eq(arrangementSaveState({ arrangement: null, pendingIds: [], reviewedVersion: 1, currentVersion: 2 }), 'ready');
+    // Al revisar otra vez contra la versión nueva, el trabajo se conserva y lo dudoso vuelve a quedar pendiente.
+    const again = bindArrangement(parseSongSections(SONG.replace('[Puente]', '[Final]')), reviewed, 2);
+    eq(pendingOf(again), ['arr-6']);
+    eq(again.state === 'pending' ? again.arrangement.sections[1].voices : [], ['women'], 'las voces elegidas siguen ahí');
   });
 
   it('las ediciones, las copias y el almacenamiento conservan la versión y la estructura', () => {

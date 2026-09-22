@@ -9,6 +9,7 @@ import type {
 import type { Song } from '../../types/song';
 import { songVersionOf } from '../../catalog/songRepository';
 import {
+  arrangementSaveState,
   bindArrangement,
   matchesSongStructure,
   rebindArrangementSection,
@@ -92,15 +93,50 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   const [moment, setMoment] = useState(item.moment);
   const [notes, setNotes] = useState(item.notes);
   const [key, setKey] = useState<KeySettings>({ transposeSteps: item.transposeSteps, capoFret: item.capoFret });
-  // The song as it is written: the arrangement points at these sections and
-  // never copies them. Transposing changes the chords, not the structure.
-  const songSections = useMemo(() => parseSongSections(song.content), [song.content]);
-  const songVersion = songVersionOf(song);
-  // An arrangement made on another version of the song opens re-pointed where
-  // there is no doubt, with the doubtful blocks marked for someone to choose.
-  const [binding] = useState(() => bindArrangement(songSections, item.arrangement, songVersion));
-  const [arrangement, setArrangement] = useState(binding.state === 'none' ? undefined : binding.arrangement);
-  const [pendingIds, setPendingIds] = useState(binding.state === 'pending' ? binding.pendingIds : []);
+  // The song as it is written now. The catalog can refresh while this dialog
+  // is open, so it is not what the arrangement is reviewed against: that is
+  // the version this session opened on (see `session` below).
+  const currentSections = useMemo(() => parseSongSections(song.content), [song.content]);
+  const currentVersion = songVersionOf(song);
+  // One editing session, one version of the song: its sections and its number.
+  // An arrangement made on another version opens re-pointed where there is no
+  // doubt, with the doubtful blocks marked for someone to choose.
+  const [session, setSession] = useState(() => {
+    const binding = bindArrangement(currentSections, item.arrangement, currentVersion);
+    return {
+      version: currentVersion,
+      sections: currentSections,
+      arrangement: binding.state === 'none' ? undefined : binding.arrangement,
+      pendingIds: binding.state === 'pending' ? binding.pendingIds : [],
+    };
+  });
+  const { sections: songSections, arrangement, pendingIds } = session;
+  const songVersion = session.version;
+  const setArrangement = (next: SetlistArrangement | undefined | ((current: SetlistArrangement | undefined) => SetlistArrangement | undefined)) =>
+    setSession((current) => ({ ...current, arrangement: typeof next === 'function' ? next(current.arrangement) : next }));
+  const setPendingIds = (next: (ids: string[]) => string[]) => setSession((current) => ({ ...current, pendingIds: next(current.pendingIds) }));
+  /** The song moved on while this dialog was open: what was reviewed no longer describes it. */
+  const songChangedWhileOpen = currentVersion !== songVersion;
+  const storedArrangement = arrangement && !matchesSongStructure(songSections, arrangement) ? arrangement : null;
+  // An arrangement is saved only as a whole: half-reviewed blocks would be
+  // stored as if someone had checked them, and a review made against another
+  // version says nothing about this one.
+  const saveState = arrangementSaveState({ arrangement: storedArrangement, pendingIds, reviewedVersion: songVersion, currentVersion });
+  const blocked = saveState !== 'ready';
+  /** Reviews the arrangement being edited against the version published now, keeping the work done. */
+  const reviewAgainstCurrent = () => {
+    const binding = bindArrangement(
+      currentSections,
+      arrangement ? stampArrangement(arrangement, songVersion, songSections) : undefined,
+      currentVersion
+    );
+    setSession({
+      version: currentVersion,
+      sections: currentSections,
+      arrangement: binding.state === 'none' ? undefined : binding.arrangement,
+      pendingIds: binding.state === 'pending' ? binding.pendingIds : [],
+    });
+  };
   const [transition, setTransition] = useState<SetlistSongTransition | null>(
     item.transitionToNext ?? null
   );
@@ -134,34 +170,35 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
       description={song.artist}
       size="lg"
       onClose={onClose}
-      onSubmit={() =>
+      onSubmit={() => {
+        if (blocked) return;
         onSave({
           moment,
           notes,
           ...key,
           // An arrangement that is still the song's own structure is not stored:
-          // nothing was actually decided for this occasion. One with every block
-          // checked against this version of the song is stamped with it; while
-          // a block is still pending it keeps its old version, so it stays on
-          // hold (and is not played) until someone chooses.
-          arrangement:
-            arrangement && !matchesSongStructure(songSections, arrangement)
-              ? pendingIds.length === 0
-                ? stampArrangement(arrangement, songVersion, songSections)
-                : arrangement
-              : null,
+          // nothing was actually decided for this occasion. Anything else is
+          // stamped with the version it was checked against, whole.
+          arrangement: storedArrangement ? stampArrangement(storedArrangement, songVersion, songSections) : null,
           // While this entry is the last one there is nothing to go into, so
           // whatever it had stays stored, untouched, for when it isn't.
           transitionToNext: nextSongTitle ? transition : undefined,
           newParticipantIds,
-        })
-      }
+        });
+      }}
       footer={
         <>
+          {blocked && (
+            <p role="status" className="mr-auto max-w-sm text-xs font-semibold text-amber-700 dark:text-amber-400">
+              {saveState === 'song-changed'
+                ? 'Esta canción cambió mientras revisabas el arreglo. Revisa otra vez las correspondencias para poder guardar.'
+                : 'Elige la sección de cada bloque pendiente (o quítalo) para poder guardar.'}
+            </p>
+          )}
           <button type="button" onClick={onClose} className={secondaryButton}>
             Cancelar
           </button>
-          <button type="submit" className={primaryButton}>
+          <button type="submit" disabled={blocked} className={primaryButton}>
             Guardar
           </button>
         </>
@@ -298,6 +335,21 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
             </p>
           )}
         </div>
+
+        {songChangedWhileOpen && storedArrangement && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              La canción cambió mientras revisabas el arreglo
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+              Se publicó la versión {currentVersion} y lo que ves aquí es la {songVersion}. Tus cambios se conservan, pero hay que volver a
+              comprobar a qué sección corresponde cada bloque antes de guardar.
+            </p>
+            <button type="button" onClick={reviewAgainstCurrent} className={`${secondaryButton} mt-3`}>
+              Revisar con la versión nueva
+            </button>
+          </div>
+        )}
 
         <ArrangementEditor
           songSections={songSections}
