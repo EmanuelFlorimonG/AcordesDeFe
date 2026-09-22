@@ -298,21 +298,21 @@ describe('Repositorio editorial', () => {
   it('aprobar, pedir cambios y rechazar llaman a las funciones de la base de datos', async () => {
     const { client, log } = fakeClient({ rpc: (fn) => (fn === 'approve_submission' ? [{ song_id: 'cancion-de-prueba', version: 1 }] : null) });
     const repository = createEditorialRepository(client);
-    eq(await repository.approve(SUBMISSION, { songId: ' cancion-de-prueba ', reviewNote: '  ' }), { songId: 'cancion-de-prueba', version: 1 });
-    await repository.requestChanges(SUBMISSION, ' Revisa el segundo verso. ');
-    await repository.reject(SUBMISSION, 'Duplicada');
+    eq(await repository.approve(SUBMISSION, 3, { songId: ' cancion-de-prueba ', reviewNote: '  ' }), { songId: 'cancion-de-prueba', version: 1 });
+    await repository.requestChanges(SUBMISSION, ' Revisa el segundo verso. ', 3);
+    await repository.reject(SUBMISSION, 'Duplicada', 4);
     eq(log, [
-      `rpc approve_submission {"p_submission_id":"${SUBMISSION}","p_song_id":"cancion-de-prueba","p_review_note":null}`,
-      `rpc request_submission_changes {"p_submission_id":"${SUBMISSION}","p_review_note":"Revisa el segundo verso."}`,
-      `rpc reject_submission {"p_submission_id":"${SUBMISSION}","p_review_note":"Duplicada"}`,
+      `rpc approve_submission {"p_submission_id":"${SUBMISSION}","p_song_id":"cancion-de-prueba","p_review_note":null,"p_expected_revision":3}`,
+      `rpc request_submission_changes {"p_submission_id":"${SUBMISSION}","p_review_note":"Revisa el segundo verso.","p_expected_revision":3}`,
+      `rpc reject_submission {"p_submission_id":"${SUBMISSION}","p_review_note":"Duplicada","p_expected_revision":4}`,
     ]);
   });
 
   it('pedir cambios o rechazar sin mensaje no llega al servidor', async () => {
     const { client, log } = fakeClient();
     const repository = createEditorialRepository(client);
-    await assert.rejects(repository.requestChanges(SUBMISSION, '   '), (error: unknown) => error instanceof EditorialError && error.reason === 'invalid');
-    await assert.rejects(repository.reject(SUBMISSION, ''), (error: unknown) => error instanceof EditorialError && error.reason === 'invalid');
+    await assert.rejects(repository.requestChanges(SUBMISSION, '   ', 1), (error: unknown) => error instanceof EditorialError && error.reason === 'invalid');
+    await assert.rejects(repository.reject(SUBMISSION, '', 1), (error: unknown) => error instanceof EditorialError && error.reason === 'invalid');
     eq(log, []);
   });
 
@@ -373,6 +373,37 @@ describe('Repositorio editorial', () => {
     eq(await createEditorialRepository(fakeClient({ select: () => [] }).client).getTargetSong('no-existe'), null);
   });
 
+  it('cada decisión editorial nombra la revisión que se leyó', async () => {
+    const { client, log } = fakeClient({
+      select: () => [
+        {
+          ...listRow,
+          base_version: null,
+          revision: 4,
+          proposed_song: { schemaVersion: 1, title: 'T', content: '[G]x', categories: [], tags: [], chordsUsed: ['G'] },
+          review_note: null,
+          reviewed_by: null,
+          published_song_id: null,
+          published_version: null,
+          resubmission_count: 0,
+          resubmitted_at: null,
+        },
+      ],
+      rpc: () => [{ song_id: 'x', version: 2 }],
+    });
+    const repository = createEditorialRepository(client);
+    const detail = await repository.getSubmission(SUBMISSION);
+    eq(detail?.revision, 4);
+    eq(log[0].includes(',revision,'), true);
+    await repository.approve(SUBMISSION, detail!.revision);
+    eq(log[1].includes('"p_expected_revision":4'), true);
+    // Una propuesta guardada antes de que existieran las revisiones cuenta como la 1.
+    for (const revision of [null, 0, 'dos']) {
+      const old = fakeClient({ select: () => [{ ...listRow, revision, proposed_song: null, resubmission_count: 0 }] });
+      eq((await createEditorialRepository(old.client).getSubmission(SUBMISSION))?.revision, 1);
+    }
+  });
+
   it('las negativas de la base de datos llegan con un motivo claro', () => {
     const reasons = [
       new SupabaseRequestError('GENESARET:forbidden', 403, '42501'),
@@ -382,11 +413,24 @@ describe('Repositorio editorial', () => {
       new SupabaseRequestError('GENESARET:song_id_taken', 400, 'P0001'),
       new SupabaseRequestError('GENESARET:not_found', 400, 'P0001'),
       new SupabaseRequestError('GENESARET:stale', 400, 'P0001'),
+      new SupabaseRequestError('GENESARET:submission_changed', 400, 'P0001'),
       new SupabaseRequestError('GENESARET:invalid:target', 400, 'P0001'),
       new SupabaseRequestError('new row violates check constraint', 400, '23514'),
       new Error('offline'),
     ].map((error) => toEditorialError(error).reason);
-    eq(reasons, ['forbidden', 'forbidden', 'session', 'not-reviewable', 'song-id-taken', 'not-found', 'stale', 'target-hidden', 'invalid', 'unavailable']);
+    eq(reasons, [
+      'forbidden',
+      'forbidden',
+      'session',
+      'not-reviewable',
+      'song-id-taken',
+      'not-found',
+      'stale',
+      'submission-changed',
+      'target-hidden',
+      'invalid',
+      'unavailable',
+    ]);
   });
 });
 

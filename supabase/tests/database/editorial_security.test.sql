@@ -63,11 +63,11 @@ select throws_ok(
   '42501', null, 'anon no puede leer roles'
 );
 select throws_ok(
-  $$ select * from public.approve_submission((select gen_random_uuid())) $$,
+  $$ select * from public.approve_submission((select gen_random_uuid()), null, null, 1) $$,
   '42501', null, 'anon no puede aprobar'
 );
 select throws_ok(
-  $$ select public.reject_submission((select gen_random_uuid()), 'no') $$,
+  $$ select public.reject_submission((select gen_random_uuid()), 'no', 1) $$,
   '42501', null, 'anon no puede rechazar'
 );
 
@@ -135,7 +135,7 @@ select throws_ok(
   '42501', null, 'un usuario con sesión tampoco puede saltarse la Edge Function'
 );
 select throws_ok(
-  $$ select * from public.approve_submission((select id from public.song_submissions limit 1)) $$,
+  $$ select * from public.approve_submission((select id from public.song_submissions limit 1), null, null, 1) $$,
   '42501', null, 'un usuario sin rol no puede aprobar'
 );
 
@@ -144,7 +144,8 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a001","r
 
 select results_eq(
   $$ select song_id, version from public.approve_submission(
-       (select id from public.song_submissions where tracking_code = 'GS-2345-6789')) $$,
+       (select id from public.song_submissions where tracking_code = 'GS-2345-6789'), null, null,
+       (select revision from public.song_submissions where tracking_code = 'GS-2345-6789')) $$,
   $$ values ('existente'::text, 1) $$,
   'aprobar publica la canción con su id y la versión 1'
 );
@@ -160,7 +161,8 @@ select is(
 );
 select throws_ok(
   $$ select * from public.approve_submission(
-       (select id from public.song_submissions where tracking_code = 'GS-2345-6789')) $$,
+       (select id from public.song_submissions where tracking_code = 'GS-2345-6789'), null, null,
+       (select revision from public.song_submissions where tracking_code = 'GS-2345-6789')) $$,
   'P0001', null, 'una propuesta aprobada no se publica dos veces'
 );
 

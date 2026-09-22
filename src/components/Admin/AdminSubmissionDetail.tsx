@@ -144,7 +144,12 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
       const failure = error as { reason?: string; message?: string };
       // Someone else decided first, or the song moved on (or was hidden) in
       // between: nothing was published, so show what things are now.
-      if (failure.reason === 'not-reviewable' || failure.reason === 'stale' || failure.reason === 'target-hidden') {
+      if (
+        failure.reason === 'not-reviewable' ||
+        failure.reason === 'stale' ||
+        failure.reason === 'target-hidden' ||
+        failure.reason === 'submission-changed'
+      ) {
         setDialog(null);
         setFlash({ tone: 'warning', text: failure.message ?? '' });
         loaded.reload();
@@ -382,7 +387,7 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
           onClose={() => setDialog(null)}
           onConfirm={(options) =>
             run(async () => {
-              const result = await repository.approve(submission.id, options);
+              const result = await repository.approve(submission.id, submission.revision, options);
               // The songbook of this tab asks Supabase again: the new song is there when it is shown.
               void refreshCatalog();
               return {
@@ -407,10 +412,10 @@ export const AdminSubmissionDetail: React.FC<AdminSubmissionDetailProps> = ({ re
           onConfirm={(note) =>
             run(async () => {
               if (dialog === 'changes') {
-                await repository.requestChanges(submission.id, note);
+                await repository.requestChanges(submission.id, note, submission.revision);
                 return { text: 'Se pidieron cambios. El colaborador verá tu mensaje con su código.' };
               }
-              await repository.reject(submission.id, note);
+              await repository.reject(submission.id, note, submission.revision);
               return { text: 'Propuesta rechazada. El colaborador verá el motivo con su código.' };
             })
           }

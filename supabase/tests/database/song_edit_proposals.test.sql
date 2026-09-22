@@ -89,8 +89,8 @@ select ok(not has_function_privilege('anon', 'public.submit_song_submission_veri
 select ok(has_function_privilege('anon', 'public.get_submission_for_edit(text,text)', 'execute')
        and has_function_privilege('authenticated', 'public.get_submission_for_edit(text,text)', 'execute'),
   'get_submission_for_edit: anon y authenticated, tras recrearla');
-select ok(not has_function_privilege('anon', 'public.approve_submission(uuid,text,text)', 'execute')
-       and has_function_privilege('authenticated', 'public.approve_submission(uuid,text,text)', 'execute'),
+select ok(not has_function_privilege('anon', 'public.approve_submission(uuid,text,text,integer)', 'execute')
+       and has_function_privilege('authenticated', 'public.approve_submission(uuid,text,text,integer)', 'execute'),
   'approve_submission: authenticated (con rol comprobado dentro), nunca anon');
 select ok(not has_function_privilege('anon', 'public.song_differs_from_published(jsonb,public.songs)', 'execute')
        and not has_function_privilege('authenticated', 'public.song_differs_from_published(jsonb,public.songs)', 'execute')
@@ -102,7 +102,7 @@ select ok(not has_function_privilege('anon', 'public.song_differs_from_published
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000e002","role":"authenticated"}';
 select throws_ok(
-  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDAA-2222')) $$,
+  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDAA-2222'), null, null, (select revision from public.song_submissions where tracking_code = 'GS-EDAA-2222')) $$,
   '42501', null, 'un usuario sin rol no aprueba una edición');
 reset role;
 
@@ -166,7 +166,7 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000e001","role":"authenticated"}';
 
 select results_eq(
-  $$ select song_id, version from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDAA-2222')) $$,
+  $$ select song_id, version from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDAA-2222'), null, null, (select revision from public.song_submissions where tracking_code = 'GS-EDAA-2222')) $$,
   $$ values ('prueba-edicion'::text, 2) $$,
   'aprobar la edición A (base 1 = actual 1): se publica la versión 2 de la misma canción');
 reset role;
@@ -183,10 +183,10 @@ select is((select status || '/' || published_version from public.song_submission
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000e001","role":"authenticated"}';
 select throws_ok(
-  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDBB-2222')) $$,
+  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDBB-2222'), null, null, (select revision from public.song_submissions where tracking_code = 'GS-EDBB-2222')) $$,
   'P0001', 'GENESARET:stale', 'aprobar B (base 1, actual 2): stale, nunca sobrescribe');
 select throws_ok(
-  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDAA-2222')) $$,
+  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDAA-2222'), null, null, (select revision from public.song_submissions where tracking_code = 'GS-EDAA-2222')) $$,
   'P0001', 'GENESARET:not_reviewable', 'aprobar A otra vez: no revisable');
 reset role;
 select is((select current_version || '/' || content from public.songs where id = 'prueba-edicion'),
@@ -199,7 +199,8 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000e001","role":"authenticated"}';
 select lives_ok(
   $$ select public.request_submission_changes((select id from public.song_submissions where tracking_code = 'GS-EDBB-2222'),
-       'La canción se actualizó. Revisa tus cambios sobre la versión actual.') $$,
+       'La canción se actualizó. Revisa tus cambios sobre la versión actual.',
+       (select revision from public.song_submissions where tracking_code = 'GS-EDBB-2222')) $$,
   'se piden cambios a B');
 reset role;
 
@@ -241,7 +242,7 @@ select is((select status || '/' || base_version from public.song_submissions whe
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000e001","role":"authenticated"}';
 select results_eq(
-  $$ select song_id, version from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDBB-2222')) $$,
+  $$ select song_id, version from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDBB-2222'), null, null, (select revision from public.song_submissions where tracking_code = 'GS-EDBB-2222')) $$,
   $$ values ('prueba-edicion'::text, 3) $$,
   'B, ya actualizada, se aprueba como versión 3');
 reset role;
@@ -251,12 +252,13 @@ select is((select count(*)::int from public.song_versions where song_id = 'prueb
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000e001","role":"authenticated"}';
 select throws_ok(
-  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDCC-2222')) $$,
+  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDCC-2222'), null, null, (select revision from public.song_submissions where tracking_code = 'GS-EDCC-2222')) $$,
   'P0001', 'GENESARET:stale', 'una edición antigua sin base_version no se aprueba: stale');
 -- Its way out is the same rebase: changes requested, resent on the current version.
 select lives_ok(
   $$ select public.request_submission_changes((select id from public.song_submissions where tracking_code = 'GS-EDCC-2222'),
-       'Actualízala sobre la versión actual.') $$,
+       'Actualízala sobre la versión actual.',
+       (select revision from public.song_submissions where tracking_code = 'GS-EDCC-2222')) $$,
   'se piden cambios a la edición antigua');
 reset role;
 set local role service_role;
@@ -269,7 +271,7 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000e001","role":"authenticated"}';
 select results_eq(
-  $$ select song_id, version from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDCC-2222')) $$,
+  $$ select song_id, version from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDCC-2222'), null, null, (select revision from public.song_submissions where tracking_code = 'GS-EDCC-2222')) $$,
   $$ values ('prueba-edicion'::text, 4) $$,
   'ya actualizada, se aprueba como versión 4');
 reset role;
@@ -279,7 +281,7 @@ update public.songs set status = 'hidden' where id = 'prueba-a-ocultar';
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000e001","role":"authenticated"}';
 select throws_ok(
-  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDDD-2222')) $$,
+  $$ select * from public.approve_submission((select id from public.song_submissions where tracking_code = 'GS-EDDD-2222'), null, null, (select revision from public.song_submissions where tracking_code = 'GS-EDDD-2222')) $$,
   'P0001', 'GENESARET:invalid:target', 'aprobar la edición de una canción ya oculta: rechazado');
 reset role;
 select is((select current_version || '/' || status from public.songs where id = 'prueba-a-ocultar'), '1/hidden',

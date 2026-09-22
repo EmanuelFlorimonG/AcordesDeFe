@@ -40,6 +40,11 @@ export interface SubmissionDetail {
    * existed) have none and can't be approved without a rebase.
    */
   baseVersion: number | null;
+  /**
+   * Raised every time its author sends it again: an editorial decision names
+   * the revision it was made on, and the database refuses it if it changed.
+   */
+  revision: number;
   /** Null when the stored proposal can't be read as a song (it is then shown as unreadable, never guessed) */
   proposedSong: SongDraft | null;
   contributorName: string | null;
@@ -97,6 +102,8 @@ export type EditorialFailure =
   | 'song-id-taken'
   /** An edit made on a version that is no longer the published one */
   | 'stale'
+  /** The proposal changed (its author sent it again) after the reviewer read it */
+  | 'submission-changed'
   /** An edit of a song that is no longer published */
   | 'target-hidden'
   | 'invalid'
@@ -118,6 +125,7 @@ const MESSAGES: Record<EditorialFailure, string> = {
   'not-reviewable': 'Esta propuesta ya fue revisada por alguien más. Se muestran sus datos actuales.',
   'song-id-taken': 'Ya existe una canción con ese identificador. Elige otro.',
   stale: 'La canción tiene una versión más reciente que la propuesta. No se publicó nada: pide al colaborador que la actualice.',
+  'submission-changed': 'El colaborador reenvió esta propuesta mientras la revisabas. No se hizo nada: aquí está lo que envió ahora.',
   'target-hidden': 'La canción de esta propuesta ya no está publicada. No se publicó nada.',
   invalid: 'Los datos no son válidos. Revisa el mensaje y la canción.',
   unavailable: 'No se pudo completar la operación. Inténtalo de nuevo.',
@@ -138,13 +146,15 @@ export function toEditorialError(error: unknown): EditorialError {
               ? 'not-reviewable'
               : text.includes('GENESARET:song_id_taken')
                 ? 'song-id-taken'
-                : text.includes('GENESARET:stale')
-                  ? 'stale'
-                  : text.includes('GENESARET:invalid:target')
-                    ? 'target-hidden'
-                    : text.includes('GENESARET:invalid') || error.code === '23514' || error.code === '22P02'
-                      ? 'invalid'
-                      : 'unavailable';
+                : text.includes('GENESARET:submission_changed')
+                  ? 'submission-changed'
+                  : text.includes('GENESARET:stale')
+                    ? 'stale'
+                    : text.includes('GENESARET:invalid:target')
+                      ? 'target-hidden'
+                      : text.includes('GENESARET:invalid') || error.code === '23514' || error.code === '22P02'
+                        ? 'invalid'
+                        : 'unavailable';
     return new EditorialError(reason, MESSAGES[reason]);
   }
   return new EditorialError('unavailable', MESSAGES.unavailable);
@@ -177,6 +187,7 @@ interface ListRow extends SubmissionRow {
 
 interface DetailRow extends SubmissionRow {
   base_version: number | null;
+  revision: number | null;
   proposed_song: unknown;
   contributor_name: string | null;
   contributor_email: string | null;
@@ -191,7 +202,7 @@ interface DetailRow extends SubmissionRow {
 const LIST_SELECT =
   'select=id,type,status,target_song_id,tracking_code,submitted_at,reviewed_at,title:proposed_song->>title,artist:proposed_song->>artist,contributor_name,contributor_email';
 const DETAIL_SELECT =
-  'select=id,type,status,target_song_id,base_version,tracking_code,submitted_at,reviewed_at,proposed_song,contributor_name,contributor_email,review_note,reviewed_by,published_song_id,published_version,resubmission_count,resubmitted_at';
+  'select=id,type,status,target_song_id,base_version,revision,tracking_code,submitted_at,reviewed_at,proposed_song,contributor_name,contributor_email,review_note,reviewed_by,published_song_id,published_version,resubmission_count,resubmitted_at';
 
 /** How far back "recently" reaches on the summary. */
 export const RECENT_DAYS = 30;
@@ -201,9 +212,13 @@ export interface EditorialRepository {
   listSubmissions(options?: { status?: SongSubmissionStatus }): Promise<SubmissionListItem[]>;
   countSubmissions(now?: Date): Promise<SubmissionCounts>;
   getSubmission(id: string): Promise<SubmissionDetail | null>;
-  approve(id: string, options?: { songId?: string; reviewNote?: string }): Promise<{ songId: string; version: number }>;
-  requestChanges(id: string, reviewNote: string): Promise<void>;
-  reject(id: string, reviewNote: string): Promise<void>;
+  /**
+   * Every decision names the revision of the proposal the reviewer read: the
+   * database refuses it if its author sent it again in between.
+   */
+  approve(id: string, expectedRevision: number, options?: { songId?: string; reviewNote?: string }): Promise<{ songId: string; version: number }>;
+  requestChanges(id: string, reviewNote: string, expectedRevision: number): Promise<void>;
+  reject(id: string, reviewNote: string, expectedRevision: number): Promise<void>;
   listSongs(): Promise<AdminSongItem[]>;
   /** Every id in `songs`, published or hidden: what a new song's id must not collide with */
   listSongIds(): Promise<string[]>;
@@ -267,6 +282,7 @@ export function createEditorialRepository(client: SupabaseClient): EditorialRepo
           status: row.status,
           targetSongId: row.target_song_id,
           baseVersion: Number.isInteger(row.base_version) && (row.base_version as number) >= 1 ? row.base_version : null,
+          revision: Number.isInteger(row.revision) && (row.revision as number) >= 1 ? (row.revision as number) : 1,
           proposedSong: parseSongDraft(row.proposed_song),
           contributorName: row.contributor_name,
           contributorEmail: row.contributor_email,
@@ -282,28 +298,37 @@ export function createEditorialRepository(client: SupabaseClient): EditorialRepo
         };
       }),
 
-    approve: (id, options = {}) =>
+    approve: (id, expectedRevision, options = {}) =>
       guard(async () => {
         const rows = await client.rpc<Array<{ song_id: string; version: number }>>('approve_submission', {
           p_submission_id: id,
           p_song_id: options.songId?.trim() || null,
           p_review_note: options.reviewNote?.trim() || null,
+          p_expected_revision: expectedRevision,
         });
         const row = rows[0];
         if (!row) throw new EditorialError('unavailable', MESSAGES.unavailable);
         return { songId: row.song_id, version: row.version };
       }),
 
-    requestChanges: (id, reviewNote) =>
+    requestChanges: (id, reviewNote, expectedRevision) =>
       guard(async () => {
         if (!reviewNote.trim()) throw new EditorialError('invalid', 'Escribe un mensaje para el colaborador.');
-        await client.rpc('request_submission_changes', { p_submission_id: id, p_review_note: reviewNote.trim() });
+        await client.rpc('request_submission_changes', {
+          p_submission_id: id,
+          p_review_note: reviewNote.trim(),
+          p_expected_revision: expectedRevision,
+        });
       }),
 
-    reject: (id, reviewNote) =>
+    reject: (id, reviewNote, expectedRevision) =>
       guard(async () => {
         if (!reviewNote.trim()) throw new EditorialError('invalid', 'Escribe el motivo.');
-        await client.rpc('reject_submission', { p_submission_id: id, p_review_note: reviewNote.trim() });
+        await client.rpc('reject_submission', {
+          p_submission_id: id,
+          p_review_note: reviewNote.trim(),
+          p_expected_revision: expectedRevision,
+        });
       }),
 
     listSongs: () =>
