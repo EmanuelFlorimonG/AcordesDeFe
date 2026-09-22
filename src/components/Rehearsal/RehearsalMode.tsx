@@ -7,7 +7,8 @@ import type { MetronomeControls } from '../../hooks/useMetronome';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { AUTO_SCROLL_SPEEDS, DEFAULT_AUTO_SCROLL_SPEED, useAutoScroll } from '../../hooks/useAutoScroll';
 import { useRehearsalShortcuts } from '../../hooks/useRehearsalShortcuts';
-import { resolveArrangement, sectionShortLabel } from '../../utils/arrangement';
+import { songVersionOf } from '../../catalog/songRepository';
+import { bindArrangement, playableArrangement, resolveArrangement, sectionShortLabel } from '../../utils/arrangement';
 import { parseSongSections } from '../../utils/chordParser';
 import { formatSongCount } from '../../utils/setlists';
 import { getSectionShortLabel, isSectionShown, songHasChords } from '../../utils/songSections';
@@ -19,6 +20,7 @@ import {
   type StageFontSize,
 } from '../../utils/stageReading';
 import { ChordSheet } from '../SongViewer/ChordSheet';
+import { ArrangementPendingNotice } from '../Setlists/ArrangementPendingNotice';
 import type { CompactPlayerState } from '../Player/MiniPlayer';
 import { AutoScrollPausedNotice } from './RehearsalControls';
 import { RehearsalDock, type DockPanel } from './RehearsalDock';
@@ -110,12 +112,15 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
 
   // Opened from a setlist whose entry has an arrangement, the song is read in
   // that order, with its repeats and voices. Opened normally, it is read as it
-  // is written.
+  // is written. An arrangement made on another version of the song that can't
+  // be matched without doubt is not played: the song is read as written.
   const storedArrangement = setlist?.item.arrangement;
-  const arrangement = useMemo(
-    () => (storedArrangement ? resolveArrangement(sections, storedArrangement) : null),
-    [sections, storedArrangement]
-  );
+  const songVersion = songVersionOf(song);
+  const binding = useMemo(() => bindArrangement(sections, storedArrangement, songVersion), [sections, storedArrangement, songVersion]);
+  const arrangement = useMemo(() => {
+    const playable = playableArrangement(binding);
+    return playable ? resolveArrangement(sections, playable) : null;
+  }, [sections, binding]);
 
   const navItems = useMemo<SectionNavItem[]>(() => {
     // Every block of an arrangement is its own place to jump to, so a chorus
@@ -348,6 +353,8 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
             isCleanScreen ? 'pb-24' : 'pb-48'
           }`}
         >
+          {binding.state === 'pending' && <ArrangementPendingNotice where="stage" />}
+
           {arrangement && (
             <p className="mb-5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2464ED] dark:text-sky-400">
               <ListMusic aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />

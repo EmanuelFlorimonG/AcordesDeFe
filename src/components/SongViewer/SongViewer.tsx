@@ -2,7 +2,10 @@ import React, { Suspense, lazy, useState, useEffect, useLayoutEffect, useMemo, u
 import type { Instrument, Playlist, Song, ViewSettings } from '../../types/song';
 import type { SetlistPlayback } from '../../types/setlist';
 import { normalizeStep, transposeKey } from '../../utils/chordTransposer';
-import { transposeSongContent, extractUniqueChords, stripChords } from '../../utils/chordParser';
+import { transposeSongContent, extractUniqueChords, parseSongSections, stripChords } from '../../utils/chordParser';
+import { bindArrangement } from '../../utils/arrangement';
+import { songVersionOf } from '../../catalog/songRepository';
+import { ArrangementPendingNotice } from '../Setlists/ArrangementPendingNotice';
 import { getCategoryStyle } from '../../utils/categoryStyle';
 import { useTransposeControls } from '../../hooks/useTransposeControls';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
@@ -202,6 +205,13 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   // would be in different keys.
   const pianoCapoOffset = isPiano ? settings.capoFret : 0;
 
+  // Whether this entry's arrangement can still be followed on this version of the song.
+  const setlistArrangement = setlist?.item.arrangement;
+  const arrangementState = useMemo(
+    () => (setlistArrangement ? bindArrangement(parseSongSections(song.content), setlistArrangement, songVersionOf(song)).state : 'none'),
+    [setlistArrangement, song]
+  );
+
   const transposedContent = useMemo(() => {
     return transposeSongContent(
       song.content,
@@ -360,11 +370,17 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             </button>
           </div>
 
-          {setlist.item.arrangement && (
-            <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-[#2464ED] dark:text-sky-400">
-              <ListMusic aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-              Con arreglo propio de este Setlist: se sigue en Modo Ensayo
-            </p>
+          {arrangementState === 'pending' ? (
+            <div className="mt-2">
+              <ArrangementPendingNotice detail="Hasta revisarlo, Modo Ensayo y Modo Misa la muestran tal como está escrita." />
+            </div>
+          ) : (
+            setlist.item.arrangement && (
+              <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-[#2464ED] dark:text-sky-400">
+                <ListMusic aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                Con arreglo propio de este Setlist: se sigue en Modo Ensayo
+              </p>
+            )
           )}
 
           {setlist.item.notes && (

@@ -7,7 +7,14 @@ import type {
   SongTransitionType,
 } from '../../types/setlist';
 import type { Song } from '../../types/song';
-import { matchesSongStructure } from '../../utils/arrangement';
+import { songVersionOf } from '../../catalog/songRepository';
+import {
+  bindArrangement,
+  matchesSongStructure,
+  rebindArrangementSection,
+  removeArrangementSection,
+  stampArrangement,
+} from '../../utils/arrangement';
 import { keySettingsForKey, keySuggestionsFor } from '../../utils/keyPreferences';
 import { useMinistryData } from '../../hooks/ministryContext';
 import {
@@ -85,7 +92,15 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   const [moment, setMoment] = useState(item.moment);
   const [notes, setNotes] = useState(item.notes);
   const [key, setKey] = useState<KeySettings>({ transposeSteps: item.transposeSteps, capoFret: item.capoFret });
-  const [arrangement, setArrangement] = useState(item.arrangement);
+  // The song as it is written: the arrangement points at these sections and
+  // never copies them. Transposing changes the chords, not the structure.
+  const songSections = useMemo(() => parseSongSections(song.content), [song.content]);
+  const songVersion = songVersionOf(song);
+  // An arrangement made on another version of the song opens re-pointed where
+  // there is no doubt, with the doubtful blocks marked for someone to choose.
+  const [binding] = useState(() => bindArrangement(songSections, item.arrangement, songVersion));
+  const [arrangement, setArrangement] = useState(binding.state === 'none' ? undefined : binding.arrangement);
+  const [pendingIds, setPendingIds] = useState(binding.state === 'pending' ? binding.pendingIds : []);
   const [transition, setTransition] = useState<SetlistSongTransition | null>(
     item.transitionToNext ?? null
   );
@@ -93,10 +108,6 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   const notesId = useId();
   const transitionId = useId();
   const transitionInstructionId = useId();
-
-  // The song as it is written: the arrangement points at these sections and
-  // never copies them. Transposing changes the chords, not the structure.
-  const songSections = useMemo(() => parseSongSections(song.content), [song.content]);
 
   const recommendedCapo = song.recommendedCapo ?? 0;
   const keyDescription = describeKey(song.originalKey, key, recommendedCapo);
@@ -129,8 +140,16 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
           notes,
           ...key,
           // An arrangement that is still the song's own structure is not stored:
-          // nothing was actually decided for this occasion.
-          arrangement: arrangement && !matchesSongStructure(songSections, arrangement) ? arrangement : null,
+          // nothing was actually decided for this occasion. One with every block
+          // checked against this version of the song is stamped with it; while
+          // a block is still pending it keeps its old version, so it stays on
+          // hold (and is not played) until someone chooses.
+          arrangement:
+            arrangement && !matchesSongStructure(songSections, arrangement)
+              ? pendingIds.length === 0
+                ? stampArrangement(arrangement, songVersion)
+                : arrangement
+              : null,
           // While this entry is the last one there is nothing to go into, so
           // whatever it had stays stored, untouched, for when it isn't.
           transitionToNext: nextSongTitle ? transition : undefined,
@@ -283,7 +302,18 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
         <ArrangementEditor
           songSections={songSections}
           arrangement={arrangement}
-          onChange={setArrangement}
+          onChange={(next) => {
+            setArrangement(next);
+            // Reset to the song's structure, or a pending block taken out from its menu.
+            setPendingIds((ids) => (next ? ids.filter((id) => next.sections.some((entry) => entry.id === id)) : []));
+          }}
+          pendingIds={pendingIds}
+          onResolvePending={(id, source) => {
+            setArrangement((current) =>
+              current && (source ? rebindArrangementSection(current, id, source) : removeArrangementSection(current, id))
+            );
+            setPendingIds((ids) => ids.filter((pendingId) => pendingId !== id));
+          }}
           participantIds={[...participantIds, ...newParticipantIds]}
           onAddParticipants={(ids) =>
             setNewParticipantIds((current) => [...current, ...ids.filter((id) => !current.includes(id))])

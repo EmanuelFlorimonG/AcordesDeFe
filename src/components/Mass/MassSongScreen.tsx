@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import type { SetlistItem, SetlistSongTransition } from '../../types/setlist';
 import type { Song } from '../../types/song';
+import { songVersionOf } from '../../catalog/songRepository';
 import { AUTO_SCROLL_SPEEDS, useAutoScroll } from '../../hooks/useAutoScroll';
 import type { MassKeyInfo, MassPosition } from '../../utils/massMode';
 import { STAGE_FONT_LABELS, STAGE_SPEED_SCALE, type StageFontSize } from '../../utils/stageReading';
@@ -95,6 +96,7 @@ export const MassSongScreen: React.FC<MassSongScreenProps> = ({
           <MassSongContent
             content={content}
             item={item}
+            songVersion={songVersionOf(song)}
             fontSize={fontSize}
             showChords={showChords}
             onChordClick={onChordClick}

@@ -223,7 +223,7 @@ export function moveArrangementSection(
   const sections = [...arrangement.sections];
   const [moved] = sections.splice(from, 1);
   sections.splice(target, 0, moved);
-  return { sections };
+  return { ...arrangement, sections };
 }
 
 export function moveArrangementSectionBy(
@@ -256,7 +256,7 @@ export function duplicateArrangementSection(
   };
   const sections = [...arrangement.sections];
   sections.splice(index + 1, 0, copy);
-  return { sections };
+  return { ...arrangement, sections };
 }
 
 /**
@@ -268,7 +268,7 @@ export function removeArrangementSection(
   id: string
 ): SetlistArrangement {
   if (!arrangement.sections.some((section) => section.id === id)) return arrangement;
-  return { sections: withoutBrokenJumps(arrangement.sections.filter((section) => section.id !== id)) };
+  return { ...arrangement, sections: withoutBrokenJumps(arrangement.sections.filter((section) => section.id !== id)) };
 }
 
 export function addArrangementSection(
@@ -277,7 +277,7 @@ export function addArrangementSection(
   makeId: IdFactory = createId
 ): SetlistArrangement {
   if (arrangement.sections.length >= MAX_ARRANGEMENT_SECTIONS) return arrangement;
-  return { sections: [...arrangement.sections, newSection(source, makeId)] };
+  return { ...arrangement, sections: [...arrangement.sections, newSection(source, makeId)] };
 }
 
 /** Member ids as stored: real strings, each one once, in the order given. */
@@ -317,7 +317,7 @@ export function updateArrangementSection(
       transition: changes.transition ?? section.transition,
     };
   });
-  return { sections: withoutBrokenJumps(sections) };
+  return { ...arrangement, sections: withoutBrokenJumps(sections) };
 }
 
 /**
@@ -341,6 +341,7 @@ export function duplicateArrangement(
           ? { type: 'jump', targetId: idMap.get(section.transition.targetId) ?? '' }
           : { ...section.transition },
     })),
+    ...(arrangement.songVersion !== undefined ? { songVersion: arrangement.songVersion } : {}),
   };
 }
 
@@ -399,7 +400,109 @@ export function sanitizeArrangement(
   }
 
   if (sections.length === 0) return undefined;
-  return { sections: withoutBrokenJumps(sections) };
+  const songVersion = Number.isInteger(value.songVersion) && (value.songVersion as number) >= 1 ? (value.songVersion as number) : undefined;
+  return { sections: withoutBrokenJumps(sections), ...(songVersion !== undefined ? { songVersion } : {}) };
+}
+
+// ---------------------------------------------------------------------------
+// An arrangement after the song got a new version
+// ---------------------------------------------------------------------------
+
+/** The version an arrangement was made on; arrangements older than versions were made on 1. */
+export function arrangementVersionOf(arrangement: SetlistArrangement): number {
+  return arrangement.songVersion ?? 1;
+}
+
+/**
+ * How a stored arrangement reads against the song as it is now:
+ *
+ *   none      no arrangement: the song is played as written
+ *   current   made on this version of the song: used as it is
+ *   rebound   made on another version, and every block was found again
+ *             without any doubt: used with the blocks pointing at their
+ *             sections in this version (stored only when the arrangement is
+ *             saved again, never behind anyone's back)
+ *   pending   made on another version, and at least one block can't be told
+ *             for sure: the arrangement is NOT played (the song is played as
+ *             written) until someone reviews it
+ */
+export type ArrangementBinding =
+  | { state: 'none' }
+  | { state: 'current'; arrangement: SetlistArrangement }
+  | { state: 'rebound'; arrangement: SetlistArrangement }
+  | {
+      state: 'pending';
+      /** The blocks that were found, re-pointed; the pending ones still point where they did */
+      arrangement: SetlistArrangement;
+      /** Ids of the blocks that need someone to choose their section */
+      pendingIds: string[];
+    };
+
+/**
+ * Re-points the blocks of an arrangement made on another version of the song.
+ *
+ * Section ids are positions ("section-3"), so after an edit that adds, removes
+ * or reorders sections they may point at the wrong place. A block is moved
+ * only when there is no doubt at all:
+ *   - its name appears exactly once among the sections of the song now
+ *     (a bare "Coro" that repeats the chorus is that same section), and
+ *   - no other block of the arrangement with that name pointed at a
+ *     different section (two different "Coro" in the old version can't both
+ *     become the single one now without guessing).
+ * Anything else stays pending: a name that is gone, repeated or doubtful.
+ */
+export function bindArrangement(
+  sections: SongSection[],
+  arrangement: SetlistArrangement | undefined,
+  songVersion: number
+): ArrangementBinding {
+  if (!arrangement) return { state: 'none' };
+  if (arrangementVersionOf(arrangement) === songVersion) return { state: 'current', arrangement };
+
+  const sources = listArrangementSources(sections);
+  const byLabel = new Map<string, ArrangementSource[]>();
+  for (const source of sources) byLabel.set(source.label, [...(byLabel.get(source.label) ?? []), source]);
+  const pointedAt = new Map<string, Set<string>>();
+  for (const entry of arrangement.sections) {
+    pointedAt.set(entry.label, (pointedAt.get(entry.label) ?? new Set()).add(entry.sourceSectionId));
+  }
+
+  const pendingIds: string[] = [];
+  const rebound = arrangement.sections.map((entry) => {
+    const matches = entry.label ? byLabel.get(entry.label) ?? [] : [];
+    if (matches.length !== 1 || (pointedAt.get(entry.label)?.size ?? 0) !== 1) {
+      pendingIds.push(entry.id);
+      return entry;
+    }
+    return matches[0].sectionId === entry.sourceSectionId ? entry : { ...entry, sourceSectionId: matches[0].sectionId };
+  });
+  const result: SetlistArrangement = { ...arrangement, sections: rebound };
+  return pendingIds.length > 0 ? { state: 'pending', arrangement: result, pendingIds } : { state: 'rebound', arrangement: result };
+}
+
+/** What is played: the arrangement when it can be trusted, nothing (the song as written) otherwise. */
+export function playableArrangement(binding: ArrangementBinding): SetlistArrangement | undefined {
+  return binding.state === 'current' || binding.state === 'rebound' ? binding.arrangement : undefined;
+}
+
+/** Points one pending block at a section of the song as it is now. */
+export function rebindArrangementSection(
+  arrangement: SetlistArrangement,
+  id: string,
+  source: ArrangementSource
+): SetlistArrangement {
+  if (!arrangement.sections.some((section) => section.id === id)) return arrangement;
+  return {
+    ...arrangement,
+    sections: arrangement.sections.map((section) =>
+      section.id === id ? { ...section, sourceSectionId: source.sectionId, label: source.label } : section
+    ),
+  };
+}
+
+/** The arrangement as it is saved: stamped with the version of the song it was checked against. */
+export function stampArrangement(arrangement: SetlistArrangement, songVersion: number): SetlistArrangement {
+  return { ...arrangement, songVersion };
 }
 
 // ---------------------------------------------------------------------------
@@ -560,6 +663,7 @@ export function removeMemberFromArrangement(
     return arrangement;
   }
   return {
+    ...arrangement,
     sections: arrangement.sections.map((section) =>
       section.assignedMemberIds?.includes(memberId)
         ? { ...section, assignedMemberIds: section.assignedMemberIds.filter((id) => id !== memberId) }

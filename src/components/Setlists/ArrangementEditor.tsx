@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import {
   ArrowDown,
   ArrowLeftRight,
@@ -32,13 +32,15 @@ import {
   resolvedSectionName,
   summarizeArrangement,
   updateArrangementSection,
+  UNTITLED_SECTION_LABEL,
   type ArrangementSectionChanges,
+  type ArrangementSource,
 } from '../../utils/arrangement';
 import { ActionMenu } from './ActionMenu';
 import { ArrangementSectionDialog } from './ArrangementSectionDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Dialog } from './Dialog';
-import { iconButton, secondaryButton, sectionHeading } from './ui';
+import { iconButton, secondaryButton, sectionHeading, textField } from './ui';
 
 interface ArrangementEditorProps {
   /** The song's sections, as it is written in the songbook */
@@ -50,6 +52,13 @@ interface ArrangementEditorProps {
   participantIds: string[];
   /** Someone assigned from outside the team joins it (applied when the entry is saved) */
   onAddParticipants: (memberIds: string[]) => void;
+  /**
+   * Blocks of an arrangement made on an older version of the song that could
+   * not be matched without doubt (see bindArrangement): someone chooses.
+   */
+  pendingIds?: string[];
+  /** Points a pending block at a section of the song now, or takes it out (null) */
+  onResolvePending?: (id: string, source: ArrangementSource | null) => void;
 }
 
 type OpenDialog = { kind: 'section'; id: string } | { kind: 'add' } | { kind: 'reset' };
@@ -68,8 +77,11 @@ export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
   onChange,
   participantIds,
   onAddParticipants,
+  pendingIds = [],
+  onResolvePending,
 }) => {
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
+  const pendingFieldId = useId();
   const { membersById } = useMinistryData();
   const closeDialog = () => setDialog(null);
 
@@ -80,6 +92,10 @@ export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
   const sources = useMemo(() => listArrangementSources(songSections), [songSections]);
   const summary = useMemo(() => summarizeArrangement(sections), [sections]);
   const isCustom = Boolean(arrangement) && !matchesSongStructure(songSections, arrangement);
+  const pending = new Set(pendingIds);
+  // A pending block still points at a place in the old text: its stored name is
+  // what it was, never the name of whatever section sits there now.
+  const storedLabels = new Map((arrangement?.sections ?? []).map((entry) => [entry.id, entry.label || UNTITLED_SECTION_LABEL]));
 
   // Until something is changed there is nothing stored: the song's own
   // structure is the arrangement, and the first edit is what writes one down.
@@ -128,7 +144,7 @@ export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
     <div>
       <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className={sectionHeading}>Arreglo musical</p>
-        {isCustom && (
+        {(isCustom || pending.size > 0) && (
           <button
             type="button"
             onClick={() => setDialog({ kind: 'reset' })}
@@ -144,6 +160,56 @@ export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
         {isCustom ? describeArrangement(summary) : 'Tal como está escrita la canción.'}
       </p>
 
+      {pending.size > 0 && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <p className="flex items-start gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+            <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            La canción cambió desde que se hizo este arreglo
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+            Elige a qué sección de la canción corresponde cada bloque marcado, o vuelve a la estructura original. Mientras
+            quede alguno sin elegir, Modo Ensayo y Modo Misa muestran la canción tal como está escrita.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {arrangement?.sections
+              .filter((entry) => pending.has(entry.id))
+              .map((entry, index) => (
+                <li key={entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <label
+                    htmlFor={`${pendingFieldId}-${index}`}
+                    className="min-w-0 flex-1 text-[13px] font-bold uppercase tracking-[0.08em] text-[#10203A] dark:text-white"
+                  >
+                    {storedLabels.get(entry.id)}
+                  </label>
+                  <select
+                    id={`${pendingFieldId}-${index}`}
+                    value=""
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === '__remove') onResolvePending?.(entry.id, null);
+                      else {
+                        const source = sources.find((candidate) => candidate.sectionId === value);
+                        if (source) onResolvePending?.(entry.id, source);
+                      }
+                    }}
+                    className={`${textField} w-full sm:w-60`}
+                  >
+                    <option value="" disabled>
+                      Elegir sección…
+                    </option>
+                    {sources.map((source, position) => (
+                      <option key={source.sectionId} value={source.sectionId}>
+                        {position + 1}. {source.label}
+                      </option>
+                    ))}
+                    <option value="__remove">Quitar del arreglo</option>
+                  </select>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
@@ -156,7 +222,8 @@ export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
       >
         {sections.map((entry, index) => {
           const isDragged = draggingId === entry.id;
-          const name = resolvedSectionName(entry);
+          const isPending = pending.has(entry.id);
+          const name = isPending ? storedLabels.get(entry.id) ?? entry.label : resolvedSectionName(entry);
           return (
             <li
               key={entry.id}
@@ -222,11 +289,18 @@ export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
                     )}
                   </span>
                 )}
-                {!entry.section && (
+                {isPending ? (
                   <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
                     <TriangleAlert aria-hidden="true" className="w-3 h-3 shrink-0" />
-                    Ya no está en la canción
+                    Falta elegir su sección
                   </span>
+                ) : (
+                  !entry.section && (
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                      <TriangleAlert aria-hidden="true" className="w-3 h-3 shrink-0" />
+                      Ya no está en la canción
+                    </span>
+                  )
                 )}
               </button>
 

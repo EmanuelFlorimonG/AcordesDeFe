@@ -9,7 +9,8 @@ import type {
 } from '../types/performance';
 import type { Setlist, SetlistItem } from '../types/setlist';
 import type { Song } from '../types/song';
-import { resolveArrangement, resolvedSectionName } from './arrangement';
+import { songVersionOf } from '../catalog/songRepository';
+import { bindArrangement, playableArrangement, resolveArrangement, resolvedSectionName } from './arrangement';
 import { parseSongSections } from './chordParser';
 import { transposeKey } from './chordTransposer';
 import { createId, type IdFactory } from './createId';
@@ -61,9 +62,12 @@ function snapshotSections(
   item: SetlistItem,
   membersById: Map<string, MinistryMember>
 ): PerformanceSection[] | null {
-  // Played as written: nothing was decided about voices, repeats or order.
-  if (!item.arrangement) return null;
-  return resolveArrangement(parseSongSections(song.content), item.arrangement).map((entry) => ({
+  // Played as written: nothing was decided about voices, repeats or order, or
+  // the arrangement waits for review after the song changed (see bindArrangement).
+  const sections = parseSongSections(song.content);
+  const arrangement = playableArrangement(bindArrangement(sections, item.arrangement, songVersionOf(song)));
+  if (!arrangement) return null;
+  return resolveArrangement(sections, arrangement).map((entry) => ({
     label: resolvedSectionName(entry),
     sourceSectionId: entry.sourceSectionId || null,
     repeatCount: entry.repeatCount,

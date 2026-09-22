@@ -71,6 +71,13 @@ export interface ArrangementSection {
  */
 export interface SetlistArrangement {
   sections: ArrangementSection[];
+  /**
+   * The published version of the song the arrangement was made on. Section ids
+   * are positions in that version's text, so they only mean the same thing
+   * while the song is at that version. Absent in arrangements saved before
+   * songs had versions: those were all made on version 1.
+   */
+  songVersion?: number;
 }
 
 export interface SetlistItem {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -10,6 +10,7 @@ import {
   Play,
   StickyNote,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react';
 import type { SetlistItem } from '../../types/setlist';
 import type { Song } from '../../types/song';
@@ -19,6 +20,10 @@ import { ActionMenu } from './ActionMenu';
 import { iconButton } from './ui';
 import { unavailableText } from '../../catalog/catalogStore';
 import { useSongAvailability } from '../../catalog/useCatalog';
+import { songVersionOf } from '../../catalog/songRepository';
+import { arrangementVersionOf, bindArrangement } from '../../utils/arrangement';
+import { parseSongSections } from '../../utils/chordParser';
+import { ARRANGEMENT_PENDING_TEXT } from './ArrangementPendingNotice';
 
 interface SetlistSongListProps {
   items: SetlistItem[];
@@ -49,6 +54,17 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   onMoveItemBy,
 }) => {
   const availability = useSongAvailability();
+  // Entries whose arrangement waits for review because the song changed.
+  // Only a song at another version than its arrangement is parsed.
+  const pendingItems = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of items) {
+      const song = songsById.get(item.songId);
+      if (!song || !item.arrangement || arrangementVersionOf(item.arrangement) === songVersionOf(song)) continue;
+      if (bindArrangement(parseSongSections(song.content), item.arrangement, songVersionOf(song)).state === 'pending') ids.add(item.id);
+    }
+    return ids;
+  }, [items, songsById]);
   const {
     announcement,
     draggingId,
@@ -129,11 +145,18 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
                       {song.artist}
                     </span>
                   )}
-                  {item.arrangement && (
-                    <span className="hidden sm:flex items-center gap-1 mt-0.5 text-[11px] font-semibold text-[#2464ED] dark:text-sky-400">
-                      <ListMusic aria-hidden="true" className="w-3 h-3 shrink-0" />
-                      Arreglo personalizado
+                  {pendingItems.has(item.id) ? (
+                    <span className="flex items-center gap-1 mt-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                      <TriangleAlert aria-hidden="true" className="w-3 h-3 shrink-0" />
+                      {ARRANGEMENT_PENDING_TEXT}
                     </span>
+                  ) : (
+                    item.arrangement && (
+                      <span className="hidden sm:flex items-center gap-1 mt-0.5 text-[11px] font-semibold text-[#2464ED] dark:text-sky-400">
+                        <ListMusic aria-hidden="true" className="w-3 h-3 shrink-0" />
+                        Arreglo personalizado
+                      </span>
+                    )
                   )}
                   <span className="sm:hidden mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
                     {keyDescription && (

@@ -320,6 +320,27 @@ describe('Snapshot del día', () => {
   });
 });
 
+describe('Snapshot después de una nueva versión de la canción', () => {
+  const at = (changes: Partial<Song>) => new Map([...SONGS, [SENCILLAMENTE.id, { ...SENCILLAMENTE, ...changes }]]);
+  const sectionsOf = (songsById: Map<string, Song>) =>
+    snapshot({ songsById }).songs.find((entry) => entry.songId === 'sencillamente-dios')!.sections;
+
+  it('un arreglo reasignado sin duda se registra como se tocó', () => {
+    const moved = sectionsOf(at({ version: 2, content: `[Intro]
+[G]
+
+${SENCILLAMENTE.content}` }));
+    eq(moved?.map((entry) => entry.label), ['Verso 1', 'Coro']);
+  });
+
+  it('un arreglo pendiente de revisar se registra como la canción tal como está escrita', () => {
+    eq(sectionsOf(at({ version: 2, content: `${SENCILLAMENTE.content}
+
+[Coro]
+Otra letra` })), null);
+  });
+});
+
 // --- Immutability ------------------------------------------------------------
 
 describe('El historial no cambia con lo que venga después', () => {
