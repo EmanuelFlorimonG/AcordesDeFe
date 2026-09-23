@@ -53,6 +53,13 @@ export interface ArrangementSection {
    */
   source?: { signature: string; version: number };
   /**
+   * Set the moment this block could not prove what it plays. It stays set
+   * until someone chooses its section, even if a later version of the song
+   * happens to say again exactly what the block recorded: having needed a
+   * person is not something a new version can undo.
+   */
+  needsReview?: true;
+  /**
    * The name the section had when it was added ("Coro", "Verso 1"). Kept so an
    * arrangement can still be read after the song's text changed.
    */

@@ -681,6 +681,42 @@ describe('El arreglo después de una nueva versión de la canción', () => {
     eq(pendingOf(bindArrangement(newChords, custom(), 2)), ['arr-1'], 'acordes de la intro cambiados: ese bloque se revisa');
   });
 
+  it('un bloque que necesitó revisión no deja de necesitarla porque la canción vuelva atrás', () => {
+    // v1: Coro = AAA, y el arreglo lo usa.
+    const v1 = parseSongSections(['[Coro]', 'AAA', '', '[Puente]', 'BBB'].join('\n'));
+    const saved = certifyArrangement(createArrangement(v1, idSequence()), 1, v1)!;
+
+    // v2: el coro cambia → el bloque entra en revisión, y queda anotado en él.
+    const v2 = parseSongSections(['[Coro]', 'CCC', '', '[Puente]', 'BBB'].join('\n'));
+    const inV2 = bindArrangement(v2, saved, 2);
+    eq(pendingOf(inV2), ['arr-1']);
+    if (inV2.state !== 'pending') throw new Error('pendiente');
+    eq(inV2.arrangement.sections[0].needsReview, true, 'el bloque anota que necesita revisión');
+
+    // v3: vuelve exactamente lo de v1. Sigue pendiente: solo una persona lo resuelve.
+    const v3 = parseSongSections(['[Coro]', 'AAA', '', '[Puente]', 'BBB'].join('\n'));
+    eq(pendingOf(bindArrangement(v3, inV2.arrangement, 3)), ['arr-1'], 'v3 idéntica a v1 no lo da por revisado');
+    eq(certifyArrangement(inV2.arrangement, 3, v3), null, 'y no se puede guardar así');
+
+    // Resolverlo explícitamente en v3 sí lo quita de la lista.
+    const chosen = rebindArrangementSection(inV2.arrangement, 'arr-1', listArrangementSources(v3)[0], 3);
+    eq(chosen.sections[0].needsReview, undefined);
+    eq(bindArrangement(v3, chosen, 3).state, 'rebound');
+    eq(certifyArrangement(chosen, 3, v3)?.sections[0].source?.version, 3);
+
+    // Duplicar, borrar el original, reordenar, guardar y recargar no lo limpian.
+    const duplicated = duplicateArrangementSection(inV2.arrangement, 'arr-1', idSequence('copia'));
+    const onlyCopy = removeArrangementSection(duplicated, 'arr-1');
+    eq(pendingOf(bindArrangement(v3, onlyCopy, 3)), ['copia-1'], 'la copia hereda la obligación');
+    eq(pendingOf(bindArrangement(v3, moveArrangementSection(onlyCopy, 'copia-1', 1), 3)), ['copia-1'], 'reordenar tampoco');
+    const stored = sanitizeArrangement(JSON.parse(JSON.stringify(onlyCopy)));
+    eq(stored?.sections[0].needsReview, true, 'se guarda y se vuelve a leer con la anotación');
+    eq(pendingOf(bindArrangement(v3, stored, 3)), ['copia-1']);
+
+    // Un arreglo que nunca fue dudoso sí puede seguir automáticamente.
+    eq(bindArrangement(v3, saved, 3).state, 'rebound', 'evidencia exacta y nada ambiguo: continúa');
+  });
+
   it('duplicar un bloque pendiente y borrar el original deja la copia pendiente', () => {
     const renamed = parseSongSections(SONG.replace('[Puente]', '[Final]'));
     const binding = bindArrangement(renamed, custom(), 2);

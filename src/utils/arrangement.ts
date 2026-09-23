@@ -430,6 +430,7 @@ export function sanitizeArrangement(
       id,
       sourceSectionId,
       ...(evidence ? { source: evidence } : {}),
+      ...(entry.needsReview === true ? { needsReview: true as const } : {}),
       label: typeof entry.label === 'string' ? entry.label.trim().slice(0, 60) : '',
       repeatCount: clampRepeatCount(entry.repeatCount),
       voices: normalizeVoices(entry.voices),
@@ -498,7 +499,8 @@ export function bindArrangement(
   songVersion: number
 ): ArrangementBinding {
   if (!arrangement) return { state: 'none' };
-  if (arrangementVersionOf(arrangement) === songVersion) return { state: 'current', arrangement };
+  const waiting = arrangement.sections.some((entry) => entry.needsReview);
+  if (!waiting && arrangementVersionOf(arrangement) === songVersion) return { state: 'current', arrangement };
 
   const sources = listArrangementSources(sections);
   const labelCount = new Map<string, number>();
@@ -506,13 +508,20 @@ export function bindArrangement(
 
   const pendingIds: string[] = [];
   const rebound = arrangement.sections.map((entry) => {
+    // Once a block needed a person, only that person takes it off the list.
+    if (entry.needsReview) {
+      pendingIds.push(entry.id);
+      return entry;
+    }
     // Already checked against this very version: nothing to prove.
     if (entry.source?.version === songVersion && sources.some((source) => source.sectionId === entry.sourceSectionId)) return entry;
     const signature = entry.source?.signature;
     const matches = signature === undefined ? [] : sources.filter((source) => source.signature === signature);
     if (matches.length !== 1 || (labelCount.get(matches[0].label) ?? 0) !== 1) {
       pendingIds.push(entry.id);
-      return entry;
+      // Written down on the block itself, so it survives duplicating,
+      // removing, reordering, saving, reloading and later versions.
+      return { ...entry, needsReview: true as const };
     }
     return { ...entry, sourceSectionId: matches[0].sectionId, label: matches[0].label };
   });
@@ -556,11 +565,13 @@ export function rebindArrangementSection(
   if (!arrangement.sections.some((section) => section.id === id)) return arrangement;
   return {
     ...arrangement,
-    sections: arrangement.sections.map((section) =>
-      section.id === id
-        ? { ...section, sourceSectionId: source.sectionId, label: source.label, source: { signature: source.signature, version: songVersion } }
-        : section
-    ),
+    sections: arrangement.sections.map((section) => {
+      if (section.id !== id) return section;
+      // Chosen by a person: that is what takes the block off the list.
+      const { needsReview: _reviewed, ...rest } = section;
+      void _reviewed;
+      return { ...rest, sourceSectionId: source.sectionId, label: source.label, source: { signature: source.signature, version: songVersion } };
+    }),
   };
 }
 
@@ -580,6 +591,7 @@ export function certifyArrangement(arrangement: SetlistArrangement, songVersion:
     const section = byId.get(entry.sourceSectionId);
     return section ? { ...entry, source: { signature: sectionSignature(section, sections), version: songVersion } } : entry;
   });
+  if (certified.some((entry) => entry.needsReview)) return null;
   if (certified.some((entry) => entry.source?.version !== songVersion)) return null;
   return { ...arrangement, sections: certified, songVersion };
 }

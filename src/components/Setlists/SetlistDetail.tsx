@@ -258,6 +258,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
           }}
           onMoveItem={onMoveItem}
           onMoveItemBy={onMoveItemBy}
+          onArrangementNeedsReview={(itemId, arrangement) => onUpdateItem(itemId, { arrangement })}
         />
       )}
 

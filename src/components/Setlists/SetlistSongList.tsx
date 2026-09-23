@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -12,7 +12,7 @@ import {
   Trash2,
   TriangleAlert,
 } from 'lucide-react';
-import type { SetlistItem } from '../../types/setlist';
+import type { SetlistArrangement, SetlistItem } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import { useReorderList } from '../../hooks/useReorderList';
 import { describeKey } from '../../utils/keySettings';
@@ -35,6 +35,12 @@ interface SetlistSongListProps {
   onMoveItem: (itemId: string, toIndex: number) => void;
   /** Moves an entry one place up or down (keyboard and menu) */
   onMoveItemBy: (itemId: string, delta: number) => void;
+  /**
+   * An arrangement whose blocks can no longer say what they play, written
+   * down so the obligation to review them isn't forgotten if a later version
+   * of the song happens to match again.
+   */
+  onArrangementNeedsReview?: (itemId: string, arrangement: SetlistArrangement) => void;
 }
 
 /**
@@ -52,19 +58,36 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   onRemoveItem,
   onMoveItem,
   onMoveItemBy,
+  onArrangementNeedsReview,
 }) => {
   const availability = useSongAvailability();
   // Entries whose arrangement waits for review because the song changed.
   // Only a song at another version than its arrangement is parsed.
-  const pendingItems = useMemo(() => {
-    const ids = new Set<string>();
+  const pending = useMemo(() => {
+    const waiting = new Map<string, SetlistArrangement>();
     for (const item of items) {
       const song = songsById.get(item.songId);
-      if (!song || !item.arrangement || arrangementVersionOf(item.arrangement) === songVersionOf(song)) continue;
-      if (bindArrangement(parseSongSections(song.content), item.arrangement, songVersionOf(song)).state === 'pending') ids.add(item.id);
+      if (!song || !item.arrangement) continue;
+      const version = songVersionOf(song);
+      if (arrangementVersionOf(item.arrangement) === version && !item.arrangement.sections.some((section) => section.needsReview)) continue;
+      const binding = bindArrangement(parseSongSections(song.content), item.arrangement, version);
+      if (binding.state === 'pending') waiting.set(item.id, binding.arrangement);
     }
-    return ids;
+    return waiting;
   }, [items, songsById]);
+
+  // Noticing it is what records it: a block that needed someone keeps needing
+  // them, even if a later version of the song says again what it recorded.
+  useEffect(() => {
+    if (!onArrangementNeedsReview) return;
+    for (const [itemId, arrangement] of pending) {
+      const stored = items.find((item) => item.id === itemId)?.arrangement;
+      const already = arrangement.sections.every(
+        (section, index) => section.needsReview !== true || stored?.sections[index]?.needsReview === true
+      );
+      if (!already) onArrangementNeedsReview(itemId, arrangement);
+    }
+  }, [pending, items, onArrangementNeedsReview]);
   const {
     announcement,
     draggingId,
@@ -145,7 +168,7 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
                       {song.artist}
                     </span>
                   )}
-                  {pendingItems.has(item.id) ? (
+                  {pending.has(item.id) ? (
                     <span className="flex items-center gap-1 mt-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
                       <TriangleAlert aria-hidden="true" className="w-3 h-3 shrink-0" />
                       {ARRANGEMENT_PENDING_TEXT}
