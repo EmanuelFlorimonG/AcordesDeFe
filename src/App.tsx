@@ -36,6 +36,9 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
+import { bindArrangement, withReviewNeeded } from './utils/arrangement';
+import { parseSongSections } from './utils/chordParser';
+import { songVersionOf } from './catalog/songRepository';
 import { setlistHash, setlistMassHash, setlistSongHash } from './components/Setlists/ui';
 import { useMinistry } from './hooks/useMinistry';
 import { MinistryContext, type MinistryData } from './hooks/ministryContext';
@@ -745,6 +748,8 @@ export function App() {
       },
       onKeySettingsChange: (keySettings) =>
         setlists.updateItem(activeSetlist.id, position.item.id, keySettings),
+      // Wherever it is noticed, it is written down (see withReviewNeeded).
+      onArrangementNeedsReview: (arrangement) => setlists.updateItem(activeSetlist.id, position.item.id, { arrangement }),
     };
   })();
 
@@ -1107,6 +1112,18 @@ export function App() {
       const recordPerformance = (performedItemIds: string[], notes: string) => {
         const setlist = occurrence?.event.setlistId ? setlists.getSetlist(occurrence.event.setlistId) : null;
         if (!occurrence || !setlist || performedItemIds.length === 0) return null;
+        // Closing a celebration can also be the first place a block turns out
+        // to need someone: the record itself plays the song as written, and
+        // the obligation is written down before it is kept.
+        for (const item of setlist.items) {
+          const song = item.arrangement ? songsById.get(item.songId) : null;
+          if (!song) continue;
+          const hardened = withReviewNeeded(
+            item.arrangement,
+            bindArrangement(parseSongSections(song.content), item.arrangement, songVersionOf(song))
+          );
+          if (hardened) setlists.updateItem(setlist.id, item.id, { arrangement: hardened });
+        }
         return history.record({
           event: occurrence.event,
           occurrenceDate: occurrence.date,
@@ -1495,6 +1512,7 @@ export function App() {
             key={massSetlist.id}
             setlist={massSetlist}
             songsById={songsById}
+            onArrangementNeedsReview={(itemId, arrangement) => setlists.updateItem(massSetlist.id, itemId, { arrangement })}
             isPlayable={isPlayableItem}
             onExit={() => navigateTo(massOriginOccurrence ? occurrenceHash(massOriginOccurrence) : setlistHash(massSetlist.id))}
             returnsTo={massOriginOccurrence ? 'activity' : 'setlist'}

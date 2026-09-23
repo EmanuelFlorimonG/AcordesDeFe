@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Setlist, SetlistItem } from '../../types/setlist';
+import type { Setlist, SetlistArrangement, SetlistItem } from '../../types/setlist';
 import type { Instrument, Song } from '../../types/song';
 import { AUTO_SCROLL_SPEEDS, DEFAULT_AUTO_SCROLL_SPEED } from '../../hooks/useAutoScroll';
 import { useFullscreen } from '../../hooks/useFullscreen';
@@ -27,6 +27,11 @@ import { MassStartScreen } from './MassStartScreen';
 interface MassModeProps {
   setlist: Setlist;
   songsById: Map<string, Song>;
+  /**
+   * Writes down that a block of an entry's arrangement needs someone to look
+   * at it: Mass can be the first place that shows, opened straight from a link.
+   */
+  onArrangementNeedsReview?: (itemId: string, arrangement: SetlistArrangement) => void;
   isPlayable: (item: SetlistItem) => boolean;
   /** Leaves mass mode: back to where it was opened from */
   onExit: () => void;
@@ -57,6 +62,7 @@ type Overlay = 'navigator' | 'menu' | 'exit' | null;
 export const MassMode: React.FC<MassModeProps> = ({
   setlist,
   songsById,
+  onArrangementNeedsReview,
   isPlayable,
   onExit,
   returnsTo = 'setlist',
@@ -246,6 +252,7 @@ export const MassMode: React.FC<MassModeProps> = ({
         key={item.id}
         song={song}
         item={item}
+        onArrangementNeedsReview={onArrangementNeedsReview}
         position={position}
         keyInfo={keyInfo}
         content={transposedContent}

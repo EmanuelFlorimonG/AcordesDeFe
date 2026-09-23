@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { StickyNote } from 'lucide-react';
-import type { SetlistItem } from '../../types/setlist';
+import type { SetlistArrangement, SetlistItem } from '../../types/setlist';
+import { useArrangementReview } from '../../hooks/useArrangementReview';
 import { bindArrangement, playableArrangement, resolveArrangement } from '../../utils/arrangement';
 import { parseSongSections } from '../../utils/chordParser';
 import type { StageFontSize } from '../../utils/stageReading';
@@ -13,6 +14,8 @@ interface MassSongContentProps {
   item: SetlistItem;
   /** The published version of the song, to tell whether the arrangement was made on it */
   songVersion: number;
+  /** Writes down that a block needs someone: Mass can be the first place it shows */
+  onArrangementNeedsReview?: (itemId: string, arrangement: SetlistArrangement) => void;
   fontSize: StageFontSize;
   showChords: boolean;
   onChordClick: (chord: string) => void;
@@ -34,6 +37,7 @@ export const MassSongContent: React.FC<MassSongContentProps> = ({
   fontSize,
   showChords,
   onChordClick,
+  onArrangementNeedsReview,
 }) => {
   const sections = useMemo(() => parseSongSections(content), [content]);
   const binding = useMemo(() => bindArrangement(sections, item.arrangement, songVersion), [sections, item.arrangement, songVersion]);
@@ -41,6 +45,11 @@ export const MassSongContent: React.FC<MassSongContentProps> = ({
     const playable = playableArrangement(binding);
     return playable ? resolveArrangement(sections, playable) : null;
   }, [sections, binding]);
+  const remember = useCallback(
+    (next: SetlistArrangement) => onArrangementNeedsReview?.(item.id, next),
+    [onArrangementNeedsReview, item.id]
+  );
+  useArrangementReview(binding, item.arrangement, onArrangementNeedsReview && remember);
 
   return (
     <>

@@ -197,4 +197,9 @@ export interface SetlistPlayback {
   onViewOriginal: () => void;
   /** Saves a new key or capo for this occasion only. */
   onKeySettingsChange: (settings: { transposeSteps: number; capoFret: number }) => void;
+  /**
+   * Writes down that a block of this entry's arrangement needs someone to
+   * look at it, whichever screen noticed (see withReviewNeeded).
+   */
+  onArrangementNeedsReview?: (arrangement: SetlistArrangement) => void;
 }

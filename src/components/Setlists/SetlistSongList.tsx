@@ -13,6 +13,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { SetlistArrangement, SetlistItem } from '../../types/setlist';
+import type { ArrangementBinding } from '../../utils/arrangement';
 import type { Song } from '../../types/song';
 import { useReorderList } from '../../hooks/useReorderList';
 import { describeKey } from '../../utils/keySettings';
@@ -21,7 +22,7 @@ import { iconButton } from './ui';
 import { unavailableText } from '../../catalog/catalogStore';
 import { useSongAvailability } from '../../catalog/useCatalog';
 import { songVersionOf } from '../../catalog/songRepository';
-import { arrangementVersionOf, bindArrangement } from '../../utils/arrangement';
+import { arrangementVersionOf, bindArrangement, withReviewNeeded } from '../../utils/arrangement';
 import { parseSongSections } from '../../utils/chordParser';
 import { ARRANGEMENT_PENDING_TEXT } from './ArrangementPendingNotice';
 
@@ -64,14 +65,14 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   // Entries whose arrangement waits for review because the song changed.
   // Only a song at another version than its arrangement is parsed.
   const pending = useMemo(() => {
-    const waiting = new Map<string, SetlistArrangement>();
+    const waiting = new Map<string, ArrangementBinding>();
     for (const item of items) {
       const song = songsById.get(item.songId);
       if (!song || !item.arrangement) continue;
       const version = songVersionOf(song);
       if (arrangementVersionOf(item.arrangement) === version && !item.arrangement.sections.some((section) => section.needsReview)) continue;
       const binding = bindArrangement(parseSongSections(song.content), item.arrangement, version);
-      if (binding.state === 'pending') waiting.set(item.id, binding.arrangement);
+      if (binding.state === 'pending') waiting.set(item.id, binding);
     }
     return waiting;
   }, [items, songsById]);
@@ -80,12 +81,9 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   // them, even if a later version of the song says again what it recorded.
   useEffect(() => {
     if (!onArrangementNeedsReview) return;
-    for (const [itemId, arrangement] of pending) {
-      const stored = items.find((item) => item.id === itemId)?.arrangement;
-      const already = arrangement.sections.every(
-        (section, index) => section.needsReview !== true || stored?.sections[index]?.needsReview === true
-      );
-      if (!already) onArrangementNeedsReview(itemId, arrangement);
+    for (const [itemId, binding] of pending) {
+      const hardened = withReviewNeeded(items.find((item) => item.id === itemId)?.arrangement, binding);
+      if (hardened) onArrangementNeedsReview(itemId, hardened);
     }
   }, [pending, items, onArrangementNeedsReview]);
   const {

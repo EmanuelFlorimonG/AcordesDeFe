@@ -7,6 +7,7 @@ import type { MetronomeControls } from '../../hooks/useMetronome';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { AUTO_SCROLL_SPEEDS, DEFAULT_AUTO_SCROLL_SPEED, useAutoScroll } from '../../hooks/useAutoScroll';
 import { useRehearsalShortcuts } from '../../hooks/useRehearsalShortcuts';
+import { useArrangementReview } from '../../hooks/useArrangementReview';
 import { songVersionOf } from '../../catalog/songRepository';
 import { bindArrangement, playableArrangement, resolveArrangement, sectionShortLabel } from '../../utils/arrangement';
 import { parseSongSections } from '../../utils/chordParser';
@@ -121,6 +122,8 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
     const playable = playableArrangement(binding);
     return playable ? resolveArrangement(sections, playable) : null;
   }, [sections, binding]);
+  // Rehearsal can be the first place this is noticed (opened straight from a link).
+  useArrangementReview(binding, storedArrangement, setlist?.onArrangementNeedsReview);
 
   const navItems = useMemo<SectionNavItem[]>(() => {
     // Every block of an arrangement is its own place to jump to, so a chorus

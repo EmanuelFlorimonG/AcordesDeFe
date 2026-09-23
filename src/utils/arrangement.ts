@@ -529,6 +529,28 @@ export function bindArrangement(
   return pendingIds.length > 0 ? { state: 'pending', arrangement: result, pendingIds } : { state: 'rebound', arrangement: result };
 }
 
+/**
+ * The stored arrangement with the blocks that just turned out to need someone
+ * marked as such, or null when there is nothing new to write down.
+ *
+ * Wherever the app notices it — the setlist, rehearsal, Mass, the song page —
+ * the obligation is written down, because a later version of the song may say
+ * again exactly what a block recorded and nobody would ever know it had been
+ * in doubt. It only ever adds the mark: what is stored is otherwise left
+ * alone, and no mark is ever removed here (only choosing a section does that).
+ */
+export function withReviewNeeded(stored: SetlistArrangement | undefined, binding: ArrangementBinding): SetlistArrangement | null {
+  if (!stored || binding.state !== 'pending') return null;
+  const waiting = new Set(binding.pendingIds);
+  if (stored.sections.every((section) => !waiting.has(section.id) || section.needsReview)) return null;
+  return {
+    ...stored,
+    sections: stored.sections.map((section) =>
+      waiting.has(section.id) && !section.needsReview ? { ...section, needsReview: true as const } : section
+    ),
+  };
+}
+
 /** What is played: the arrangement when it can be trusted, nothing (the song as written) otherwise. */
 export function playableArrangement(binding: ArrangementBinding): SetlistArrangement | undefined {
   return binding.state === 'current' || binding.state === 'rebound' ? binding.arrangement : undefined;

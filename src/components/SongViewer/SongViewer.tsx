@@ -4,6 +4,7 @@ import type { SetlistPlayback } from '../../types/setlist';
 import { normalizeStep, transposeKey } from '../../utils/chordTransposer';
 import { transposeSongContent, extractUniqueChords, parseSongSections, stripChords } from '../../utils/chordParser';
 import { bindArrangement } from '../../utils/arrangement';
+import { useArrangementReview } from '../../hooks/useArrangementReview';
 import { songVersionOf } from '../../catalog/songRepository';
 import { ArrangementPendingNotice } from '../Setlists/ArrangementPendingNotice';
 import { getCategoryStyle } from '../../utils/categoryStyle';
@@ -229,10 +230,13 @@ export const SongViewer: React.FC<SongViewerProps> = ({
 
   // Whether this entry's arrangement can still be followed on this version of the song.
   const setlistArrangement = setlist?.item.arrangement;
-  const arrangementState = useMemo(
-    () => (setlistArrangement ? bindArrangement(parseSongSections(song.content), setlistArrangement, songVersionOf(song)).state : 'none'),
+  const arrangementBinding = useMemo(
+    () => bindArrangement(parseSongSections(song.content), setlistArrangement, songVersionOf(song)),
     [setlistArrangement, song]
   );
+  const arrangementState = arrangementBinding.state;
+  // This page can be the first one to notice, opened straight from a link.
+  useArrangementReview(arrangementBinding, setlistArrangement, setlist?.onArrangementNeedsReview);
 
   const transposedContent = useMemo(() => {
     return transposeSongContent(

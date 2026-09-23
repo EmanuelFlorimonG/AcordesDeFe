@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import type { SetlistItem, SetlistSongTransition } from '../../types/setlist';
+import type { SetlistArrangement, SetlistItem, SetlistSongTransition } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import { songVersionOf } from '../../catalog/songRepository';
 import { AUTO_SCROLL_SPEEDS, useAutoScroll } from '../../hooks/useAutoScroll';
@@ -14,6 +14,8 @@ import { MassSongContent } from './MassSongContent';
 interface MassSongScreenProps {
   song: Song;
   item: SetlistItem;
+  /** Writes down that a block of this entry's arrangement needs someone to look at it */
+  onArrangementNeedsReview?: (itemId: string, arrangement: SetlistArrangement) => void;
   position: MassPosition;
   keyInfo: MassKeyInfo | null;
   /** Song text already transposed for this entry and instrument */
@@ -63,6 +65,7 @@ export const MassSongScreen: React.FC<MassSongScreenProps> = ({
   onOpenNavigator,
   onOpenMenu,
   onRequestExit,
+  onArrangementNeedsReview,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoScroll = useAutoScroll(scrollRef, {
@@ -97,6 +100,7 @@ export const MassSongScreen: React.FC<MassSongScreenProps> = ({
             content={content}
             item={item}
             songVersion={songVersionOf(song)}
+            onArrangementNeedsReview={onArrangementNeedsReview}
             fontSize={fontSize}
             showChords={showChords}
             onChordClick={onChordClick}

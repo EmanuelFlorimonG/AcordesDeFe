@@ -30,6 +30,7 @@ import {
   sanitizeArrangement,
   summarizeArrangement,
   updateArrangementSection,
+  withReviewNeeded,
 } from '../src/utils/arrangement';
 import {
   SETLIST_STORAGE_KEY,
@@ -715,6 +716,50 @@ describe('El arreglo después de una nueva versión de la canción', () => {
 
     // Un arreglo que nunca fue dudoso sí puede seguir automáticamente.
     eq(bindArrangement(v3, saved, 3).state, 'rebound', 'evidencia exacta y nada ambiguo: continúa');
+  });
+
+  it('la obligación se anota desde cualquier pantalla, y solo se añade', () => {
+    const v1 = parseSongSections(['[Coro]', 'AAA', '', '[Puente]', 'BBB'].join('\n'));
+    const saved = certifyArrangement(createArrangement(v1, idSequence()), 1, v1)!;
+    const v2 = parseSongSections(['[Coro]', 'CCC', '', '[Puente]', 'BBB'].join('\n'));
+
+    // Lo que cualquier pantalla escribiría al descubrirlo: lo guardado, más la marca.
+    const binding = bindArrangement(v2, saved, 2);
+    const hardened = withReviewNeeded(saved, binding)!;
+    eq(hardened.sections.map((entry) => [entry.label, entry.needsReview ?? false]), [
+      ['Coro', true],
+      ['Puente', false],
+    ]);
+    eq(hardened.songVersion, saved.songVersion, 'no cambia la versión anotada');
+    eq(
+      hardened.sections.map((entry) => [entry.sourceSectionId, entry.source?.signature]),
+      saved.sections.map((entry) => [entry.sourceSectionId, entry.source?.signature]),
+      'ni a qué apuntaba cada bloque ni su evidencia'
+    );
+
+    // Ya anotado, no hay nada que volver a escribir: ni bucles ni escrituras repetidas.
+    eq(withReviewNeeded(hardened, bindArrangement(v2, hardened, 2)), null);
+    const v3 = parseSongSections(['[Coro]', 'AAA', '', '[Puente]', 'BBB'].join('\n'));
+    eq(withReviewNeeded(hardened, bindArrangement(v3, hardened, 3)), null, 'en v3 tampoco: ya está escrito');
+    eq(bindArrangement(v3, hardened, 3).state, 'pending', 'y sigue pendiente');
+
+    // Un arreglo que se puede seguir no provoca ninguna escritura.
+    eq(withReviewNeeded(saved, bindArrangement(v1, saved, 1)), null, 'al día');
+    const v1Again = parseSongSections(['[Intro]', 'X', '', '[Coro]', 'AAA', '', '[Puente]', 'BBB'].join('\n'));
+    eq(bindArrangement(v1Again, saved, 2).state, 'rebound');
+    eq(withReviewNeeded(saved, bindArrangement(v1Again, saved, 2)), null, 'reasignado sin dudas');
+    eq(withReviewNeeded(undefined, binding), null, 'sin arreglo guardado no hay nada que anotar');
+
+    // Nunca quita la marca: eso solo lo hace elegir la sección.
+    const resolved = rebindArrangementSection(hardened, 'arr-1', listArrangementSources(v3)[0], 3);
+    eq(resolved.sections[0].needsReview, undefined);
+    eq(withReviewNeeded(resolved, bindArrangement(v3, resolved, 3)), null);
+    eq(withReviewNeeded(hardened, bindArrangement(v3, resolved, 3)), null, 'una lectura limpia no borra lo anotado');
+
+    // Y lo que se escribe es solo el arreglo: el resto de la entrada no viaja.
+    const stored = sanitizeArrangement(JSON.parse(JSON.stringify(hardened)));
+    eq(stored?.sections[0].needsReview, true);
+    eq(bindArrangement(v3, stored, 3).state, 'pending');
   });
 
   it('duplicar un bloque pendiente y borrar el original deja la copia pendiente', () => {
