@@ -57,6 +57,14 @@ export interface EditorSection {
   id: string;
   /** The name written as the section's header: "Intro", "Verso 1", "Coro" */
   label: string;
+  /**
+   * How the header was written, because it decides what the section covers:
+   * "[Coro]" holds every line until the next header, "Coro:" only the stanza
+   * right below it. A section read from a song keeps the form it had, so
+   * editing one part never moves the boundaries of another. New sections are
+   * written in brackets.
+   */
+  headerForm?: 'bracket' | 'label';
   /** Set when this appearance repeats an earlier section; its own lines are then unused */
   repeatOf: string | null;
   lines: EditorLine[];
@@ -358,6 +366,7 @@ export function duplicateSection(doc: EditorDocument, sectionId: string, makeId:
   const copy: EditorSection = {
     id: makeId(),
     label: source.label,
+    ...(source.headerForm ? { headerForm: source.headerForm } : {}),
     repeatOf: source.repeatOf,
     lines: source.lines.map((line) => ({ ...line, id: makeId(), chords: line.chords.map((anchor) => ({ ...anchor, id: makeId() })) })),
   };
@@ -413,7 +422,7 @@ export function editorToContent(doc: EditorDocument): string {
   const blocks = doc.sections.map((section) => {
     const label = effectiveLabel(doc, section);
     if (section.repeatOf) return repeatHeader(label);
-    const header = label ? `[${label}]` : '';
+    const header = label ? (section.headerForm === 'label' ? `${label}:` : `[${label}]`) : '';
     const lines = section.lines.map(lineToNotation);
     while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop();
     while (lines.length > 0 && !lines[0].trim()) lines.shift();
@@ -451,8 +460,31 @@ export function editorToSongDraft(doc: EditorDocument): SongDraft {
  */
 export function proposedSongDraft(origin: SongDraft | null, opened: EditorDocument, current: EditorDocument): SongDraft {
   const draft = editorToSongDraft(current);
-  if (!origin || JSON.stringify(current.sections) !== JSON.stringify(opened.sections)) return draft;
+  if (!origin || !sameEditorContent(opened, current)) return draft;
   return { ...draft, content: origin.content, chordsUsed: [...origin.chordsUsed] };
+}
+
+/**
+ * The words and chords of a document, without the ids the editor gives rows
+ * to keep track of them while they are on screen. Those ids are new every
+ * time a song is opened or a draft is read back, and they are not the song:
+ * comparing them would call an untouched song edited.
+ */
+function editorContentShape(doc: EditorDocument): string {
+  const at = new Map(doc.sections.map((section, index) => [section.id, index]));
+  return JSON.stringify(
+    doc.sections.map((section) => [
+      section.label.trim(),
+      section.headerForm ?? 'bracket',
+      section.repeatOf === null ? null : at.get(section.repeatOf) ?? -1,
+      section.lines.map((line) => [line.text, line.instrumental, line.chords.map((anchor) => [anchor.position, anchor.chord])]),
+    ])
+  );
+}
+
+/** Whether two documents say the same thing musically (see editorContentShape). */
+export function sameEditorContent(a: EditorDocument, b: EditorDocument): boolean {
+  return editorContentShape(a) === editorContentShape(b);
 }
 
 /**
@@ -471,6 +503,7 @@ export function contentToEditor(content: string, meta: SongMeta = emptySongMeta(
     return {
       id,
       label: fullLabel,
+      ...(section.header?.form === 'label' ? { headerForm: 'label' as const } : {}),
       repeatOf: null,
       lines: section.lines.map((line) => {
         if (line.type === 'empty') return createLine(makeId);
@@ -633,6 +666,7 @@ export function parseEditorDocument(value: unknown, makeId: IdFactory = createId
   const sections = value.sections.filter(isRecord).map((section): EditorSection => ({
     id: text(section.id) || makeId(),
     label: text(section.label),
+    ...(section.headerForm === 'label' ? { headerForm: 'label' as const } : {}),
     repeatOf: typeof section.repeatOf === 'string' ? section.repeatOf : null,
     lines: (Array.isArray(section.lines) ? section.lines : []).filter(isRecord).map((line) => {
       const lineText = cleanLyricText(text(line.text));

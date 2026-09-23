@@ -969,3 +969,126 @@ describe('Sugerir una edición de una canción publicada', () => {
     eq(parseSuggestEditHash('#/song/a/b/sugerir'), null);
   });
 });
+
+// --- The editor writes back what it read ------------------------------------------------
+
+describe('Editar una parte no cambia las demás', () => {
+  /** A song as the app reads it: its sections, with what each one puts on the page. */
+  const structureOf = (content: string) => {
+    const sections = parseSongSections(content);
+    const at = new Map(sections.map((section, index) => [section.id, index]));
+    return sections.map((section) => [
+      section.header ? `${section.header.label}|${section.header.form}` : '(sin título)',
+      // Una llamada ("Coro" a secas) toca las líneas de la sección que repite:
+      // lo que la identifica es a cuál repite, no una copia de aquellas líneas.
+      section.repeatOf ? `repite ${at.get(section.repeatOf) ?? '?'}` : section.lines.filter((line) => line.type !== 'empty').map((line) => line.raw.trimEnd()),
+    ]);
+  };
+  const openedOf = (draft: SongDraft) => {
+    const { content, chordsUsed: _derived, ...meta } = draft;
+    void _derived;
+    return contentToEditor(content, meta);
+  };
+
+  it('abrir y volver a escribir las 97 deja la misma estructura', () => {
+    const differ: string[] = [];
+    for (const catalogSong of MOCK_SONGS) {
+      const published = songToDraft(catalogSong);
+      const again = editorToContent(openedOf(published));
+      if (JSON.stringify(structureOf(again)) !== JSON.stringify(structureOf(published.content))) differ.push(catalogSong.id);
+    }
+    eq(differ, []);
+    checks += 96;
+  });
+
+  it('recuperar el borrador guardado de cualquiera de las 97 no propone ningún cambio', () => {
+    const differ: string[] = [];
+    for (const catalogSong of MOCK_SONGS) {
+      const published = songToDraft(catalogSong);
+      const opened = openedOf(published);
+      // Guardado y vuelto a leer: los ids son otros, la canción es la misma.
+      const stored = JSON.parse(JSON.stringify(opened));
+      const recovered = parseEditorDocument(stored, idSequence('nuevo'));
+      if (!recovered) {
+        differ.push(`${catalogSong.id} (ilegible)`);
+        continue;
+      }
+      // Y el editor se abre otra vez con ids nuevos, como en una pestaña nueva.
+      const reopened = contentToEditor(published.content, { ...published, content: undefined } as never, idSequence('otro'));
+      const proposed = proposedSongDraft(published, reopened, recovered);
+      if (proposed.content !== published.content || songDraftChanges(published, proposed)) differ.push(catalogSong.id);
+    }
+    eq(differ, []);
+    checks += 96;
+  });
+
+  it('cambiar solo el tempo, o solo los datos, no toca la música de las 97', () => {
+    const differ: string[] = [];
+    for (const catalogSong of MOCK_SONGS) {
+      const published = songToDraft(catalogSong);
+      const opened = openedOf(published);
+      const before = JSON.stringify(structureOf(published.content));
+      const tempo = editorToSongDraft({ ...opened, meta: { ...opened.meta, tempo: (opened.meta.tempo ?? 90) + 4 } });
+      const metadata = editorToSongDraft({ ...opened, meta: { ...opened.meta, year: '2026', tags: [...opened.meta.tags, 'revisada'] } });
+      if (JSON.stringify(structureOf(tempo.content)) !== before || JSON.stringify(structureOf(metadata.content)) !== before) {
+        differ.push(catalogSong.id);
+      }
+    }
+    eq(differ, []);
+    checks += 96;
+  });
+
+  it('editar una línea deja intactos los límites de las demás secciones', () => {
+    const differ: string[] = [];
+    for (const catalogSong of MOCK_SONGS) {
+      const published = songToDraft(catalogSong);
+      const opened = openedOf(published);
+      const index = opened.sections.findIndex((section) => !section.repeatOf && section.lines.some((line) => line.text.trim()));
+      if (index < 0) continue;
+      const edited = {
+        ...opened,
+        sections: opened.sections.map((section, at) =>
+          at === index
+            ? { ...section, lines: section.lines.map((line, position) => (position === 0 ? { ...line, text: `${line.text} ahora` } : line)) }
+            : section
+        ),
+      };
+      const before = structureOf(published.content);
+      const after = structureOf(editorToSongDraft(edited).content);
+      const untouched = (entries: unknown[][]) => JSON.stringify(entries.filter((_entry, at) => at !== index));
+      if (before.length !== after.length || untouched(before) !== untouched(after)) differ.push(catalogSong.id);
+    }
+    eq(differ, []);
+    checks += 96;
+  });
+
+  it('un "Coro:" no se traga la estrofa siguiente', () => {
+    const song = MOCK_SONGS.find((entry) => entry.id === 'vienen-con-alegria')!;
+    const published = songToDraft(song);
+    eq(published.content.includes('Coro:'), true, 'esta canción escribe su coro con dos puntos');
+    const opened = openedOf(published);
+    eq(opened.sections.find((section) => section.label === 'Coro')?.headerForm, 'label');
+
+    // Una edición mínima: solo el tempo.
+    const minimal = editorToSongDraft({ ...opened, meta: { ...opened.meta, tempo: 100 } });
+    eq(structureOf(minimal.content), structureOf(published.content));
+    eq(minimal.content.includes('Coro:'), true, 'el coro se sigue escribiendo igual');
+    eq(parseSongSections(minimal.content).length, parseSongSections(published.content).length);
+
+    // Y editando una línea del coro, las demás secciones no se mueven.
+    const coroAt = opened.sections.findIndex((section) => section.label === 'Coro');
+    const edited = editorToSongDraft({
+      ...opened,
+      sections: opened.sections.map((section, at) =>
+        at === coroAt ? { ...section, lines: section.lines.map((line, index) => (index === 0 ? { ...line, text: `${line.text} hoy` } : line)) } : section
+      ),
+    });
+    const before = structureOf(published.content);
+    const after = structureOf(edited.content);
+    eq(after.length, before.length);
+    eq(
+      after.filter((_entry, at) => at !== coroAt),
+      before.filter((_entry, at) => at !== coroAt)
+    );
+  });
+});
