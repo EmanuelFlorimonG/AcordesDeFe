@@ -7,7 +7,8 @@ import { suggestNewSongId, songIdProblem } from '../src/admin/review';
 import { adminHash, isAdminHash, parseAdminRoute, sectionOf } from '../src/admin/routes';
 import { matchesSubmission } from '../src/admin/search';
 import { compareSongs, lineToText } from '../src/admin/songDiff';
-import { emptySongDraft } from '../src/catalog/songDraft';
+import { emptySongDraft, type SongDraft } from '../src/catalog/songDraft';
+import { songDraftChanges } from '../src/catalog/submission';
 import { createSupabaseAdminAuth } from '../src/admin/supabaseAuth';
 import { SupabaseRequestError, createSupabaseClient, type SupabaseClient } from '../src/lib/supabase';
 
@@ -431,6 +432,51 @@ describe('Repositorio editorial', () => {
       'invalid',
       'unavailable',
     ]);
+  });
+});
+
+// --- What counts as a change --------------------------------------------------------
+
+describe('El editor y el panel ven los mismos cambios musicales', () => {
+  const draftOf = (content: string): SongDraft => ({
+    ...emptySongDraft(),
+    title: 'Canción',
+    originalKey: 'G',
+    content,
+    chordsUsed: ['G'],
+  });
+  const base = draftOf(['[Coro]', 'Hola'].join(String.fromCharCode(10)));
+  /** [editor, panel]: ambos tienen que decir lo mismo de cada caso. */
+  const seenBy = (proposed: SongDraft) => [songDraftChanges(base, proposed), !compareSongs(base, proposed).identical];
+
+  it('una repetición escrita en el encabezado es un cambio', () => {
+    // Codex: «[Coro (x2)]» pasaba por idéntico en el panel.
+    eq(seenBy(draftOf(['[Coro (x2)]', 'Hola'].join(String.fromCharCode(10)))), [true, true]);
+    eq(seenBy(draftOf(['[Coro (x3)]', 'Hola'].join(String.fromCharCode(10)))), [true, true]);
+    const twice = draftOf(['[Coro (x2)]', 'Hola'].join(String.fromCharCode(10)));
+    const thrice = draftOf(['[Coro (x3)]', 'Hola'].join(String.fromCharCode(10)));
+    // x2 frente a x3 también es un cambio.
+    eq([songDraftChanges(twice, thrice), !compareSongs(twice, thrice).identical], [true, true]);
+  });
+
+  it('una indicación del encabezado también', () => {
+    eq(seenBy(draftOf(['[Coro suave]', 'Hola'].join(String.fromCharCode(10)))), [true, true]);
+  });
+
+  it('nombre, letra, acordes, repetición de sección e identidad', () => {
+    eq(seenBy(draftOf(['[Estribillo]', 'Hola'].join(String.fromCharCode(10)))), [true, true]); // nombre
+    eq(seenBy(draftOf(['[Coro]', 'Adiós'].join(String.fromCharCode(10)))), [true, true]); // letra
+    eq(seenBy(draftOf(['[Coro]', '[G]Hola'].join(String.fromCharCode(10)))), [true, true]); // acorde
+    eq(seenBy(draftOf(['[Coro]', 'Hola', '', 'Coro'].join(String.fromCharCode(10)))), [true, true]); // una llamada que repite el coro
+    eq(seenBy(base), [false, false]); // el mismo documento
+    eq(seenBy(draftOf(['[Coro]', 'Hola'].join(String.fromCharCode(10)))), [false, false]); // otro objeto con el mismo texto
+  });
+
+  it('los espacios al final de una línea: el editor los ve, el panel no', () => {
+    // Discrepancia conocida y documentada: la base de datos compara el texto
+    // literal, como el editor; el panel compara la música y por eso los
+    // ignora. Igualarlo tocaría la función de publicación ya auditada.
+    eq(seenBy(draftOf(['[Coro]', 'Hola  '].join(String.fromCharCode(10)))), [true, false]);
   });
 });
 

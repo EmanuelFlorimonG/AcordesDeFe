@@ -199,6 +199,10 @@ export interface ComparableSection {
   key: string;
   label: string;
   kind: SectionKind | null;
+  /** Times it is sung in a row, written in the header ("Coro (x2)"): part of the music */
+  repeat: number | null;
+  /** What the header says about how to play it ("Final suave"): part of the music too */
+  note: string | null;
   /** For a bare cue ("Coro") that repeats an earlier section: the key of that section, and no lines of its own */
   repeats: string | null;
   lines: ComparableLine[];
@@ -253,6 +257,8 @@ export function toComparableSong(draft: SongDraft): ComparableSong {
       key,
       label,
       kind: section.header?.kind ?? null,
+      repeat: section.header?.repeat ?? null,
+      note: section.header?.note?.trim() || null,
       repeats,
       lines: repeats
         ? []
@@ -280,6 +286,8 @@ export interface SongChangeSummary {
   lyricsChanged: string[];
   /** Sections present in both whose chords changed (words may be the same) */
   chordsChanged: string[];
+  /** Sections present in both whose header says something else: "(x2)", "suave" */
+  headersChanged: string[];
   /** The sections both versions share are in a different order */
   orderChanged: boolean;
 }
@@ -297,9 +305,11 @@ export function summarizeSongChanges(current: SongDraft, proposed: SongDraft): S
   const sharedAfter = after.sections.filter((section) => beforeByKey.has(section.key)).map((section) => section.key);
   const lyricsChanged: string[] = [];
   const chordsChanged: string[] = [];
+  const headersChanged: string[] = [];
   for (const key of shared) {
     const a = beforeByKey.get(key) as ComparableSection;
     const b = afterByKey.get(key) as ComparableSection;
+    if (a.repeat !== b.repeat || a.note !== b.note || a.kind !== b.kind) headersChanged.push(key);
     if (JSON.stringify(a.lines.map((line) => line.text)) !== JSON.stringify(b.lines.map((line) => line.text)) || a.repeats !== b.repeats) {
       lyricsChanged.push(key);
     }
@@ -313,6 +323,7 @@ export function summarizeSongChanges(current: SongDraft, proposed: SongDraft): S
     sectionsRemoved: before.sections.filter((section) => !afterByKey.has(section.key)).map((section) => section.key),
     lyricsChanged,
     chordsChanged,
+    headersChanged,
     orderChanged: shared.join('\n') !== sharedAfter.join('\n'),
   };
 }

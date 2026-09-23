@@ -53,6 +53,8 @@ export interface SectionDiff {
   change: 'added' | 'removed' | 'changed' | 'same';
   lyricsChanged: boolean;
   chordsChanged: boolean;
+  /** Its header says something else: "(x2)", a performance note */
+  headerChanged: boolean;
   /** Null when the section doesn't exist on that side */
   before: DiffLine[] | null;
   after: DiffLine[] | null;
@@ -90,10 +92,19 @@ function markLines(mine: string[], other: string[] | null): DiffLine[] {
 const displayKey = (section: ComparableSection) => section.label || 'Sin encabezado';
 
 /**
- * Known limitation: lines are compared by position, not matched up, so
- * inserting one line marks the ones below it as changed too. The reviewer
- * reads both versions side by side and nothing is decided from this, so it is
- * left as it is instead of adding a line-matching algorithm.
+ * What this calls a change is what the editor and the database call a change:
+ * the words, the chords, the sections and what their headers say about how to
+ * play them ("(x2)", "suave"), plus the song's data.
+ *
+ * Two known differences, both deliberate:
+ * - Spaces at the end of a line, and blank lines between sections, are not
+ *   music: this ignores them, while the editor and the database compare the
+ *   text literally and would call them a change. Making all three agree would
+ *   mean changing song_differs_from_published, the function that decides what
+ *   gets published, so it is written down instead of changed here.
+ * - Lines are compared by position, not matched up, so inserting one line
+ *   marks the ones below it as changed too. The reviewer reads both versions
+ *   side by side and nothing is decided from this.
  */
 export function compareSongs(published: SongDraft, proposed: SongDraft): SongComparison {
   const before = toComparableSong(published);
@@ -116,25 +127,28 @@ export function compareSongs(published: SongDraft, proposed: SongDraft): SongCom
     const old = beforeByKey.get(section.key);
     const afterText = sectionText(section);
     if (!old) {
-      sections.push({ key: section.key, label: displayKey(section), change: 'added', lyricsChanged: true, chordsChanged: true, before: null, after: markLines(afterText, null) });
+      sections.push({ key: section.key, label: displayKey(section), change: 'added', lyricsChanged: true, chordsChanged: true, headerChanged: true, before: null, after: markLines(afterText, null) });
       continue;
     }
     const beforeText = sectionText(old);
     const lyricsChanged = summary.lyricsChanged.includes(section.key);
     const chordsChanged = summary.chordsChanged.includes(section.key);
+    // "(x2)" or "suave" are how the section is played: a change there is a change.
+    const headerChanged = summary.headersChanged.includes(section.key);
     sections.push({
       key: section.key,
       label: displayKey(section),
-      change: lyricsChanged || chordsChanged ? 'changed' : 'same',
+      change: lyricsChanged || chordsChanged || headerChanged ? 'changed' : 'same',
       lyricsChanged,
       chordsChanged,
+      headerChanged,
       before: markLines(beforeText, afterText),
       after: markLines(afterText, beforeText),
     });
   }
   for (const section of before.sections) {
     if (!afterByKey.has(section.key)) {
-      sections.push({ key: section.key, label: displayKey(section), change: 'removed', lyricsChanged: true, chordsChanged: true, before: markLines(sectionText(section), null), after: null });
+      sections.push({ key: section.key, label: displayKey(section), change: 'removed', lyricsChanged: true, chordsChanged: true, headerChanged: true, before: markLines(sectionText(section), null), after: null });
     }
   }
 

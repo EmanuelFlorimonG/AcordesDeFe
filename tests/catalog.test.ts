@@ -267,6 +267,7 @@ describe('Comparar dos versiones', () => {
       sectionsRemoved: [],
       lyricsChanged: [],
       chordsChanged: [],
+      headersChanged: [],
       orderChanged: false,
     });
   });

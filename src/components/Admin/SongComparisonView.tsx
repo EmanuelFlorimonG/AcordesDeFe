@@ -97,7 +97,9 @@ export const SongComparisonView: React.FC<{
                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600 dark:bg-dark-800 dark:text-slate-300">
                   {CHANGE_LABELS[section.change]}
                   {section.change === 'changed' &&
-                    ` · ${[section.lyricsChanged && 'letra', section.chordsChanged && 'acordes'].filter(Boolean).join(' y ')}`}
+                    ` · ${[section.lyricsChanged && 'letra', section.chordsChanged && 'acordes', section.headerChanged && 'indicación']
+                      .filter(Boolean)
+                      .join(' y ')}`}
                 </span>
               </p>
               <div className="grid gap-3 p-3 md:grid-cols-2">
