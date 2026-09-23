@@ -141,7 +141,9 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
    * author reapplies them by hand. They live with the draft, not only here,
    * so a reload (or the next autosave) never loses them.
    */
-  const [previous, setPrevious] = useState<StoredSongDraft['previous'] | null>(() => store.load(draftKey)?.previous ?? null);
+  const [previous, setPrevious] = useState<StoredSongDraft['previous']>(() => store.load(draftKey)?.previous);
+  /** Said out loud when this browser refuses to store something: nothing is announced as saved. */
+  const [storageError, setStorageError] = useState('');
 
   const [phase, setPhase] = useState<Phase>(() => {
     const stored = store.load(draftKey);
@@ -183,7 +185,7 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
     if (!editing) return;
     // An untouched song isn't worth a draft (nor a recovery prompt next time).
     // Unsent changes on an older version stay stored until something is written on the current one.
-    if ((!hasEditorContent(doc) || doc === startingDocument) && (!store.load(draftKey) || (previous && doc === startingDocument))) {
+    if ((!hasEditorContent(doc) || doc === startingDocument) && (!store.load(draftKey) || (previous !== undefined && doc === startingDocument))) {
       latest.current.pending = false;
       const timer = window.setTimeout(() => setSaveState('idle'), AUTOSAVE_DELAY_MS);
       return () => window.clearTimeout(timer);
@@ -300,11 +302,19 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
               autoFocus
               onClick={() => {
                 const reference = { document: stored.document, version: madeOn ?? null };
-                // The draft becomes the current version, and what was written on the old one is kept beside it.
-                if (base) store.startRebase(draftKey, startingDocument, base, reference);
-                setPrevious(reference);
+                // The draft becomes the current version; what was written on the older
+                // ones is kept beside it. If this browser refuses, nothing moves on:
+                // opening the current version would be what loses those changes.
+                if (!base || !store.startRebase(draftKey, startingDocument, base, reference)) {
+                  setStorageError(
+                    'Este navegador no deja guardar ahora mismo, así que no se abre la versión actual: tus cambios anteriores se perderían. Libera espacio o inténtalo en otro navegador.'
+                  );
+                  return;
+                }
+                setPrevious(store.load(draftKey)?.previous);
                 setDoc(startingDocument);
                 setSaveState('saved');
+                setStorageError('');
                 setPhase({ kind: 'editing' });
               }}
               className={primaryButton}
@@ -315,6 +325,11 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
               Descartar mis cambios
             </button>
           </div>
+          {storageError && (
+            <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+              {storageError}
+            </p>
+          )}
         </div>
         {dialog === 'discard' && (
           <ConfirmDialog
@@ -482,29 +497,43 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
         </section>
       )}
 
-      {previous && (
-        <details className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+      {previous?.map((reference, index) => (
+        <details
+          key={`${reference.version ?? 'sin-version'}-${index}`}
+          className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10"
+        >
           <summary className="cursor-pointer text-sm font-semibold text-amber-900 dark:text-amber-200">
-            Tus cambios anteriores, sin enviar{previous.version ? ` (sobre la versión ${previous.version})` : ''}
+            Tus cambios anteriores, sin enviar{reference.version ? ` (sobre la versión ${reference.version})` : ''}
           </summary>
           <p className="mt-2 text-xs text-amber-900/80 dark:text-amber-200/80">
             Solo para consultarlos: no se copian solos a la versión actual. Se guardan en este navegador hasta que envíes la propuesta o los
             descartes aquí.
           </p>
           <div className="mt-3 rounded-xl bg-white p-3 dark:bg-dark-900">
-            <SongPreview song={draftToSong(editorToSongDraft(previous.document), 'cambios-anteriores')} heading="Tus cambios anteriores" />
+            <SongPreview song={draftToSong(editorToSongDraft(reference.document), `cambios-anteriores-${index}`)} heading="Tus cambios anteriores" />
           </div>
           <button
             type="button"
             onClick={() => {
-              store.setPrevious(draftKey, null);
-              setPrevious(null);
+              const rest = (previous ?? []).filter((_entry, at) => at !== index);
+              if (!store.setPrevious(draftKey, rest.length > 0 ? rest : null)) {
+                setStorageError('Este navegador no deja guardar ahora mismo: tus cambios anteriores siguen aquí.');
+                return;
+              }
+              setPrevious(store.load(draftKey)?.previous);
+              setStorageError('');
             }}
             className={`${secondaryButton} mt-3`}
           >
             Ya no los necesito
           </button>
         </details>
+      ))}
+
+      {storageError && phase.kind === 'editing' && (
+        <p role="alert" className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+          {storageError}
+        </p>
       )}
 
       {store.recoveredFromUnreadableData && (

@@ -819,7 +819,7 @@ describe('Sugerir una edición de una canción publicada', () => {
     const reopened = createSongDraftStore(storage).load(key);
     eq(reopened?.document, withA, 'el borrador actual es lo reaplicado');
     eq(reopened?.base, { songId: song.id, version: 2 });
-    eq(reopened?.previous, { document: withABC, version: 1 }, 'B y C siguen disponibles como referencia');
+    eq(reopened?.previous, [{ document: withABC, version: 1 }], 'B y C siguen disponibles como referencia');
 
     // Solo el colaborador decide dejar de conservarlos.
     eq(createSongDraftStore(storage).setPrevious(key, null), true);
@@ -831,15 +831,86 @@ describe('Sugerir una edición de una canción publicada', () => {
     eq(createSongDraftStore(storage).load(key), null);
   });
 
+  it('un segundo rebase no se lleva por delante lo que quedó del primero', () => {
+    const storage = memoryStorage();
+    const store = createSongDraftStore(storage);
+    const withABC = { ...sampleDocument(), meta: { ...sampleDocument().meta, title: 'A + B + C' } };
+    store.save(key, withABC, 1000, { songId: song.id, version: 1 });
+
+    const onV2 = { ...sampleDocument(), meta: { ...sampleDocument().meta, title: 'Publicada v2' } };
+    store.startRebase(key, onV2, { songId: song.id, version: 2 }, { document: withABC, version: 1 });
+    const withA = { ...onV2, meta: { ...onV2.meta, title: 'v2 con A reaplicado' } };
+    store.save(key, withA, 2000, { songId: song.id, version: 2 });
+
+    // Llega la versión 3 y se vuelve a empezar: lo de la 1 y lo de la 2 se conservan.
+    const onV3 = { ...sampleDocument(), meta: { ...sampleDocument().meta, title: 'Publicada v3' } };
+    eq(store.startRebase(key, onV3, { songId: song.id, version: 3 }, { document: withA, version: 2 }), true);
+    const reopened = createSongDraftStore(storage).load(key);
+    eq(reopened?.document, onV3);
+    eq(reopened?.base, { songId: song.id, version: 3 });
+    eq(
+      reopened?.previous,
+      [
+        { document: withABC, version: 1 },
+        { document: withA, version: 2 },
+      ],
+      'B y C siguen recuperables, y lo reaplicado en la 2 también'
+    );
+
+    // Descartar una no toca la otra.
+    eq(createSongDraftStore(storage).setPrevious(key, [{ document: withA, version: 2 }]), true);
+    eq(createSongDraftStore(storage).load(key)?.previous, [{ document: withA, version: 2 }]);
+  });
+
+  it('corrigiendo la propia propuesta (edit:<código>) el rebase también conserva lo anterior', () => {
+    const storage = memoryStorage();
+    const store = createSongDraftStore(storage);
+    const editKey = 'edit:GS-2345-6789';
+    const mine = { ...sampleDocument(), meta: { ...sampleDocument().meta, title: 'Mi propuesta' } };
+    store.save(editKey, mine, 1000, { songId: song.id, version: 1 });
+
+    const onV2 = { ...sampleDocument(), meta: { ...sampleDocument().meta, title: 'Publicada v2' } };
+    eq(store.startRebase(editKey, onV2, { songId: song.id, version: 2 }, { document: mine, version: 1 }), true, 'la clave de una propuesta también vale');
+    store.save(editKey, onV2, 2000, { songId: song.id, version: 2 });
+
+    const reopened = createSongDraftStore(storage).load(editKey);
+    eq([reopened?.document, reopened?.base], [onV2, { songId: song.id, version: 2 }]);
+    eq(reopened?.previous, [{ document: mine, version: 1 }], 'la propuesta anterior sigue ahí tras recargar');
+  });
+
+  it('si el navegador no deja guardar, nada dice que se guardó', () => {
+    const full = createSongDraftStore(memoryStorage({}, { failWrites: true }));
+    const document = sampleDocument();
+    eq(full.save(key, document, 1000, { songId: song.id, version: 1 }), false);
+    eq(full.startRebase(key, document, { songId: song.id, version: 2 }, { document, version: 1 }), false);
+    eq(full.load(key), null, 'y no se inventa un borrador en memoria');
+
+    // Una referencia solo se olvida si de verdad se pudo guardar el cambio.
+    const storage = memoryStorage();
+    const store = createSongDraftStore(storage);
+    store.save(key, document, 1000, { songId: song.id, version: 1 });
+    store.startRebase(key, document, { songId: song.id, version: 2 }, { document, version: 1 });
+    eq(createSongDraftStore(storage).setPrevious('update:otra-cancion', null), false, 'sin borrador no hay nada que olvidar');
+    eq(createSongDraftStore(storage).load(key)?.previous?.length, 1);
+  });
+
   it('una referencia guardada que no se puede leer no rompe el borrador', () => {
     const document = sampleDocument();
-    for (const previous of [null, 'texto', { document: { schemaVersion: 9 }, version: 1 }, { version: 1 }]) {
+    for (const previous of [null, 'texto', [], [{ document: { schemaVersion: 9 }, version: 1 }], { version: 1 }]) {
       const storage = memoryStorage({
         [SONG_DRAFTS_STORAGE_KEY]: JSON.stringify({ version: 1, drafts: [{ key, document, updatedAt: 1, attempt: null, base: { songId: song.id, version: 2 }, previous }] }),
       });
       const loaded = createSongDraftStore(storage).load(key);
       eq([loaded?.document, 'previous' in (loaded ?? {})], [document, false]);
     }
+    // Una referencia suelta, como se guardaba antes de que pudiera haber varias, se lee igual.
+    const storage = memoryStorage({
+      [SONG_DRAFTS_STORAGE_KEY]: JSON.stringify({
+        version: 1,
+        drafts: [{ key, document, updatedAt: 1, attempt: null, base: { songId: song.id, version: 2 }, previous: { document, version: 1 } }],
+      }),
+    });
+    eq(createSongDraftStore(storage).load(key)?.previous, [{ document, version: 1 }]);
   });
 
   it('abrir cualquiera de las 97 y enviar sin tocar nada no propone ningún cambio', () => {
