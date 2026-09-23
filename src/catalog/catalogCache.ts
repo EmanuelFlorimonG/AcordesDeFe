@@ -90,7 +90,11 @@ export function createCatalogCache(storage: KeyValueStorage | null, projectUrl: 
       // Only a catalog worth reading back is written down: what is stored here
       // is a remote answer, so every song carries its published version.
       if (!storage || !validateCatalogSnapshot(songs, { requireVersion: true }).ok) return false;
-      const stored: StoredCatalog = { version: CATALOG_CACHE_VERSION, projectUrl, savedAt: now.toISOString(), rows: songs.map((song) => ({ ...songToRow(song), current_version: song.version as number })) };
+      const rows = songs.map((song) => ({ ...songToRow(song), current_version: song.version as number }));
+      // Written only if it would be read back: the same gate on both sides, so
+      // what the remote frontier refuses never gets in through this one.
+      if (rows.some((row) => catalogRowProblem(row) !== null)) return false;
+      const stored: StoredCatalog = { version: CATALOG_CACHE_VERSION, projectUrl, savedAt: now.toISOString(), rows };
       const json = JSON.stringify(stored);
       if (json.length * 2 > MAX_CATALOG_CACHE_BYTES) return false;
       try {

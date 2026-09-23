@@ -60,25 +60,76 @@ export const SONG_COLUMNS: Array<keyof SongRow> = [
 export const SONG_READ_COLUMNS: Array<keyof SongRow> = [...SONG_COLUMNS, 'current_version'];
 
 const isVersion = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1;
+/** A column that says something: null and an absent column both mean nothing. */
+const given = (value: unknown): boolean => value !== null && value !== undefined;
+
+// ---------------------------------------------------------------------------
+// The contract of a row of `songs`
+// ---------------------------------------------------------------------------
+
+/**
+ * What the database promises for each column, written here as the CHECK
+ * constraints of the `songs` table write it (see the editorial_catalog
+ * migration). It is read before anything is turned into a Song, because a
+ * number where the key should be is not a song with a strange key: it is an
+ * answer that isn't the catalog. Nothing is repaired, defaulted or dropped to
+ * make a broken row fit.
+ */
+type ColumnCheck = (value: unknown) => boolean;
+
+/** Text as the column declares it: not blank when it is required, never longer than allowed. */
+const text = (max: number, { blank = false }: { blank?: boolean } = {}): ColumnCheck => (value) =>
+  typeof value === 'string' && value.length <= max && (blank || value.trim() !== '');
+const matching = (pattern: RegExp, max: number): ColumnCheck => (value) => text(max)(value) && pattern.test(value as string);
+const whole = (min: number, max: number): ColumnCheck => (value) =>
+  typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
+/** A text[] column: a list of words, and only a list. Empty is a legitimate value; "abc", 42 or {} are not. */
+const words: ColumnCheck = (value) => Array.isArray(value) && value.every((entry) => typeof entry === 'string' && entry.trim() !== '');
+/** A column the schema declares nullable: nothing is a value, anything else has to be of its type. */
+const nothingOr = (check: ColumnCheck): ColumnCheck => (value) => value === null || value === undefined || check(value);
+
+const SONG_ROW_CONTRACT: ReadonlyArray<readonly [keyof SongRow, ColumnCheck]> = [
+  ['id', matching(/^[a-z0-9]+(-[a-z0-9]+)*$/, 80)],
+  ['title', text(120)],
+  ['artist', nothingOr(text(120, { blank: true }))],
+  // 1 to 8 characters, like the column. Whether it is a key the chord engine
+  // knows is not checked: the database allows any short text there, and the
+  // app already copes with a key it can't read (it leaves it as it is).
+  ['original_key', nothingOr(text(8))],
+  ['recommended_capo', nothingOr(whole(0, 11))],
+  ['time_signature', nothingOr(matching(/^[0-9]{1,2}\/(2|4|8|16)$/, 8))],
+  ['tempo', nothingOr(whole(30, 300))],
+  ['rhythm_pattern', nothingOr(text(120, { blank: true }))],
+  ['categories', words],
+  // Null means "not classified yet"; an empty list does not mean the same.
+  ['liturgical_seasons', nothingOr(words)],
+  ['tags', words],
+  ['content', text(20000)],
+  ['chords_used', words],
+  ['difficulty', nothingOr((value) => SONG_DIFFICULTIES.includes(value as SongDifficulty))],
+  ['year', nothingOr(matching(/^[0-9]{4}$/, 4))],
+  ['youtube_id', nothingOr(matching(/^[A-Za-z0-9_-]{11}$/, 11))],
+  ['current_version', isPublishedVersion],
+];
 
 /**
  * What is wrong with a row of the catalog, or null when nothing is.
  *
  * It is the one gate for rows that arrive from the backend, whether straight
- * from Supabase or from what this browser saved: the song has to be readable,
- * it has to say which published version it is, and its lists have to be lists
- * of words. Unknown liturgical seasons are still dropped when the song is
- * read (a season added later is not a broken row), but a hole in the list is.
+ * from Supabase or from what this browser saved, and both frontiers use this
+ * same function so that neither accepts what the other refuses. Every column
+ * the app reads has to be what the database says it is, and the row has to
+ * say which published version it is: that is what the rest of the songbook
+ * takes for granted when it trims a key, counts a capo or lists categories.
+ *
+ * Unknown liturgical seasons are still dropped when the song is read (a
+ * season added later is not a broken row), but a hole in the list is.
  */
 export function catalogRowProblem(row: SongRow): string | null {
-  const where = typeof row?.id === 'string' ? ` (${row.id})` : '';
-  if (!songFromRow(row)) return `Fila ilegible del catálogo${where}`;
-  if (!isPublishedVersion(row.current_version)) return `Fila sin versión publicada${where}`;
-  if (row.liturgical_seasons !== null && row.liturgical_seasons !== undefined) {
-    const seasons = row.liturgical_seasons;
-    if (!Array.isArray(seasons) || seasons.some((season) => typeof season !== 'string' || season.trim() === '')) {
-      return `Fila con tiempos litúrgicos ilegibles${where}`;
-    }
+  if (!row || typeof row !== 'object') return 'Fila ilegible del catálogo';
+  const where = typeof row.id === 'string' ? ` (${row.id})` : '';
+  for (const [column, accepts] of SONG_ROW_CONTRACT) {
+    if (!accepts((row as unknown as Record<string, unknown>)[column])) return `Columna «${column}» fuera de contrato${where}`;
   }
   return null;
 }
@@ -94,20 +145,20 @@ export function songFromRow(row: SongRow): Song | null {
     content: row.content,
     chordsUsed: Array.isArray(row.chords_used) ? [...row.chords_used] : [],
   };
-  if (row.artist !== null) song.artist = row.artist;
-  if (row.original_key !== null) song.originalKey = row.original_key;
-  if (row.recommended_capo !== null) song.recommendedCapo = row.recommended_capo;
-  if (row.time_signature !== null) song.timeSignature = row.time_signature;
-  if (row.tempo !== null) song.tempo = row.tempo;
-  if (row.rhythm_pattern !== null) song.rhythmPattern = row.rhythm_pattern;
+  if (given(row.artist)) song.artist = row.artist as string;
+  if (given(row.original_key)) song.originalKey = row.original_key as string;
+  if (given(row.recommended_capo)) song.recommendedCapo = row.recommended_capo as number;
+  if (given(row.time_signature)) song.timeSignature = row.time_signature as string;
+  if (given(row.tempo)) song.tempo = row.tempo as number;
+  if (given(row.rhythm_pattern)) song.rhythmPattern = row.rhythm_pattern as string;
   if (Array.isArray(row.liturgical_seasons)) {
     song.liturgicalSeasons = row.liturgical_seasons.filter(isLiturgicalSeasonId) as LiturgicalSeasonId[];
   }
-  if (row.difficulty !== null && SONG_DIFFICULTIES.includes(row.difficulty as SongDifficulty)) {
+  if (given(row.difficulty) && SONG_DIFFICULTIES.includes(row.difficulty as SongDifficulty)) {
     song.difficulty = row.difficulty as SongDifficulty;
   }
-  if (row.year !== null) song.year = row.year;
-  if (row.youtube_id !== null) song.youtubeId = row.youtube_id;
+  if (given(row.year)) song.year = row.year as string;
+  if (given(row.youtube_id)) song.youtubeId = row.youtube_id as string;
   if (isVersion(row.current_version)) song.version = row.current_version;
   return song;
 }
@@ -156,6 +207,9 @@ export interface SongForEdit {
 export async function fetchSongForEdit(client: SupabaseClient, id: string, options?: { signal?: AbortSignal }): Promise<SongForEdit | null> {
   const rows = await client.select<SongRow>('songs', `${SELECT}&status=eq.published&id=eq.${encodeURIComponent(id)}&limit=1`, options);
   if (!rows[0]) return null;
+  // The same gate as the catalog: an edit is never started from a row that is
+  // not what the database promises it is.
+  if (catalogRowProblem(rows[0])) throw new Error('La canción llegó ilegible.');
   const song = songFromRow(rows[0]);
   if (!song || song.version === undefined) throw new Error('La canción llegó sin versión.');
   return { song, version: song.version };

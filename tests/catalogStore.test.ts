@@ -6,7 +6,7 @@ import { fetchRemoteCatalog, validateCatalogSnapshot, type SongRepository } from
 import { songVersionOf } from '../src/catalog/songRepository';
 import { buildSubmissionPayload } from '../src/catalog/submission';
 import { songToDraft } from '../src/catalog/songDraft';
-import { SONG_PAGE_SIZE, createSupabaseSongRepository, songFromRow, songToRow, type SongRow } from '../src/catalog/supabaseSongRepository';
+import { SONG_PAGE_SIZE, catalogRowProblem, createSupabaseSongRepository, songFromRow, songToRow, type SongRow } from '../src/catalog/supabaseSongRepository';
 import { readCatalogSource } from '../src/catalog/useCatalog';
 import { MOCK_SONGS } from '../src/data/mockSongs';
 import type { SupabaseClient } from '../src/lib/supabase';
@@ -653,5 +653,142 @@ describe('Un catálogo remoto se acepta entero y con su versión', () => {
     eq(songOnScreen(store, retirada.id, retirada), null, 'retirada: no se sigue mostrando la versión incluida');
     eq(songOnScreen(store, REMOTE_97[1].id, null)?.id, REMOTE_97[1].id, 'las demás se leen del catálogo activo');
     eq(songOnScreen(store, null, retirada), null);
+  });
+});
+
+// --- Every column of a row, against the contract the database keeps ---------
+
+describe('Una fila del catálogo es lo que la base de datos promete', () => {
+  const rowsOf = (rows: SongRow[]): SupabaseClient => ({
+    select: async <T,>() => rows as T[],
+    rpc: async <T,>() => [] as T,
+    invoke: async <T,>() => ({}) as T,
+    count: async () => 0,
+  });
+  const rowOf = (patch: Partial<SongRow>): SongRow => ({ ...songToRow(MOCK_SONGS[0]), current_version: 1, ...patch });
+  const answerFor = (patch: Partial<SongRow>) => fetchRemoteCatalog(createSupabaseSongRepository(rowsOf([rowOf(patch)])));
+  const cacheOf = (rows: SongRow[]) =>
+    createCatalogCache(
+      memoryStorage({
+        [CATALOG_CACHE_KEY]: JSON.stringify({ version: CATALOG_CACHE_VERSION, projectUrl: PROJECT, savedAt: '2026-09-23T10:00:00.000Z', rows }),
+      }),
+      PROJECT
+    );
+  const failingRemote: SongRepository = {
+    source: 'remote',
+    listSongs: () => Promise.reject(new Error('sin red')),
+    getSong: async () => null,
+  };
+
+  /**
+   * Column by column: what the `songs` table allows, and what it never holds.
+   * The app reads these values without asking twice (it trims a key, counts a
+   * capo, lists categories), so a value of the wrong shape is not a song with
+   * an odd field: it is an answer that is not the catalog.
+   */
+  const CONTRACT: Array<[keyof SongRow, unknown[], unknown[]]> = [
+    ['id', ['huracan-hakuna'], [42, null, undefined, '', '   ', {}, [], true, 'Con Mayusculas', 'con espacio']],
+    ['title', ['Un título'], ['', '   ', 42, null, {}, [], true]],
+    ['artist', [null, 'Hakuna', ''], [42, { name: 'bad' }, [], ['Hakuna'], true]],
+    ['original_key', [null, 'G', 'F#m', 'Bb'], [4, {}, [], true, '', 'nueve car']],
+    ['recommended_capo', [null, 0, 2, 11], ['dos', 1.5, -1, 12, {}, [], true]],
+    ['time_signature', [null, '4/4', '12/8'], [4, '4/5', '4-4', '', {}, [], true]],
+    ['tempo', [null, 30, 120, 300], ['120', 29, 301, 90.5, {}, [], true]],
+    ['rhythm_pattern', [null, '↓ ↓↑ ↑↓↑', ''], [7, {}, [], true]],
+    ['categories', [[], ['Alabanza']], [null, 'not-array', 42, {}, true, [null], [42], [''], ['   '], [{}]]],
+    ['tags', [[], ['lento']], [null, 'not-array', 42, {}, true, [null], [42], [''], [[]]]],
+    ['chords_used', [[], ['G', 'D']], [null, 'not-array', 42, {}, true, [null], [42], [''], [['G']]]],
+    ['liturgical_seasons', [null, [], ['adviento']], ['adviento', 42, {}, true, [null], [42], ['']]],
+    ['content', ['[Verso 1]'], ['', '   ', 42, null, {}, [], true]],
+    ['difficulty', [null, 'Fácil', 'Intermedio', 'Avanzado'], ['Imposible', '', 42, {}, [], true]],
+    ['year', [null, '1998'], [1998, '98', '', {}, [], true]],
+    ['youtube_id', [null, 'dQw4w9WgXcQ'], [true, 42, '', 'corto', {}, []]],
+    ['current_version', [1, 7], [null, undefined, 0, -1, 1.5, '4', Number.NaN, {}, []]],
+  ];
+
+  it('lo que la base de datos permite en cada columna se acepta', async () => {
+    for (const [column, allowed] of CONTRACT) {
+      for (const value of allowed) {
+        const patch = { [column]: value } as Partial<SongRow>;
+        eq((await answerFor(patch)).ok, true, `remoto rechazó ${column}=${JSON.stringify(value)}`);
+        eq(cacheOf([rowOf(patch)]).read()?.songs.length, 1, `caché rechazó ${column}=${JSON.stringify(value)}`);
+      }
+    }
+  });
+
+  it('un tipo que el contrato no permite invalida la respuesta entera, y también la caché', async () => {
+    for (const [column, , refused] of CONTRACT) {
+      for (const value of refused) {
+        const patch = { [column]: value } as Partial<SongRow>;
+        eq(await answerFor(patch), { ok: false, reason: 'invalid' }, `remoto aceptó ${column}=${JSON.stringify(value)}`);
+        eq(cacheOf([rowOf(patch)]).read(), null, `caché aceptó ${column}=${JSON.stringify(value)}`);
+      }
+    }
+  });
+
+  it('una fila mala no se convierte en una canción con valores inventados', async () => {
+    // La tonalidad que rompía el motor de acordes: ni se normaliza, ni entra.
+    eq(await answerFor({ original_key: 4 as unknown as string }), { ok: false, reason: 'invalid' });
+    // Y una lista que no es una lista no se convierte en la lista vacía.
+    eq(await answerFor({ categories: 'Alabanza' as unknown as string[] }), { ok: false, reason: 'invalid' });
+    eq(await answerFor({ chords_used: 42 as unknown as string[] }), { ok: false, reason: 'invalid' });
+    // Una fila bien formada pasa con sus campos tal cual llegaron.
+    const good = await answerFor({ original_key: 'F#m', recommended_capo: 2, difficulty: 'Intermedio', year: '2019' });
+    eq(good.ok && [good.songs[0].originalKey, good.songs[0].recommendedCapo, good.songs[0].difficulty, good.songs[0].year], [
+      'F#m',
+      2,
+      'Intermedio',
+      '2019',
+    ]);
+  });
+
+  it('las 97 incluidas cumplen el contrato: la frontera no endurece el cancionero', () => {
+    const problems = MOCK_SONGS.map((song) => catalogRowProblem({ ...songToRow(song), current_version: 1 })).filter(Boolean);
+    eq(problems, [], 'las canciones que trae la app no pasarían por la frontera remota');
+    // Y dan la vuelta entera: guardadas en la caché, se leen igual.
+    const cache = createCatalogCache(memoryStorage(), PROJECT);
+    eq(cache.write(REMOTE_97), true);
+    eq(cache.read()?.songs.length, 97);
+  });
+
+  it('remota inválida, caché buena: se queda la caché, intacta', async () => {
+    const storage = memoryStorage();
+    createCatalogCache(storage, PROJECT).write(REMOTE_97);
+    const badRemote: SongRepository = {
+      source: 'remote',
+      listSongs: () => createSupabaseSongRepository(rowsOf([rowOf({ original_key: 4 as unknown as string })])).listSongs(),
+      getSong: async () => null,
+    };
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: badRemote, cache: createCatalogCache(storage, PROJECT) });
+    await store.refresh({ force: true });
+    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['cache', 'invalid', 97]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 97, 'la caché buena no se toca');
+  });
+
+  it('remota inválida sin caché: las incluidas; caché inválida: las incluidas', async () => {
+    const badRemote: SongRepository = {
+      source: 'remote',
+      listSongs: () => createSupabaseSongRepository(rowsOf([rowOf({ artist: { name: 'bad' } as unknown as string })])).listSongs(),
+      getSong: async () => null,
+    };
+    const sinCache = createCatalogStore({ bundled: MOCK_SONGS, remote: badRemote, cache: null });
+    await sinCache.refresh({ force: true });
+    eq([sinCache.getSnapshot().source, sinCache.getSnapshot().fallbackReason], ['bundled', 'invalid']);
+
+    // Una caché rota (una tonalidad que es un número) se descarta entera.
+    const rota = cacheOf([rowOf({ original_key: 4 as unknown as string })]);
+    eq(rota.read(), null);
+    const conCacheRota = createCatalogStore({ bundled: MOCK_SONGS, remote: failingRemote, cache: rota });
+    await conCacheRota.refresh({ force: true });
+    eq([conCacheRota.getSnapshot().source, conCacheRota.getSnapshot().songs.length], ['bundled', 97]);
+  });
+
+  it('remota válida: se usa, y se guarda para la próxima vez', async () => {
+    const storage = memoryStorage();
+    const rows = MOCK_SONGS.map((song) => ({ ...songToRow(song), current_version: 1 }));
+    const store = createCatalogStore({ bundled: [], remote: createSupabaseSongRepository(rowsOf(rows)), cache: createCatalogCache(storage, PROJECT) });
+    await store.refresh({ force: true });
+    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['remote', null, 97]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 97);
   });
 });
