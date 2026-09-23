@@ -65,6 +65,7 @@ import { MY_SUBMISSIONS_STORAGE_KEY, createMySubmissionsStore } from '../src/edi
 import { createSubmitter, sendDraft } from '../src/editor/submitter';
 import { parseYouTubeId } from '../src/editor/youtube';
 import { parseSongSections, transposeSongContent } from '../src/utils/chordParser';
+import { compareSongs } from '../src/admin/songDiff';
 import { draftToSong, songToDraft } from '../src/catalog/songDraft';
 
 let checks = 0;
@@ -1060,6 +1061,33 @@ describe('Editar una parte no cambia las demás', () => {
     }
     eq(differ, []);
     checks += 96;
+  });
+
+  it('«sin cambios» significa lo mismo en el editor, en el panel y en la base de datos', () => {
+    const disagree: string[] = [];
+    for (const catalogSong of MOCK_SONGS) {
+      const published = songToDraft(catalogSong);
+      const opened = openedOf(published);
+      const untouched = proposedSongDraft(published, opened, parseEditorDocument(JSON.parse(JSON.stringify(opened)), idSequence('r'))!);
+      // El editor no lo envía, la base de datos lo vería idéntico y el comparador del panel también.
+      const agreed =
+        !songDraftChanges(published, untouched) && untouched.content === published.content && compareSongs(published, untouched).identical;
+      if (!agreed) disagree.push(catalogSong.id);
+    }
+    eq(disagree, []);
+    checks += 96;
+
+    // Y un cambio de verdad lo ven los tres.
+    const published = songToDraft(MOCK_SONGS[0]);
+    const opened = openedOf(published);
+    const edited = {
+      ...opened,
+      sections: opened.sections.map((section, index) =>
+        index === 0 ? { ...section, lines: [...section.lines, createLine(idSequence('l'), 'Una línea más')] } : section
+      ),
+    };
+    const proposed = proposedSongDraft(published, opened, edited);
+    eq([songDraftChanges(published, proposed), proposed.content !== published.content, compareSongs(published, proposed).identical], [true, true, false]);
   });
 
   it('un "Coro:" no se traga la estrofa siguiente', () => {
