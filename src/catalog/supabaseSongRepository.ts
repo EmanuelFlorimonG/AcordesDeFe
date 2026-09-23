@@ -3,7 +3,7 @@ import type { SupabaseClient } from '../lib/supabase';
 import type { Song } from '../types/song';
 import { isLiturgicalSeasonId } from '../utils/liturgicalSeasons';
 import { SONG_DIFFICULTIES, type SongDifficulty } from './songDraft';
-import type { SongRepository } from './songRepository';
+import { InvalidRemoteCatalog, type SongRepository } from './songRepository';
 
 /**
  * The catalog read from Supabase: the `songs` table, only published rows
@@ -140,7 +140,16 @@ export async function fetchSongForEdit(client: SupabaseClient, id: string, optio
 }
 
 export function createSupabaseSongRepository(client: SupabaseClient): SongRepository {
-  const toSongs = (rows: SongRow[]) => rows.map(songFromRow).filter((song): song is Song => song !== null);
+  /**
+   * Every row or none: a row that can't be read is not one song less, it is an
+   * answer that can't be trusted as the catalog (see validateCatalogSnapshot).
+   */
+  const toSongs = (rows: SongRow[]) =>
+    rows.map((row) => {
+      const song = songFromRow(row);
+      if (!song) throw new InvalidRemoteCatalog(`Fila ilegible del catálogo${typeof row?.id === 'string' ? ` (${row.id})` : ''}`);
+      return song;
+    });
   return {
     source: 'remote',
     async listSongs(options) {

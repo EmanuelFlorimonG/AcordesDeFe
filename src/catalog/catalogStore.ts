@@ -2,7 +2,7 @@ import type { Song } from '../types/song';
 import { listSongCategories } from '../utils/setlists';
 import { buildSearchIndex, compareTitles, type SongSearchEntry } from '../utils/songSearch';
 import type { CatalogCache } from './catalogCache';
-import { fetchRemoteCatalog, type SongRepository } from './songRepository';
+import { fetchRemoteCatalog, type RemoteCatalogFailure, type SongRepository } from './songRepository';
 
 /**
  * The catalog the app shows, from ONE complete source at a time, never mixed:
@@ -32,10 +32,20 @@ export interface CatalogSnapshot {
   byId: ReadonlyMap<string, Song>;
   searchIndex: SongSearchEntry[];
   categories: string[];
+  /** Where what is on screen came from */
   source: CatalogSourceName;
+  /** What this build was asked to use (VITE_CATALOG_SOURCE) */
+  configuredSource: 'bundled' | 'remote';
   /** For the cache: when that remote answer was received (ISO) */
   savedAt: string | null;
   remote: RemoteStatus;
+  /**
+   * Why the songbook is not on the remote catalog although it was asked for:
+   * the request failed, took too long, came back empty, or came back as
+   * something that isn't a catalog. Null when there is nothing to explain.
+   * For diagnosis; it carries no data from the answer.
+   */
+  fallbackReason: RemoteCatalogFailure | null;
 }
 
 /**
@@ -119,8 +129,10 @@ export function createCatalogStore({ bundled, remote, cache, timeoutMs = 6000, m
     searchIndex: content.searchIndex,
     categories: content.categories,
     source: cached ? 'cache' : 'bundled',
+    configuredSource: remote ? 'remote' : 'bundled',
     savedAt: cached ? cached.savedAt : null,
     remote: remote ? 'idle' : 'disabled',
+    fallbackReason: null,
   };
   const listeners = new Set<() => void>();
   let reader: SongRepository | null = typeof remote === 'function' ? null : remote;
@@ -137,13 +149,14 @@ export function createCatalogStore({ bundled, remote, cache, timeoutMs = 6000, m
     publish({ remote: 'loading' });
     if (!reader && typeof remote === 'function') reader = await remote();
     if (!reader) {
-      publish({ remote: 'failed' });
+      publish({ remote: 'failed', fallbackReason: 'error' });
       return;
     }
     const result = await fetchRemoteCatalog(reader, { timeoutMs });
     if (!result.ok) {
-      // Nothing shown is replaced: the songs in memory stay as they are.
-      publish({ remote: 'failed' });
+      // Nothing shown is replaced, and nothing is written down: the songs in
+      // memory stay as they are and the cache keeps the last good answer.
+      publish({ remote: 'failed', fallbackReason: result.reason });
       return;
     }
     if (JSON.stringify(ordered(result.songs)) !== content.signature) {
@@ -156,10 +169,11 @@ export function createCatalogStore({ bundled, remote, cache, timeoutMs = 6000, m
         source: 'remote',
         savedAt: null,
         remote: 'ok',
+        fallbackReason: null,
       });
     } else {
       // Identical songs: same objects, nothing below re-renders; only the source is now confirmed.
-      publish({ source: 'remote', savedAt: null, remote: 'ok' });
+      publish({ source: 'remote', savedAt: null, remote: 'ok', fallbackReason: null });
     }
     // Only a valid remote answer replaces the cache.
     cache?.write(result.songs);
@@ -177,7 +191,7 @@ export function createCatalogStore({ bundled, remote, cache, timeoutMs = 6000, m
       if (!force && now() - lastAttempt < minIntervalMs) return Promise.resolve();
       lastAttempt = now();
       inFlight = run()
-        .catch(() => publish({ remote: 'failed' }))
+        .catch(() => publish({ remote: 'failed', fallbackReason: 'error' }))
         .finally(() => {
           inFlight = null;
         });

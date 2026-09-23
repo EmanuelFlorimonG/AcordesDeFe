@@ -596,10 +596,10 @@ describe('Catálogo remoto: solo traer y comprobar', () => {
     eq(await fetchRemoteCatalog(remoteWith('never'), { timeoutMs: 20 }), { ok: false, reason: 'timeout' });
   });
 
-  it('un id repetido conserva su primera aparición', async () => {
+  it('un id repetido invalida la respuesta entera: no es un catálogo', async () => {
     const edited = { ...MOCK_SONGS[0], title: 'Otra' };
     const result = await fetchRemoteCatalog(remoteWith([MOCK_SONGS[0], edited, MOCK_SONGS[1]]));
-    eq(result.ok && result.songs.map((song) => song.title), [MOCK_SONGS[0].title, MOCK_SONGS[1].title]);
+    eq(result, { ok: false, reason: 'invalid' });
   });
 });
 

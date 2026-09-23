@@ -6,12 +6,22 @@ import { getCatalogCache } from './catalogCache';
 import { createCatalogStore, type CatalogSnapshot, type CatalogStore, type SongAvailability } from './catalogStore';
 
 /**
- * The app's one catalog store. VITE_CATALOG_SOURCE=bundled is the rollback
- * switch: the build then uses only the songs shipped with it, asks Supabase
- * nothing and ignores the cache.
+ * The app's one catalog store, and which catalog this build is meant to use.
+ *
+ * VITE_CATALOG_SOURCE says it, and it has to say it: only the exact word
+ * "remote" asks Supabase for the songbook. "bundled", anything else, or no
+ * value at all means the songs shipped inside the app, which is what the beta
+ * runs on. A build that forgets the variable therefore keeps showing the
+ * songbook it was built with instead of quietly switching to a backend that
+ * may not be ready.
  */
 export function readCatalogSource(value: string | undefined): 'bundled' | 'remote' {
-  return value?.trim().toLowerCase() === 'bundled' ? 'bundled' : 'remote';
+  const asked = value?.trim().toLowerCase();
+  if (asked === 'remote') return 'remote';
+  if (asked !== undefined && asked !== '' && asked !== 'bundled') {
+    console.warn(`VITE_CATALOG_SOURCE="${value}" no se reconoce: se usa el cancionero incluido en la app.`);
+  }
+  return 'bundled';
 }
 
 let store: CatalogStore | null = null;

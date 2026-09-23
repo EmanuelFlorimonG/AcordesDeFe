@@ -1,5 +1,6 @@
 import type { Song } from '../types/song';
 import { getBrowserStorage, type KeyValueStorage } from '../storage/localRepository';
+import { validateCatalogSnapshot } from './songRepository';
 import { songFromRow, songToRow, type SongRow } from './supabaseSongRepository';
 
 /**
@@ -17,6 +18,10 @@ import { songFromRow, songToRow, type SongRow } from './supabaseSongRepository';
  * makes it unusable instead of mixing catalogs. Version 2 added each song's
  * published version: a version 1 cache is dropped (it can't say which version
  * its songs are) and replaced by the next remote answer.
+ *
+ * It is read whole too: one row that can't be read, or a repeated id, and the
+ * whole thing is ignored. Half a catalog is not a catalog, and the bundled
+ * songs are a better answer than a songbook with a song missing.
  */
 
 export const CATALOG_CACHE_KEY = 'genesaret_catalog_cache';
@@ -66,8 +71,7 @@ export function createCatalogCache(storage: KeyValueStorage | null, projectUrl: 
       ) {
         return null;
       }
-      // Each row is read like a remote one; anything unreadable is left out, a repeated id keeps its first appearance.
-      const seen = new Set<string>();
+      // Each row is read like a remote one, and the lot is checked together.
       const songs: Song[] = [];
       for (const row of stored.rows) {
         let song: Song | null = null;
@@ -76,14 +80,15 @@ export function createCatalogCache(storage: KeyValueStorage | null, projectUrl: 
         } catch {
           song = null;
         }
-        if (!song || seen.has(song.id)) continue;
-        seen.add(song.id);
+        if (!song) return null;
         songs.push(song);
       }
-      return songs.length > 0 ? { songs, savedAt: stored.savedAt } : null;
+      const checked = validateCatalogSnapshot(songs);
+      return checked.ok ? { songs: checked.songs, savedAt: stored.savedAt } : null;
     },
     write(songs, now = new Date()) {
-      if (!storage || songs.length === 0) return false;
+      // Only a catalog worth reading back is written down.
+      if (!storage || !validateCatalogSnapshot(songs).ok) return false;
       const stored: StoredCatalog = { version: CATALOG_CACHE_VERSION, projectUrl, savedAt: now.toISOString(), rows: songs.map((song) => ({ ...songToRow(song), current_version: song.version ?? null })) };
       const json = JSON.stringify(stored);
       if (json.length * 2 > MAX_CATALOG_CACHE_BYTES) return false;
