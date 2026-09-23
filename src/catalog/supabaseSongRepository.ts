@@ -3,7 +3,7 @@ import type { SupabaseClient } from '../lib/supabase';
 import type { Song } from '../types/song';
 import { isLiturgicalSeasonId } from '../utils/liturgicalSeasons';
 import { SONG_DIFFICULTIES, type SongDifficulty } from './songDraft';
-import { InvalidRemoteCatalog, type SongRepository } from './songRepository';
+import { InvalidRemoteCatalog, isPublishedVersion, type SongRepository } from './songRepository';
 
 /**
  * The catalog read from Supabase: the `songs` table, only published rows
@@ -60,6 +60,28 @@ export const SONG_COLUMNS: Array<keyof SongRow> = [
 export const SONG_READ_COLUMNS: Array<keyof SongRow> = [...SONG_COLUMNS, 'current_version'];
 
 const isVersion = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1;
+
+/**
+ * What is wrong with a row of the catalog, or null when nothing is.
+ *
+ * It is the one gate for rows that arrive from the backend, whether straight
+ * from Supabase or from what this browser saved: the song has to be readable,
+ * it has to say which published version it is, and its lists have to be lists
+ * of words. Unknown liturgical seasons are still dropped when the song is
+ * read (a season added later is not a broken row), but a hole in the list is.
+ */
+export function catalogRowProblem(row: SongRow): string | null {
+  const where = typeof row?.id === 'string' ? ` (${row.id})` : '';
+  if (!songFromRow(row)) return `Fila ilegible del catálogo${where}`;
+  if (!isPublishedVersion(row.current_version)) return `Fila sin versión publicada${where}`;
+  if (row.liturgical_seasons !== null && row.liturgical_seasons !== undefined) {
+    const seasons = row.liturgical_seasons;
+    if (!Array.isArray(seasons) || seasons.some((season) => typeof season !== 'string' || season.trim() === '')) {
+      return `Fila con tiempos litúrgicos ilegibles${where}`;
+    }
+  }
+  return null;
+}
 
 /** A Song for the app, with exactly the optional fields the bundled catalog would have. Null if unusable. */
 export function songFromRow(row: SongRow): Song | null {
@@ -141,20 +163,23 @@ export async function fetchSongForEdit(client: SupabaseClient, id: string, optio
 
 export function createSupabaseSongRepository(client: SupabaseClient): SongRepository {
   /**
-   * Every row or none: a row that can't be read is not one song less, it is an
-   * answer that can't be trusted as the catalog (see validateCatalogSnapshot).
+   * Every row or none: a row that can't be read, or that doesn't say which
+   * published version it is, is not one song less. It is an answer that can't
+   * be trusted as the catalog (see validateCatalogSnapshot), and the version
+   * is what every edit is proposed against.
    */
   const toSongs = (rows: SongRow[]) =>
     rows.map((row) => {
-      const song = songFromRow(row);
-      if (!song) throw new InvalidRemoteCatalog(`Fila ilegible del catálogo${typeof row?.id === 'string' ? ` (${row.id})` : ''}`);
-      return song;
+      const problem = catalogRowProblem(row);
+      if (problem) throw new InvalidRemoteCatalog(problem);
+      return songFromRow(row) as Song;
     });
   return {
     source: 'remote',
     async listSongs(options) {
       // A stable order (title, then id) so pages never overlap or skip a song.
       const songs: Song[] = [];
+      let complete = false;
       for (let page = 0; page < MAX_PAGES; page++) {
         const rows = await client.select<SongRow>(
           'songs',
@@ -162,8 +187,14 @@ export function createSupabaseSongRepository(client: SupabaseClient): SongReposi
           options
         );
         songs.push(...toSongs(rows));
-        if (rows.length < SONG_PAGE_SIZE) break;
+        if (rows.length < SONG_PAGE_SIZE) {
+          complete = true;
+          break;
+        }
       }
+      // Reading stopped at the safety limit: what came back is part of the
+      // catalog, not the catalog, and half a songbook is never shown.
+      if (!complete) throw new InvalidRemoteCatalog(`El catálogo no cabe en ${MAX_PAGES} páginas`);
       return songs;
     },
     async getSong(id, options) {

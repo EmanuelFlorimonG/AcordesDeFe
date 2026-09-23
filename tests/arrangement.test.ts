@@ -718,6 +718,39 @@ describe('El arreglo después de una nueva versión de la canción', () => {
     eq(bindArrangement(v3, saved, 3).state, 'rebound', 'evidencia exacta y nada ambiguo: continúa');
   });
 
+  it('un catálogo más viejo no crea obligaciones: no es una edición de la canción', () => {
+    // El arreglo se revisó contra la versión 4, donde el coro dice BBB.
+    const v4 = parseSongSections(['[Coro]', 'BBB'].join('\n'));
+    const saved = certifyArrangement(createArrangement(v4, idSequence(), 4), 4, v4)!;
+
+    // Al arrancar sin caché se ven un momento las canciones incluidas (versión 1,
+    // coro AAA). No se toca el arreglo, pero tampoco se apunta nada contra él.
+    const v1 = parseSongSections(['[Coro]', 'AAA'].join('\n'));
+    const older = bindArrangement(v1, saved, 1);
+    eq(older.state, 'pending', 'contra un texto que no es el suyo, no se toca');
+    eq(older.state === 'pending' ? older.arrangement.sections[0].needsReview : true, undefined, 'y no queda marcado');
+    eq(withReviewNeeded(saved, older), null, 'no hay nada que guardar');
+
+    // Llega la versión 4 de verdad: el arreglo sigue siendo válido.
+    eq(bindArrangement(v4, saved, 4).state, 'current');
+    eq(certifyArrangement(saved, 4, v4) !== null, true, 'y se puede guardar');
+
+    // Una versión nueva incompatible sí obliga a revisar.
+    const v5 = parseSongSections(['[Coro]', 'CCC'].join('\n'));
+    const newer = bindArrangement(v5, saved, 5);
+    eq(newer.state === 'pending' ? newer.pendingIds : [], ['arr-1']);
+    eq(newer.state === 'pending' ? newer.arrangement.sections[0].needsReview : false, true, 'queda marcado');
+    eq(withReviewNeeded(saved, newer)?.sections[0].needsReview, true, 'y se guarda');
+
+    // Una obligación ya escrita no se borra porque reaparezca un texto viejo.
+    const marked = withReviewNeeded(saved, newer)!;
+    const backToOld = bindArrangement(v1, marked, 1);
+    eq(backToOld.state, 'pending');
+    eq(backToOld.state === 'pending' ? backToOld.arrangement.sections[0].needsReview : false, true, 'sigue marcado');
+    eq(bindArrangement(v4, marked, 4).state, 'pending', 'ni siquiera su propia versión lo limpia sola');
+    eq(certifyArrangement(marked, 4, v4), null);
+  });
+
   it('la obligación se anota desde cualquier pantalla, y solo se añade', () => {
     const v1 = parseSongSections(['[Coro]', 'AAA', '', '[Puente]', 'BBB'].join('\n'));
     const saved = certifyArrangement(createArrangement(v1, idSequence()), 1, v1)!;

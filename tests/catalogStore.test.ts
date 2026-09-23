@@ -1,7 +1,7 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CATALOG_CACHE_KEY, CATALOG_CACHE_VERSION, MAX_CATALOG_CACHE_BYTES, createCatalogCache } from '../src/catalog/catalogCache';
-import { createCatalogStore, unavailableText, type CatalogStore } from '../src/catalog/catalogStore';
+import { createCatalogStore, songOnScreen, unavailableText, type CatalogStore } from '../src/catalog/catalogStore';
 import { fetchRemoteCatalog, validateCatalogSnapshot, type SongRepository } from '../src/catalog/songRepository';
 import { songVersionOf } from '../src/catalog/songRepository';
 import { buildSubmissionPayload } from '../src/catalog/submission';
@@ -11,7 +11,7 @@ import { readCatalogSource } from '../src/catalog/useCatalog';
 import { MOCK_SONGS } from '../src/data/mockSongs';
 import type { SupabaseClient } from '../src/lib/supabase';
 import type { Song } from '../src/types/song';
-import { getFirstPlayableItem } from '../src/utils/setlists';
+import { getFirstPlayableItem, listSongCategories } from '../src/utils/setlists';
 import { searchSongs } from '../src/utils/songSearch';
 
 let checks = 0;
@@ -23,9 +23,13 @@ after(() => console.log(`catalogStore: ${checks} comprobaciones`));
 
 const PROJECT = 'https://abc.supabase.co';
 
-/** What Supabase returns for a song: the row read back (youtubeId "" becomes absent). */
-const remoteForm = (song: Song) => songFromRow(songToRow(song)) as Song;
-const REMOTE_97 = MOCK_SONGS.map(remoteForm);
+/**
+ * What Supabase returns for a song: the row read back (youtubeId "" becomes
+ * absent), with the published version every row carries — the 97 imported
+ * ones are at version 1, like in the real project.
+ */
+const remoteForm = (song: Song, version = 1) => songFromRow({ ...songToRow(song), current_version: version }) as Song;
+const REMOTE_97 = MOCK_SONGS.map((song) => remoteForm(song));
 const NEW_SONG: Song = {
   id: 'cancion-nueva-6c',
   title: 'Canción nueva aprobada',
@@ -34,6 +38,7 @@ const NEW_SONG: Song = {
   tags: [],
   content: '[Verso 1]\n[D]Una canción [A]nueva',
   chordsUsed: ['D', 'A'],
+  version: 1,
 };
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -96,21 +101,26 @@ describe('Caché del último catálogo remoto válido', () => {
   it('una fila ilegible o un id repetido invalidan la caché entera', () => {
     const stored = (rows: unknown[]) =>
       memoryStorage({ [CATALOG_CACHE_KEY]: JSON.stringify({ version: CATALOG_CACHE_VERSION, projectUrl: PROJECT, savedAt: 'x', rows }) });
+    const row = (song: Song) => ({ ...songToRow(song), current_version: 1 });
     // Media caché no es una caché: faltaría una canción sin que nadie se entere.
-    eq(createCatalogCache(stored([songToRow(MOCK_SONGS[0]), { id: 'sin-titulo' }]), PROJECT).read(), null);
-    eq(createCatalogCache(stored([songToRow(MOCK_SONGS[0]), null]), PROJECT).read(), null);
-    eq(createCatalogCache(stored([songToRow(MOCK_SONGS[0]), songToRow(MOCK_SONGS[0])]), PROJECT).read(), null, 'id repetido');
+    eq(createCatalogCache(stored([row(MOCK_SONGS[0]), { id: 'sin-titulo' }]), PROJECT).read(), null);
+    eq(createCatalogCache(stored([row(MOCK_SONGS[0]), null]), PROJECT).read(), null);
+    eq(createCatalogCache(stored([row(MOCK_SONGS[0]), row(MOCK_SONGS[0])]), PROJECT).read(), null, 'id repetido');
     eq(createCatalogCache(stored([]), PROJECT).read(), null, 'vacía');
-    eq(createCatalogCache(stored([songToRow(MOCK_SONGS[0])]), PROJECT).read()?.songs.map((song) => song.id), [MOCK_SONGS[0].id], 'legible: se usa');
+    // Guardada por una respuesta remota, cada fila dice su versión; sin ella no se usa.
+    eq(createCatalogCache(stored([songToRow(MOCK_SONGS[0])]), PROJECT).read(), null, 'sin versión publicada');
+    eq(createCatalogCache(stored([row(MOCK_SONGS[0])]), PROJECT).read()?.songs.map((song) => song.id), [MOCK_SONGS[0].id], 'legible: se usa');
   });
 
   it('guarda la versión publicada de cada canción y la devuelve igual', () => {
     const storage = memoryStorage();
     const versioned = [{ ...REMOTE_97[0], version: 3 }, REMOTE_97[1]];
-    createCatalogCache(storage, PROJECT).write(versioned);
+    eq(createCatalogCache(storage, PROJECT).write(versioned), true);
     const stored = JSON.parse(storage.data.get(CATALOG_CACHE_KEY)!);
-    eq([stored.version, stored.rows[0].current_version, stored.rows[1].current_version], [2, 3, null]);
+    eq([stored.version, stored.rows[0].current_version, stored.rows[1].current_version], [2, 3, 1]);
     eq(createCatalogCache(storage, PROJECT).read()?.songs, versioned);
+    // Un catálogo sin versiones no es una respuesta remota: no se guarda.
+    eq(createCatalogCache(memoryStorage(), PROJECT).write(MOCK_SONGS), false);
   });
 
   it('una caché del formato 1 (sin versiones) no se usa: no puede decir en qué versión está cada canción', () => {
@@ -331,7 +341,7 @@ describe('Refrescos y vuelta atrás', () => {
 
 describe('Catálogo remoto por páginas', () => {
   it('pide páginas de 1000 hasta la última, en un orden estable', async () => {
-    const all: SongRow[] = Array.from({ length: SONG_PAGE_SIZE * 2 + 5 }, (_, index) => ({ ...songToRow(MOCK_SONGS[0]), id: `cancion-${index}` }));
+    const all: SongRow[] = Array.from({ length: SONG_PAGE_SIZE * 2 + 5 }, (_, index) => ({ ...songToRow(MOCK_SONGS[0]), id: `cancion-${index}`, current_version: 1 }));
     const queries: string[] = [];
     const client = {
       async select<T>(_table: string, query: string) {
@@ -527,5 +537,121 @@ describe('Catálogo remoto: una sola fuente, entera o ninguna', () => {
     const payload = buildSubmissionPayload(songToDraft(song), { type: 'update', targetSongId: song.id, baseVersion: songVersionOf(song) });
     eq([payload.targetSongId, payload.baseVersion], [song.id, 4]);
     eq(songVersionOf({ ...song, version: undefined }), 1, 'una canción incluida cuenta como la 1');
+  });
+});
+
+// --- What the backend has to say for its answer to be the catalog --------------------
+
+describe('Un catálogo remoto se acepta entero y con su versión', () => {
+  const rowsOf = (rows: SongRow[]): SupabaseClient => ({
+    select: async <T,>() => rows as T[],
+    rpc: async <T,>() => [] as T,
+    invoke: async <T,>() => ({}) as T,
+    count: async () => 0,
+  });
+  const answerFor = (patch: Partial<SongRow>) =>
+    fetchRemoteCatalog(createSupabaseSongRepository(rowsOf([{ ...songToRow(MOCK_SONGS[0]), current_version: 1, ...patch }])));
+
+  it('la versión publicada tiene que ser un entero de 1 o más', async () => {
+    for (const current_version of [null, undefined, 0, -1, 1.5, '4' as unknown as number, Number.NaN, '' as unknown as number]) {
+      eq(await answerFor({ current_version }), { ok: false, reason: 'invalid' }, `current_version=${String(current_version)}`);
+    }
+    const good = await answerFor({ current_version: 4 });
+    eq(good.ok && good.songs[0].version, 4, 'una versión de verdad se conserva');
+    eq((await answerFor({ current_version: 1 })).ok, true);
+  });
+
+  it('un dato que rompería el arranque invalida la respuesta, no una canción', async () => {
+    for (const patch of [
+      { title: '' },
+      { title: '   ' },
+      { content: '' },
+      { content: '   ' },
+      { id: '' },
+      { categories: [null] as unknown as string[] },
+      { tags: [null] as unknown as string[] },
+      { chords_used: [null] as unknown as string[] },
+      { categories: [''] as unknown as string[] },
+      { liturgical_seasons: [null] as unknown as string[] },
+    ]) {
+      eq(await answerFor(patch), { ok: false, reason: 'invalid' }, JSON.stringify(patch));
+    }
+  });
+
+  it('una caché con una categoría nula se descarta entera, y el cancionero arranca', () => {
+    const broken = { ...songToRow(MOCK_SONGS[0]), current_version: 1, categories: [null] as unknown as string[] };
+    const storage = memoryStorage({
+      [CATALOG_CACHE_KEY]: JSON.stringify({ version: CATALOG_CACHE_VERSION, projectUrl: PROJECT, savedAt: 'x', rows: [broken] }),
+    });
+    eq(createCatalogCache(storage, PROJECT).read(), null);
+    // Lo que llega a la app son las incluidas, y listar sus categorías no revienta.
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote(new Error('sin red')).repository, cache: createCatalogCache(storage, PROJECT) });
+    eq(store.getSnapshot().source, 'bundled');
+    eq(listSongCategories([...store.getSnapshot().songs]).length > 0, true);
+  });
+
+  it('una respuesta con la versión rota no reemplaza una caché buena', async () => {
+    const storage = memoryStorage();
+    createCatalogCache(storage, PROJECT).write([...REMOTE_97, NEW_SONG]);
+    const withoutVersion = REMOTE_97.map(({ version: _dropped, ...song }) => song as Song);
+    const store = createCatalogStore({
+      bundled: MOCK_SONGS,
+      remote: fakeRemote(withoutVersion).repository,
+      cache: createCatalogCache(storage, PROJECT),
+    });
+    await store.refresh({ force: true });
+    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['cache', 'invalid', 98]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 98, 'la caché buena sigue entera');
+  });
+
+  it('un catálogo que no cabe en las páginas que se piden no se da por bueno', async () => {
+    let page = 0;
+    const client: SupabaseClient = {
+      select: async <T,>() => {
+        page++;
+        return Array.from({ length: SONG_PAGE_SIZE }, (_, index) => ({
+          ...songToRow(MOCK_SONGS[0]),
+          id: `cancion-${page}-${index}`,
+          current_version: 1,
+        })) as T[];
+      },
+      rpc: async <T,>() => [] as T,
+      invoke: async <T,>() => ({}) as T,
+      count: async () => 0,
+    };
+    eq(await fetchRemoteCatalog(createSupabaseSongRepository(client)), { ok: false, reason: 'invalid' });
+  });
+
+  it('el reloj cubre también abrir el lector, y un corte por tiempo se llama timeout', async () => {
+    // Un módulo que nunca llega no deja el cancionero esperando para siempre.
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: () => new Promise(() => {}), cache: null, timeoutMs: 20 });
+    await store.refresh({ force: true });
+    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().fallbackReason], ['bundled', 'failed', 'timeout']);
+
+    // Y si la petición se corta por el abort, el motivo sigue siendo el reloj.
+    const aborting: SongRepository = {
+      source: 'remote',
+      listSongs: ({ signal } = {}) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('abortada')));
+        }),
+      getSong: async () => null,
+    };
+    eq(await fetchRemoteCatalog(aborting, { timeoutMs: 20 }), { ok: false, reason: 'timeout' });
+  });
+
+  it('una canción que el catálogo activo ya no tiene deja de estar abierta', async () => {
+    const retirada = MOCK_SONGS[0];
+    const remote = fakeRemote('never');
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: remote.repository, cache: null, timeoutMs: 10 });
+    // Mientras no hay respuesta, lo que se abrió se sigue leyendo.
+    eq(songOnScreen(store, retirada.id, retirada)?.id, retirada.id);
+
+    remote.set(REMOTE_97.filter((song) => song.id !== retirada.id));
+    await store.refresh({ force: true });
+    eq(store.getSnapshot().source, 'remote');
+    eq(songOnScreen(store, retirada.id, retirada), null, 'retirada: no se sigue mostrando la versión incluida');
+    eq(songOnScreen(store, REMOTE_97[1].id, null)?.id, REMOTE_97[1].id, 'las demás se leen del catálogo activo');
+    eq(songOnScreen(store, null, retirada), null);
   });
 });

@@ -1,7 +1,7 @@
 import type { Song } from '../types/song';
 import { getBrowserStorage, type KeyValueStorage } from '../storage/localRepository';
 import { validateCatalogSnapshot } from './songRepository';
-import { songFromRow, songToRow, type SongRow } from './supabaseSongRepository';
+import { catalogRowProblem, songFromRow, songToRow, type SongRow } from './supabaseSongRepository';
 
 /**
  * The last remote catalog that was received and valid, kept in this browser.
@@ -76,20 +76,21 @@ export function createCatalogCache(storage: KeyValueStorage | null, projectUrl: 
       for (const row of stored.rows) {
         let song: Song | null = null;
         try {
-          song = songFromRow(row);
+          song = catalogRowProblem(row) ? null : songFromRow(row);
         } catch {
           song = null;
         }
         if (!song) return null;
         songs.push(song);
       }
-      const checked = validateCatalogSnapshot(songs);
+      const checked = validateCatalogSnapshot(songs, { requireVersion: true });
       return checked.ok ? { songs: checked.songs, savedAt: stored.savedAt } : null;
     },
     write(songs, now = new Date()) {
-      // Only a catalog worth reading back is written down.
-      if (!storage || !validateCatalogSnapshot(songs).ok) return false;
-      const stored: StoredCatalog = { version: CATALOG_CACHE_VERSION, projectUrl, savedAt: now.toISOString(), rows: songs.map((song) => ({ ...songToRow(song), current_version: song.version ?? null })) };
+      // Only a catalog worth reading back is written down: what is stored here
+      // is a remote answer, so every song carries its published version.
+      if (!storage || !validateCatalogSnapshot(songs, { requireVersion: true }).ok) return false;
+      const stored: StoredCatalog = { version: CATALOG_CACHE_VERSION, projectUrl, savedAt: now.toISOString(), rows: songs.map((song) => ({ ...songToRow(song), current_version: song.version as number })) };
       const json = JSON.stringify(stored);
       if (json.length * 2 > MAX_CATALOG_CACHE_BYTES) return false;
       try {

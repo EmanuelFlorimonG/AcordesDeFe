@@ -2,6 +2,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { Playlist, Song } from './types/song';
 import type { Setlist, SetlistDetails, SetlistItem, SetlistPlayback } from './types/setlist';
 import { getCatalogStore, refreshCatalog, useCatalog } from './catalog/useCatalog';
+import { songOnScreen } from './catalog/catalogStore';
 import {
   About,
   AuthorsView,
@@ -753,8 +754,16 @@ export function App() {
     };
   })();
 
-  /** The open song as the current catalog has it (a newer remote version replaces the one opened). */
-  const currentSong = activeSong ? songsById.get(activeSong.id) ?? activeSong : null;
+  /**
+   * The open song as the ACTIVE catalog has it: a newer version replaces the
+   * one opened, and a song the catalog no longer has stops being shown. While
+   * the catalog is still being asked for, what is already on screen stays
+   * ("checking"): only once there is an answer does a missing song become
+   * "no disponible", instead of quietly reading a song from a source that is
+   * no longer the songbook.
+   */
+  const activeSongId = activeSong?.id ?? null;
+  const currentSong = songOnScreen(getCatalogStore(), activeSongId, activeSong);
   /** The song on screen: from the setlist when there is one, else the plain route. */
   const viewerSong = setlistPlayback ? songsById.get(setlistPlayback.item.songId) ?? null : currentSong;
 
@@ -1298,7 +1307,12 @@ export function App() {
               )
             : renderSetlists();
         }
-        return currentSong ? renderSongViewer(currentSong, currentSong.id, null) : null;
+        return currentSong ? (
+          renderSongViewer(currentSong, currentSong.id, null)
+        ) : (
+          // It was open and the catalog no longer has it: said plainly, never a blank page.
+          <SongUnavailableScreen songId={activeSongId} onRetry={refreshCatalog} onBack={handleBackToDashboard} />
+        );
       case 'songPending':
         return <SongPendingScreen />;
       case 'songUnavailable':

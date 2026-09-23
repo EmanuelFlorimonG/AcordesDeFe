@@ -520,10 +520,11 @@ function fakeClient(handlers: {
 
 describe('Repositorios de Supabase (preparados)', () => {
   it('el catálogo remoto pide solo lo publicado y devuelve canciones idénticas', async () => {
-    const rows: SongRow[] = MOCK_SONGS.slice(0, 3).map(songToRow);
+    // Como en la base real: cada fila dice en qué versión publicada está.
+    const rows: SongRow[] = MOCK_SONGS.slice(0, 3).map((song) => ({ ...songToRow(song), current_version: 1 }));
     const { client, queries } = fakeClient({ select: () => rows });
     const repository = createSupabaseSongRepository(client);
-    eq(await repository.listSongs(), MOCK_SONGS.slice(0, 3));
+    eq(await repository.listSongs(), MOCK_SONGS.slice(0, 3).map((song) => ({ ...song, version: 1 })));
     eq(queries[0].includes('status=eq.published'), true);
     await repository.getSong('huracan-hakuna');
     eq(queries[1].includes('id=eq.huracan-hakuna'), true);
@@ -579,6 +580,8 @@ describe('Repositorios de Supabase (preparados)', () => {
 // --- Transition: backend first, bundled catalog as safety net ----------------------------
 
 describe('Catálogo remoto: solo traer y comprobar', () => {
+  /** The 97 as the backend hands them over: each one with its published version. */
+  const published = (songs: Song[]) => songs.map((song) => ({ ...song, version: 1 }));
   const remoteWith = (songs: Song[] | Error | 'never'): SongRepository => ({
     source: 'remote',
     listSongs: () =>
@@ -587,7 +590,11 @@ describe('Catálogo remoto: solo traer y comprobar', () => {
   });
 
   it('una respuesta con canciones: tal cual, sin mezclar nada', async () => {
-    eq(await fetchRemoteCatalog(remoteWith(MOCK_SONGS.slice(0, 3))), { ok: true, songs: MOCK_SONGS.slice(0, 3) });
+    eq(await fetchRemoteCatalog(remoteWith(published(MOCK_SONGS.slice(0, 3)))), { ok: true, songs: published(MOCK_SONGS.slice(0, 3)) });
+  });
+
+  it('una respuesta sin versión publicada no es el catálogo', async () => {
+    eq(await fetchRemoteCatalog(remoteWith(MOCK_SONGS.slice(0, 3))), { ok: false, reason: 'invalid' });
   });
 
   it('caído, lento o vacío: un fallo con su motivo, nunca un catálogo vacío', async () => {
@@ -597,8 +604,8 @@ describe('Catálogo remoto: solo traer y comprobar', () => {
   });
 
   it('un id repetido invalida la respuesta entera: no es un catálogo', async () => {
-    const edited = { ...MOCK_SONGS[0], title: 'Otra' };
-    const result = await fetchRemoteCatalog(remoteWith([MOCK_SONGS[0], edited, MOCK_SONGS[1]]));
+    const [first, second] = published(MOCK_SONGS.slice(0, 2));
+    const result = await fetchRemoteCatalog(remoteWith([first, { ...first, title: 'Otra' }, second]));
     eq(result, { ok: false, reason: 'invalid' });
   });
 });

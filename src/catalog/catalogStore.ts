@@ -75,6 +75,20 @@ export interface CatalogStore {
   availability(songId: string): SongAvailability;
 }
 
+/**
+ * The song to show for an id, against the catalog that is active now.
+ *
+ * `opened` is what was on screen when it was opened, which may come from an
+ * earlier source (the songs shipped with the app, while the real catalog is
+ * still being asked for). It is kept only while the catalog can't answer yet:
+ * once it has, a song it doesn't have stops being shown, instead of leaving a
+ * song from a source that is no longer the songbook open.
+ */
+export function songOnScreen(store: CatalogStore, id: string | null, opened: Song | null): Song | null {
+  if (!id) return null;
+  return store.getSnapshot().byId.get(id) ?? (store.availability(id) === 'checking' ? opened : null);
+}
+
 export interface CatalogStoreOptions {
   bundled: readonly Song[];
   /**
@@ -147,12 +161,12 @@ export function createCatalogStore({ bundled, remote, cache, timeoutMs = 6000, m
   const run = async (): Promise<void> => {
     if (!remote) return;
     publish({ remote: 'loading' });
-    if (!reader && typeof remote === 'function') reader = await remote();
-    if (!reader) {
-      publish({ remote: 'failed', fallbackReason: 'error' });
-      return;
-    }
-    const result = await fetchRemoteCatalog(reader, { timeoutMs });
+    // Opening the reader is part of the errand, so it is part of its time too.
+    const open = async () => {
+      if (!reader && typeof remote === 'function') reader = await remote();
+      return reader;
+    };
+    const result = await fetchRemoteCatalog(reader ?? open, { timeoutMs });
     if (!result.ok) {
       // Nothing shown is replaced, and nothing is written down: the songs in
       // memory stay as they are and the cache keeps the last good answer.

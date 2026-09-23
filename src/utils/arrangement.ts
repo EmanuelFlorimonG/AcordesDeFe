@@ -492,6 +492,13 @@ export type ArrangementBinding =
  * renamed, repeated, or a block that never wrote down what it played. A name
  * proves nothing on its own — a "Coro" of one version and a "Coro" of the
  * next can be different words entirely.
+ *
+ * A block is only *marked* as needing someone when the song has actually
+ * moved on, that is, when what is being shown is newer than what the block
+ * was checked against. An older text (the songs shipped with the app while
+ * the real catalog is still loading) is not an edit of the song: it is not
+ * played either, but it leaves no obligation behind. A mark already there
+ * stays: only choosing a section removes it.
  */
 export function bindArrangement(
   sections: SongSection[],
@@ -520,8 +527,10 @@ export function bindArrangement(
     if (matches.length !== 1 || (labelCount.get(matches[0].label) ?? 0) !== 1) {
       pendingIds.push(entry.id);
       // Written down on the block itself, so it survives duplicating,
-      // removing, reordering, saving, reloading and later versions.
-      return { ...entry, needsReview: true as const };
+      // removing, reordering, saving, reloading and later versions — but only
+      // when the song really moved on. An older text proves nothing.
+      const checkedAgainst = entry.source?.version ?? arrangementVersionOf(arrangement);
+      return songVersion > checkedAgainst ? { ...entry, needsReview: true as const } : entry;
     }
     return { ...entry, sourceSectionId: matches[0].sectionId, label: matches[0].label };
   });
@@ -541,7 +550,10 @@ export function bindArrangement(
  */
 export function withReviewNeeded(stored: SetlistArrangement | undefined, binding: ArrangementBinding): SetlistArrangement | null {
   if (!stored || binding.state !== 'pending') return null;
-  const waiting = new Set(binding.pendingIds);
+  // Only what the binding itself marked: a block that can't be matched against
+  // an OLDER text of the song is not played, but it is not an obligation
+  // either (see bindArrangement).
+  const waiting = new Set(binding.arrangement.sections.filter((section) => section.needsReview).map((section) => section.id));
   if (stored.sections.every((section) => !waiting.has(section.id) || section.needsReview)) return null;
   return {
     ...stored,
