@@ -48,6 +48,8 @@ import {
   splitLine,
   updateSection,
   emptySongMeta,
+  freePosition,
+  placeChordAt,
   validateEditorDocument,
   wordBoundary,
   type EditorDocument,
@@ -65,7 +67,8 @@ import { parseSuggestEditHash, suggestEditHash } from '../src/catalog/editAvaila
 import { MY_SUBMISSIONS_STORAGE_KEY, createMySubmissionsStore } from '../src/editor/mySubmissions';
 import { createSubmitter, sendDraft } from '../src/editor/submitter';
 import { parseYouTubeId } from '../src/editor/youtube';
-import { parseSongSections, transposeSongContent } from '../src/utils/chordParser';
+import { parseSongSections, stripChords, transposeSongContent } from '../src/utils/chordParser';
+import { characterAtOffset } from '../src/editor/chordLane';
 import { compareSongs } from '../src/admin/songDiff';
 import { draftToSong, songToDraft } from '../src/catalog/songDraft';
 
@@ -1154,5 +1157,140 @@ describe('Editar una parte no cambia las demás', () => {
       after.filter((_entry, at) => at !== coroAt),
       before.filter((_entry, at) => at !== coroAt)
     );
+  });
+});
+
+// --- Putting each chord on its own letter ---------------------------------------
+
+describe('Poner cada acorde sobre su letra (arrastrar o tocar)', () => {
+  /** A lane of ten-pixel characters, the field padded like the editor's. */
+  const ruler = { charWidth: 10, padding: 12, scrollLeft: 0 };
+  const positionsOf = (doc: EditorDocument) =>
+    doc.sections.flatMap((section) => section.lines.map((entry) => entry.chords.map((anchor) => anchor.position)));
+  const textsOf = (doc: EditorDocument) => doc.sections.flatMap((section) => section.lines.map((entry) => entry.text));
+
+  it('el carácter bajo el puntero: inicio, mitad, final y fuera de la línea', () => {
+    const length = 'Quiero caminar contigo'.length;
+    eq(characterAtOffset(12, length, ruler), 0, 'el borde izquierdo es la primera letra');
+    eq(characterAtOffset(12 + 70, length, ruler), 7, 'la "c" de caminar');
+    eq(characterAtOffset(12 + 74, length, ruler), 7, 'la mitad izquierda de una letra es esa letra');
+    eq(characterAtOffset(12 + 76, length, ruler), 8, 'la mitad derecha ya es la siguiente');
+    eq(characterAtOffset(12 + 10 * length, length, ruler), length, 'el final de la línea');
+    eq(characterAtOffset(9000, length, ruler), length, 'nunca más allá del final');
+    eq(characterAtOffset(-500, length, ruler), 0, 'ni antes del principio');
+    eq(characterAtOffset(12 + 100 - 40, length, { ...ruler, scrollLeft: 40 }), 10, 'la línea desplazada cuenta igual');
+    eq(characterAtOffset(50, length, { ...ruler, charWidth: 0 }), 0, 'sin medida todavía, no se adivina');
+  });
+
+  it('soltarlo sobre una letra lo ancla ahí, y su nombre no cambia', () => {
+    const entry = line('[G]Quiero caminar contigo');
+    const [g] = entry.chords;
+    const moved = placeChordAt(entry, g.id, characterAtOffset(12 + 70, entry.text.length, ruler));
+    eq(chordsOf(moved), [['G', 7]]);
+    eq(lineToNotation(moved), 'Quiero [G]caminar contigo');
+    eq(moved.text, entry.text, 'la letra no se toca');
+    eq(placeChordAt(moved, g.id, 999).chords[0].position, moved.text.length, 'al final de la línea');
+    eq(placeChordAt(moved, g.id, -4).chords[0].position, 0, 'y al principio');
+  });
+
+  it('tocar la letra (móvil) y soltarla encima (escritorio) terminan en el mismo sitio', () => {
+    const entry = line('[G]Quiero caminar contigo');
+    const [g] = entry.chords;
+    // El móvil trae la posición del cursor; el escritorio, la del puntero.
+    const tapped = placeChordAt(entry, g.id, 15);
+    const dropped = placeChordAt(entry, g.id, characterAtOffset(12 + 150, entry.text.length, ruler));
+    eq(chordsOf(tapped), chordsOf(dropped));
+    eq(lineToNotation(tapped), 'Quiero caminar [G]contigo');
+  });
+
+  it('dos acordes nunca caen sobre la misma letra', () => {
+    const entry = line('[G]Quiero [D]caminar contigo');
+    const [g] = entry.chords;
+    eq(freePosition(entry, g.id, 7), 8, 'la letra ocupada empuja a la siguiente libre');
+    eq(chordsOf(placeChordAt(entry, g.id, 7)), [['D', 7], ['G', 8]]);
+    eq(freePosition(entry, g.id, 6), 6, 'y la de al lado sí está libre');
+    eq(chordsOf(placeChordAt(entry, g.id, 6)), [['G', 6], ['D', 7]], 'acordes pegados, cada uno en su letra');
+    eq(placeChordAt(entry, g.id, 0), entry, 'dejarlo donde estaba no cambia nada');
+  });
+
+  it('entre palabras, sobre un signo, entre espacios y en una línea vacía', () => {
+    const entry = line('Ven, Señor  ¡ven!');
+    const chords = ['A', 'B', 'C', 'D'];
+    const placed = chords.reduce((acc, chord, index) => placeChord(acc, [3, 4, 11, 16][index], chord, idSequence(`p${index}`)), entry);
+    eq(chordsOf(placed), [['A', 3], ['B', 4], ['C', 11], ['D', 16]], 'coma, espacio, segundo espacio y último signo');
+    eq(lineToNotation(placed), 'Ven[A],[B] Señor [C] ¡ven[D]!');
+    const empty = createLine(idSequence('e'), '');
+    eq(freePosition(empty, 'x', 5), 0, 'en una línea vacía sólo hay un sitio');
+  });
+
+  it('tildes y ñ ocupan una sola posición al soltar', () => {
+    const entry = line('Mañana él vendrá');
+    const placed = placeChord(entry, 3, 'F#m', idSequence('t'));
+    eq(chordsOf(placed), [['F#m', 3]]);
+    eq(lineToNotation(placed), 'Mañ[F#m]ana él vendrá');
+    const moved = placeChordAt(placed, placed.chords[0].id, 7);
+    eq(lineToNotation(moved), 'Mañana [F#m]él vendrá', 'la posición cuenta letras, no bytes');
+  });
+
+  it('un acorde largo sigue anclado a su letra, no a su ancho', () => {
+    const entry = placeChord(line('Quiero caminar contigo'), 7, 'Cmaj7', idSequence('c'));
+    eq(lineToNotation(entry), 'Quiero [Cmaj7]caminar contigo');
+    const slash = placeChordAt(placeChord(entry, 15, 'D/F#', idSequence('s')), entry.chords[0].id, 0);
+    eq(lineToNotation(slash), '[Cmaj7]Quiero caminar [D/F#]contigo');
+  });
+
+  it('una línea instrumental no se ancla a letras', () => {
+    const entry = line('[G]  [D/F#]  [Em]');
+    eq(placeChordAt(entry, entry.chords[2].id, 1), entry, 'ahí los acordes van en orden, no sobre letras');
+  });
+
+  it('ida y vuelta: mover un acorde y volver a abrir conserva las posiciones', () => {
+    const makeId = idSequence('r');
+    const content = ['[Coro]', '[G]Quiero caminar contigo', '[Em]Señor, [C]hoy'].join(NEWLINE);
+    const opened = contentToEditor(content, emptySongMeta(), makeId);
+    const first = opened.sections[0].lines[0];
+    const moved = updateSection(opened, opened.sections[0].id, (section) => ({
+      ...section,
+      lines: [placeChordAt(first, first.chords[0].id, 7), ...section.lines.slice(1)],
+    }));
+    const written = editorToContent(moved);
+    eq(written, ['[Coro]', 'Quiero [G]caminar contigo', '[Em]Señor, [C]hoy'].join(NEWLINE));
+    const reopened = contentToEditor(written, emptySongMeta(), idSequence('q'));
+    eq(positionsOf(reopened), positionsOf(moved), 'las posiciones sobreviven al texto');
+    eq(textsOf(reopened), textsOf(moved));
+    eq(editorToContent(reopened), written, 'y volver a escribirlo da lo mismo');
+  });
+
+  it('moverlo y devolverlo deja el texto exactamente como estaba', () => {
+    const content = ['[Verso 1]', '[G]Quiero caminar contigo'].join(NEWLINE);
+    const opened = contentToEditor(content, emptySongMeta(), idSequence('n'));
+    const entry = opened.sections[0].lines[0];
+    const there = placeChordAt(entry, entry.chords[0].id, 14);
+    const back = placeChordAt(there, there.chords[0].id, 0);
+    eq(chordsOf(back), chordsOf(entry));
+    eq(editorToContent(updateSection(opened, opened.sections[0].id, (section) => ({ ...section, lines: [back] }))), content);
+  });
+
+  it('transponer cambia el nombre del acorde, nunca su ancla', () => {
+    const content = ['[Verso 1]', '[G]Quiero [D/F#]caminar con[Cmaj7]tigo'].join(NEWLINE);
+    const transposed = transposeSongContent(content, 1, 'G');
+    const before = contentToEditor(content, emptySongMeta(), idSequence('b'));
+    const after = contentToEditor(transposed, emptySongMeta(), idSequence('a'));
+    eq(positionsOf(after), positionsOf(before), 'las mismas letras');
+    eq(textsOf(after), textsOf(before), 'la misma letra de la canción');
+    eq(stripChords(transposed), stripChords(content));
+    const names = after.sections[0].lines[0].chords.map((anchor) => anchor.chord);
+    eq(names.length, 3);
+    eq(names[0] !== 'G' && names[1] !== 'D/F#', true, 'y otros nombres');
+  });
+
+  it('las canciones del catálogo: sus acordes siguen en la misma letra al abrirlas', () => {
+    for (const song of MOCK_SONGS) {
+      const opened = contentToEditor(song.content, emptySongMeta(), idSequence(song.id));
+      const written = editorToContent(opened);
+      const reopened = contentToEditor(written, emptySongMeta(), idSequence(`${song.id}-2`));
+      eq(positionsOf(reopened), positionsOf(opened), song.id);
+      eq(textsOf(reopened), textsOf(opened), song.id);
+    }
   });
 });

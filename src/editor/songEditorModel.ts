@@ -254,6 +254,35 @@ export function moveChord(line: EditorLine, anchorId: string, delta: number): Ed
   return { ...line, chords: sortAnchors(line.chords.map((anchor) => (anchor.id === anchorId ? { ...anchor, position } : anchor))) };
 }
 
+/**
+ * The character a chord would land on if it were asked to go to `position`:
+ * that one, or the nearest free one. Two chords never share a character, so a
+ * drop always lands somewhere the author can see. Null when the line is full.
+ */
+export function freePosition(line: EditorLine, anchorId: string, position: number): number | null {
+  const taken = new Set(line.chords.filter((entry) => entry.id !== anchorId).map((entry) => entry.position));
+  const wanted = Math.max(0, Math.min(line.text.length, Math.round(position)));
+  if (!taken.has(wanted)) return wanted;
+  for (let step = 1; step <= line.text.length; step++) {
+    if (wanted + step <= line.text.length && !taken.has(wanted + step)) return wanted + step;
+    if (wanted - step >= 0 && !taken.has(wanted - step)) return wanted - step;
+  }
+  return null;
+}
+
+/**
+ * A chord moved to an exact character: dropped there, or the letter it should
+ * start on was tapped. The position belongs to the words, so nothing else of
+ * the chord changes — least of all its name.
+ */
+export function placeChordAt(line: EditorLine, anchorId: string, position: number): EditorLine {
+  const anchor = line.chords.find((entry) => entry.id === anchorId);
+  if (!anchor || line.instrumental) return line;
+  const at = freePosition(line, anchorId, position);
+  if (at === null || at === anchor.position) return line;
+  return { ...line, chords: sortAnchors(line.chords.map((entry) => (entry.id === anchorId ? { ...entry, position: at } : entry))) };
+}
+
 /** The start of the next (or previous) word from a position: where a chord usually goes. */
 export function wordBoundary(text: string, position: number, direction: 1 | -1): number {
   const isWord = (char: string | undefined) => char !== undefined && /\S/.test(char);

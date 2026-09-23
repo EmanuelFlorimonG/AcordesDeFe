@@ -1,5 +1,5 @@
 import React, { useId, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, Trash2 } from 'lucide-react';
 import { isRecognizedChord } from '../../editor/songEditorModel';
 import { Dialog } from '../Setlists/Dialog';
 import { fieldLabel, primaryButton, secondaryButton, textField } from '../Setlists/ui';
@@ -15,6 +15,8 @@ interface ChordDialogProps {
   suggestions: string[];
   onSave: (chord: string) => void;
   onMove?: (delta: 'left' | 'right' | 'word-left' | 'word-right') => void;
+  /** Closes this dialog and waits for the letter the chord should start on to be tapped */
+  onStartMove?: () => void;
   onRemove?: () => void;
   onClose: () => void;
 }
@@ -32,6 +34,7 @@ export const ChordDialog: React.FC<ChordDialogProps> = ({
   suggestions,
   onSave,
   onMove,
+  onStartMove,
   onRemove,
   onClose,
 }) => {
@@ -126,6 +129,17 @@ export const ChordDialog: React.FC<ChordDialogProps> = ({
             ))}
           </div>
         </div>
+      )}
+
+      {mode === 'edit' && onStartMove && (
+        <button
+          type="button"
+          onClick={onStartMove}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[#2464ED] px-3 h-11 text-sm font-semibold text-[#2464ED] dark:text-sky-400 dark:border-sky-500/60 hover:bg-[#EAF1FF] dark:hover:bg-blue-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
+        >
+          <MousePointerClick className="w-4 h-4" />
+          Mover a otra letra
+        </button>
       )}
 
       {mode === 'edit' && (onMove || onRemove) && (
