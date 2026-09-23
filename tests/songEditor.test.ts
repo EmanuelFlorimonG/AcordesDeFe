@@ -69,6 +69,7 @@ import { createSubmitter, sendDraft } from '../src/editor/submitter';
 import { parseYouTubeId } from '../src/editor/youtube';
 import { parseSongSections, stripChords, transposeSongContent } from '../src/utils/chordParser';
 import { characterAtOffset } from '../src/editor/chordLane';
+import { graphemeBoundaries, snapToGrapheme } from '../src/editor/graphemes';
 import { compareSongs } from '../src/admin/songDiff';
 import { draftToSong, songToDraft } from '../src/catalog/songDraft';
 
@@ -1291,6 +1292,87 @@ describe('Poner cada acorde sobre su letra (arrastrar o tocar)', () => {
       const reopened = contentToEditor(written, emptySongMeta(), idSequence(`${song.id}-2`));
       eq(positionsOf(reopened), positionsOf(opened), song.id);
       eq(textsOf(reopened), textsOf(opened), song.id);
+    }
+  });
+});
+
+// --- No chord splits a sign in half ---------------------------------------------
+
+describe('Un acorde nunca parte un signo', () => {
+  /** Half a pair left alone, which is what a chord dropped inside a sign would produce. */
+  const brokenPair = (text: string) => /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(text);
+  const EMOJI = 'A\u{1F600}B';
+  const ACCENTED = 'q́B';
+
+  it('los límites de un texto: cada signo empieza donde le toca', () => {
+    eq(graphemeBoundaries(EMOJI), [0, 1, 3, 4], 'la cara ocupa dos, y es una sola');
+    eq(graphemeBoundaries(ACCENTED), [0, 2, 3], 'la tilde va con su letra');
+    eq(graphemeBoundaries(''), [0], 'un texto vacío tiene un solo sitio');
+    const spanish = 'Mañana él vendrá con ü'.normalize('NFC');
+    eq(graphemeBoundaries(spanish), [...Array(spanish.length + 1).keys()], 'en español, cada letra es una posición');
+  });
+
+  it('una posición dentro de un signo se lleva al borde más cercano', () => {
+    eq([0, 1, 2, 3, 4].map((at) => snapToGrapheme(EMOJI, at)), [0, 1, 1, 3, 4], 'nunca cae en medio de la cara');
+    eq([0, 1, 2, 3].map((at) => snapToGrapheme(ACCENTED, at)), [0, 0, 2, 3], 'ni entre la letra y su tilde');
+    eq(snapToGrapheme(EMOJI, -9), 0);
+    eq(snapToGrapheme(EMOJI, 99), 4, 'y el final de la línea sigue siendo el final');
+  });
+
+  it('soltar un acorde dentro de un emoji lo deja antes, y la notación no se rompe', () => {
+    const entry = placeChord(createLine(idSequence('u'), EMOJI), 2, 'G', idSequence('g'));
+    eq(chordsOf(entry), [['G', 1]]);
+    eq(lineToNotation(entry), 'A[G]\u{1F600}B');
+    eq(brokenPair(lineToNotation(entry)), false, 'jamás A\\uD83D[G]\\uDE00B');
+    const moved = placeChordAt(entry, entry.chords[0].id, 2);
+    eq(chordsOf(moved), [['G', 1]], 'arrastrarlo al medio del signo tampoco lo parte');
+    eq(brokenPair(lineToNotation(moved)), false);
+  });
+
+  it('una letra con tilde combinada no se separa de su tilde', () => {
+    const entry = placeChord(createLine(idSequence('v'), ACCENTED), 1, 'G', idSequence('h'));
+    eq(chordsOf(entry), [['G', 0]]);
+    eq(lineToNotation(entry), '[G]q́B');
+    eq(lineToNotation(entry).includes('q[G]́'), false, 'jamás q[G]́B');
+  });
+
+  it('las flechas mueven de signo en signo', () => {
+    let entry = placeChord(createLine(idSequence('w'), EMOJI), 0, 'G', idSequence('i'));
+    entry = moveChord(entry, entry.chords[0].id, 1);
+    eq(chordsOf(entry), [['G', 1]]);
+    entry = moveChord(entry, entry.chords[0].id, 1);
+    eq(chordsOf(entry), [['G', 3]], 'la cara se salta entera');
+    entry = moveChord(entry, entry.chords[0].id, 1);
+    eq(chordsOf(entry), [['G', 4]], 'y se llega al final');
+    entry = moveChord(entry, entry.chords[0].id, -2);
+    eq(chordsOf(entry), [['G', 1]], 'de vuelta, igual');
+  });
+
+  it('dos acordes en un texto con emoji van a bordes libres, nunca dentro', () => {
+    let entry = placeChord(createLine(idSequence('x'), EMOJI), 1, 'G', idSequence('j'));
+    entry = placeChord(entry, 3, 'D', idSequence('k'));
+    eq(chordsOf(entry), [['G', 1], ['D', 3]]);
+    eq(freePosition(entry, entry.chords[0].id, 2), 1, 'el sitio pedido cae dentro del signo: se usa su inicio');
+    eq(freePosition(entry, entry.chords[1].id, 2), 3, 'y si ese inicio está ocupado, el siguiente borde libre');
+    eq(lineToNotation(entry), 'A[G]\u{1F600}[D]B');
+    eq(brokenPair(lineToNotation(entry)), false);
+  });
+
+  it('el signo se reconoce igual sin Intl.Segmenter', () => {
+    for (const text of [EMOJI, ACCENTED, 'Mañana él vendrá', '\u{1F1EA}\u{1F1F8} España', '\u{1F44D}\u{1F3FD}', '\u{1F468}‍\u{1F469}‍\u{1F467}', '¿Vienes? ¡Sí!', '']) {
+      eq(graphemeBoundaries(text, null), graphemeBoundaries(text), JSON.stringify(text));
+    }
+  });
+
+  it('las 97 incluidas: cada acorde ya está en un borde de signo', () => {
+    for (const song of MOCK_SONGS) {
+      for (const section of contentToEditor(song.content, emptySongMeta(), idSequence(song.id)).sections) {
+        for (const entry of section.lines) {
+          for (const anchor of entry.chords) {
+            eq(snapToGrapheme(entry.text, anchor.position), anchor.position, `${song.id}: ${anchor.chord}`);
+          }
+        }
+      }
     }
   });
 });

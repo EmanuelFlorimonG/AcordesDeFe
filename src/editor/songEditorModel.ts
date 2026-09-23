@@ -3,6 +3,7 @@ import type { SectionKind } from '../types/song';
 import { extractUniqueChords, parseBracketLine, parseSongSections } from '../utils/chordParser';
 import { isChordSymbol } from '../utils/chordTransposer';
 import { createId, type IdFactory } from '../utils/createId';
+import { graphemeBoundaries, snapToGrapheme } from './graphemes';
 import { isChordOnlyLine, parseSectionHeader } from '../utils/songSections';
 
 /**
@@ -210,7 +211,7 @@ export function placeChord(line: EditorLine, position: number, chord: string, ma
   if (line.instrumental) {
     return { ...line, chords: [...line.chords, { id: makeId(), chord: clean, position: 0 }] };
   }
-  const at = Math.max(0, Math.min(line.text.length, Math.round(position)));
+  const at = snapToGrapheme(line.text, position);
   const existing = line.chords.find((anchor) => anchor.position === at);
   if (existing) return { ...line, chords: line.chords.map((anchor) => (anchor === existing ? { ...anchor, chord: clean } : anchor)) };
   return { ...line, chords: sortAnchors([...line.chords, { id: makeId(), chord: clean, position: at }]) };
@@ -241,16 +242,26 @@ export function moveChord(line: EditorLine, anchorId: string, delta: number): Ed
     return { ...line, chords };
   }
   const taken = new Set(line.chords.filter((anchor) => anchor.id !== anchorId).map((anchor) => anchor.position));
-  let position = line.chords[index].position;
+  // One press is one sign: an emoji or a letter with its accent is never
+  // walked into halfway.
+  const stops = graphemeBoundaries(line.text);
+  const from = line.chords[index].position;
+  let at = stops.indexOf(from);
+  if (at < 0) {
+    stops.push(from);
+    stops.sort((a, b) => a - b);
+    at = stops.indexOf(from);
+  }
   const step = Math.sign(delta);
   for (let moved = 0; moved < Math.abs(delta); ) {
-    const next = position + step;
-    if (next < 0 || next > line.text.length) break;
-    position = next;
-    if (!taken.has(position)) moved++;
+    const next = at + step;
+    if (next < 0 || next >= stops.length) break;
+    at = next;
+    if (!taken.has(stops[at])) moved++;
   }
   // Landed on another chord at the edge of the line: step back to the nearest free place.
-  while (taken.has(position) && position !== line.chords[index].position) position -= step;
+  while (taken.has(stops[at]) && stops[at] !== from) at -= step;
+  const position = stops[at];
   return { ...line, chords: sortAnchors(line.chords.map((anchor) => (anchor.id === anchorId ? { ...anchor, position } : anchor))) };
 }
 
@@ -261,11 +272,13 @@ export function moveChord(line: EditorLine, anchorId: string, delta: number): Ed
  */
 export function freePosition(line: EditorLine, anchorId: string, position: number): number | null {
   const taken = new Set(line.chords.filter((entry) => entry.id !== anchorId).map((entry) => entry.position));
-  const wanted = Math.max(0, Math.min(line.text.length, Math.round(position)));
+  const stops = graphemeBoundaries(line.text);
+  const wanted = snapToGrapheme(line.text, position);
   if (!taken.has(wanted)) return wanted;
-  for (let step = 1; step <= line.text.length; step++) {
-    if (wanted + step <= line.text.length && !taken.has(wanted + step)) return wanted + step;
-    if (wanted - step >= 0 && !taken.has(wanted - step)) return wanted - step;
+  const from = stops.indexOf(wanted);
+  for (let step = 1; step < stops.length; step++) {
+    if (from + step < stops.length && !taken.has(stops[from + step])) return stops[from + step];
+    if (from - step >= 0 && !taken.has(stops[from - step])) return stops[from - step];
   }
   return null;
 }

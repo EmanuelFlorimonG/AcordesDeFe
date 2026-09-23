@@ -79,8 +79,15 @@ export const LineEditor: React.FC<LineEditorProps> = ({
   const [moving, setMoving] = useState<string | null>(null);
   const dragRef = useRef<(Drag & { startX: number; moved: boolean }) | null>(null);
   const afterDrag = useRef(false);
+  /** Each chord's own button, to give the focus back to where it came from */
+  const chipRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const syncScroll = () => setScrollLeft(inputRef.current?.scrollLeft ?? 0);
+  /** Back to the chord that was being moved, or to the words if it is no longer there. */
+  const focusChord = (anchorId: string | null) => {
+    const chip = anchorId ? chipRefs.current.get(anchorId) : null;
+    (chip?.isConnected ? chip : inputRef.current)?.focus();
+  };
   const caret = () => inputRef.current?.selectionStart ?? line.text.length;
   const movingChord = moving ? line.chords.find((anchor) => anchor.id === moving) ?? null : null;
 
@@ -126,6 +133,13 @@ export const LineEditor: React.FC<LineEditorProps> = ({
     if (!moving) return;
     onChange(placeChordAt(line, moving, position));
     setMoving(null);
+    focusChord(moving);
+  };
+
+  /** Giving up on the move: the focus goes back, never to nowhere. */
+  const stopMoving = () => {
+    focusChord(moving);
+    setMoving(null);
   };
 
   const startDrag = (anchor: ChordAnchor, event: React.PointerEvent<HTMLButtonElement>) => {
@@ -166,6 +180,10 @@ export const LineEditor: React.FC<LineEditorProps> = ({
     return (
       <button
         type="button"
+        ref={(element) => {
+          if (element) chipRefs.current.set(anchor.id, element);
+          else chipRefs.current.delete(anchor.id);
+        }}
         onPointerDown={(event) => startDrag(anchor, event)}
         onPointerMove={continueDrag}
         onPointerUp={endDrag}
@@ -253,7 +271,7 @@ export const LineEditor: React.FC<LineEditorProps> = ({
             {drag && (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute top-0 bottom-1 z-10 w-0.5 rounded bg-[#2464ED]/70"
+                className="pointer-events-none absolute top-0 bottom-1 z-10 w-0.5 rounded bg-[#2464ED]/70 font-mono text-base sm:text-[15px]"
                 style={{ left: `calc(${FIELD_PADDING} + ${drag.position}ch - ${scrollLeft}px)` }}
               />
             )}
@@ -313,7 +331,7 @@ export const LineEditor: React.FC<LineEditorProps> = ({
                 if (movingChord && (event.key === 'Enter' || event.key === 'Escape')) {
                   event.preventDefault();
                   if (event.key === 'Enter') landMovingChord(start);
-                  else setMoving(null);
+                  else stopMoving();
                 } else if (event.key === 'Enter') {
                   event.preventDefault();
                   onSplit(line.id, start);
@@ -363,7 +381,7 @@ export const LineEditor: React.FC<LineEditorProps> = ({
           </span>
           <button
             type="button"
-            onClick={() => setMoving(null)}
+            onClick={stopMoving}
             className="inline-flex h-8 [@media(pointer:coarse)]:h-11 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-semibold hover:bg-white/70 dark:hover:bg-white/10"
           >
             <X className="w-3.5 h-3.5" />
@@ -391,6 +409,7 @@ export const LineEditor: React.FC<LineEditorProps> = ({
               ? () => {
                   onChange(removeChord(line, editing.id));
                   setRequest(null);
+                  inputRef.current?.focus();
                 }
               : undefined
           }
