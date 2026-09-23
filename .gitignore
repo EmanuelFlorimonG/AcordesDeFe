@@ -36,3 +36,5 @@ supabase/.branches/
 *.sln
 *.sw?
 .import-dist
+
+backups/
