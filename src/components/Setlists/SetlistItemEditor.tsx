@@ -11,10 +11,10 @@ import { songVersionOf } from '../../catalog/songRepository';
 import {
   arrangementSaveState,
   bindArrangement,
+  certifyArrangement,
   matchesSongStructure,
   rebindArrangementSection,
   removeArrangementSection,
-  stampArrangement,
 } from '../../utils/arrangement';
 import { keySettingsForKey, keySuggestionsFor } from '../../utils/keyPreferences';
 import { useMinistryData } from '../../hooks/ministryContext';
@@ -107,14 +107,17 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
       version: currentVersion,
       sections: currentSections,
       arrangement: binding.state === 'none' ? undefined : binding.arrangement,
-      pendingIds: binding.state === 'pending' ? binding.pendingIds : [],
     };
   });
-  const { sections: songSections, arrangement, pendingIds } = session;
+  const { sections: songSections, arrangement } = session;
   const songVersion = session.version;
   const setArrangement = (next: SetlistArrangement | undefined | ((current: SetlistArrangement | undefined) => SetlistArrangement | undefined)) =>
     setSession((current) => ({ ...current, arrangement: typeof next === 'function' ? next(current.arrangement) : next }));
-  const setPendingIds = (next: (ids: string[]) => string[]) => setSession((current) => ({ ...current, pendingIds: next(current.pendingIds) }));
+  // Which blocks are still waiting is read from the blocks themselves, never
+  // from a list kept beside them: duplicating, removing or reordering blocks
+  // can't turn an unchecked one into a checked one.
+  const binding = useMemo(() => bindArrangement(songSections, arrangement, songVersion), [songSections, arrangement, songVersion]);
+  const pendingIds = binding.state === 'pending' ? binding.pendingIds : [];
   /** The song moved on while this dialog was open: what was reviewed no longer describes it. */
   const songChangedWhileOpen = currentVersion !== songVersion;
   const storedArrangement = arrangement && !matchesSongStructure(songSections, arrangement) ? arrangement : null;
@@ -123,18 +126,17 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   // version says nothing about this one.
   const saveState = arrangementSaveState({ arrangement: storedArrangement, pendingIds, reviewedVersion: songVersion, currentVersion });
   const blocked = saveState !== 'ready';
-  /** Reviews the arrangement being edited against the version published now, keeping the work done. */
+  /**
+   * Reviews the arrangement being edited against the version published now,
+   * keeping the work done. Blocks that can't prove what they play stay
+   * waiting: moving to another version never turns one into reviewed.
+   */
   const reviewAgainstCurrent = () => {
-    const binding = bindArrangement(
-      currentSections,
-      arrangement ? stampArrangement(arrangement, songVersion, songSections) : undefined,
-      currentVersion
-    );
+    const next = bindArrangement(currentSections, arrangement, currentVersion);
     setSession({
       version: currentVersion,
       sections: currentSections,
-      arrangement: binding.state === 'none' ? undefined : binding.arrangement,
-      pendingIds: binding.state === 'pending' ? binding.pendingIds : [],
+      arrangement: next.state === 'none' ? undefined : next.arrangement,
     });
   };
   const [transition, setTransition] = useState<SetlistSongTransition | null>(
@@ -179,7 +181,7 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
           // An arrangement that is still the song's own structure is not stored:
           // nothing was actually decided for this occasion. Anything else is
           // stamped with the version it was checked against, whole.
-          arrangement: storedArrangement ? stampArrangement(storedArrangement, songVersion, songSections) : null,
+          arrangement: storedArrangement ? certifyArrangement(storedArrangement, songVersion, songSections) : null,
           // While this entry is the last one there is nothing to go into, so
           // whatever it had stays stored, untouched, for when it isn't.
           transitionToNext: nextSongTitle ? transition : undefined,
@@ -353,18 +355,14 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
 
         <ArrangementEditor
           songSections={songSections}
+          songVersion={songVersion}
           arrangement={arrangement}
-          onChange={(next) => {
-            setArrangement(next);
-            // Reset to the song's structure, or a pending block taken out from its menu.
-            setPendingIds((ids) => (next ? ids.filter((id) => next.sections.some((entry) => entry.id === id)) : []));
-          }}
+          onChange={setArrangement}
           pendingIds={pendingIds}
           onResolvePending={(id, source) => {
             setArrangement((current) =>
-              current && (source ? rebindArrangementSection(current, id, source) : removeArrangementSection(current, id))
+              current && (source ? rebindArrangementSection(current, id, source, songVersion) : removeArrangementSection(current, id))
             );
-            setPendingIds((ids) => ids.filter((pendingId) => pendingId !== id));
           }}
           participantIds={[...participantIds, ...newParticipantIds]}
           onAddParticipants={(ids) =>

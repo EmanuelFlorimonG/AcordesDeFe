@@ -26,9 +26,8 @@ import {
   removeArrangementSection,
   resolveArrangement,
   resolvedSectionName,
+  certifyArrangement,
   sanitizeArrangement,
-  songStructureOf,
-  stampArrangement,
   summarizeArrangement,
   updateArrangementSection,
 } from '../src/utils/arrangement';
@@ -555,7 +554,11 @@ describe('Los datos ya guardados en el navegador se siguen leyendo igual', () =>
       ['bloque-1', 'section-1', 'Verso 1'],
       ['bloque-2', 'section-2', 'Coro'],
     ]);
-    eq([item.arrangement?.songVersion, item.arrangement?.songStructure], [undefined, undefined], 'sin versión ni estructura: cuenta como la 1');
+    eq(
+      [item.arrangement?.songVersion, item.arrangement?.sections.map((section) => section.source)],
+      [undefined, [undefined, undefined]],
+      'sin versión ni evidencia: cuenta como la 1'
+    );
     // En la versión 1 de su canción se toca tal cual, como siempre.
     eq(bindArrangement(SECTIONS, item.arrangement, 1).state, 'current');
   });
@@ -568,89 +571,85 @@ describe('El arreglo después de una nueva versión de la canción', () => {
   const V2 = parseSongSections(
     ['[Intro]', '[C]  [G]', '', '[Verso 1]', 'Letra del verso uno', '', '[Pre-coro]', 'Nuevo', '', '[Coro]', 'Letra del coro', '', '[Verso 2]', 'Letra del verso dos', '', 'Coro', '', '[Puente]', 'Letra del puente'].join('\n')
   );
-  const byLabel = (sections: SongSection[], label: string) => listArrangementSources(sections).find((source) => source.label === label)?.sectionId;
-  /** Intro · Coro ×2 (mujeres) · Puente, made on version 1 and saved there (so it records that version's names). */
+  const sourceIn = (sections: SongSection[], label: string) => listArrangementSources(sections).find((source) => source.label === label)!;
+  /** Intro · Coro ×2 (mujeres) · Puente, saved on version 1 (so each block wrote down what it plays). */
   const custom = (): SetlistArrangement => {
     let arrangement = createArrangement(SECTIONS, idSequence());
     arrangement = removeArrangementSection(arrangement, 'arr-2');
     arrangement = removeArrangementSection(arrangement, 'arr-4');
     arrangement = removeArrangementSection(arrangement, 'arr-5');
     arrangement = updateArrangementSection(arrangement, 'arr-3', { repeatCount: 2, voices: ['women'] });
-    return stampArrangement(arrangement, 1, SECTIONS);
+    return certifyArrangement(arrangement, 1, SECTIONS)!;
   };
   const pendingOf = (binding: ArrangementBinding) => (binding.state === 'pending' ? binding.pendingIds : binding.state);
 
-  it('al guardarse, el arreglo anota los nombres de las secciones de esa versión', () => {
-    eq(custom().songStructure, ['Intro', 'Verso 1', 'Coro', 'Verso 2', 'Puente']);
-    eq(songStructureOf(V2), ['Intro', 'Verso 1', 'Pre-coro', 'Coro', 'Verso 2', 'Puente']);
+  it('al guardarse, cada bloque anota qué sección toca (no su posición ni solo su nombre)', () => {
+    const saved = custom();
+    eq(saved.songVersion, 1);
+    eq(
+      saved.sections.map((entry) => [entry.label, entry.source?.version, JSON.parse(entry.source!.signature)[0]]),
+      [
+        ['Intro', 1, 'Intro'],
+        ['Coro', 1, 'Coro'],
+        ['Puente', 1, 'Puente'],
+      ]
+    );
+    // La firma incluye la letra: dos secciones con el mismo nombre y distinta letra no son la misma.
+    const coro = sourceIn(SECTIONS, 'Coro').signature;
+    eq(coro === sourceIn(parseSongSections('[Coro]\nOtra letra'), 'Coro').signature, false);
+    eq(coro === sourceIn(parseSongSections('[Coro]\nLetra del coro'), 'Coro').signature, true);
   });
 
   it('en la misma versión se usa tal como está (y sin versión cuenta como la 1)', () => {
     const arrangement = custom();
-    const binding = bindArrangement(SECTIONS, arrangement, 1);
-    eq(binding.state, 'current');
-    eq(playableArrangement(binding), arrangement);
-    eq(bindArrangement(SECTIONS, stampArrangement(arrangement, 3, SECTIONS), 3).state, 'current');
+    eq(bindArrangement(SECTIONS, arrangement, 1).state, 'current');
+    eq(playableArrangement(bindArrangement(SECTIONS, arrangement, 1)), arrangement);
     eq(bindArrangement(SECTIONS, undefined, 2), { state: 'none' });
   });
 
-  it('en otra versión, cada bloque con un nombre único en las dos se reasigna a su sección nueva', () => {
+  it('en otra versión, un bloque se mueve solo si su sección sigue diciendo exactamente lo mismo', () => {
     const binding = bindArrangement(V2, custom(), 2);
     eq(binding.state, 'rebound');
     const playable = playableArrangement(binding)!;
     eq(
       playable.sections.map((entry) => [entry.label, entry.sourceSectionId]),
       [
-        ['Intro', byLabel(V2, 'Intro')],
-        ['Coro', byLabel(V2, 'Coro')],
-        ['Puente', byLabel(V2, 'Puente')],
+        ['Intro', sourceIn(V2, 'Intro').sectionId],
+        ['Coro', sourceIn(V2, 'Coro').sectionId],
+        ['Puente', sourceIn(V2, 'Puente').sectionId],
       ]
     );
-    // Voces y repeticiones siguen con su bloque; la versión se guarda solo al guardar el arreglo.
-    eq([playable.sections[1].repeatCount, playable.sections[1].voices, playable.songVersion], [2, ['women'], 1]);
+    eq([playable.sections[1].repeatCount, playable.sections[1].voices], [2, ['women']]);
     eq(resolveArrangement(V2, playable).map((entry) => entry.section?.header?.label), ['Intro', 'Coro', 'Puente']);
   });
 
-  it('dos coros antes y uno solo después: nunca se reasigna, aunque el nombre sea único ahora', () => {
-    // v1: "Coro" escrito dos veces, con letras distintas. El arreglo usa solo el primero.
-    const twoChoruses = parseSongSections(['[Coro]', 'Primero', '', '[Coro]', 'Segundo'].join('\n'));
-    eq(songStructureOf(twoChoruses), ['Coro', 'Coro']);
-    let arrangement = createArrangement(twoChoruses, idSequence());
-    arrangement = removeArrangementSection(arrangement, 'arr-2');
-    arrangement = stampArrangement(arrangement, 1, twoChoruses);
-    eq(arrangement.sections.map((entry) => [entry.label, entry.sourceSectionId]), [['Coro', 'section-1']]);
-
-    // v2: se quitó el primero y queda el segundo, con su letra.
-    const onlySecond = parseSongSections(['[Coro]', 'Segundo'].join('\n'));
-    const binding = bindArrangement(onlySecond, arrangement, 2);
-    eq(binding.state, 'pending');
-    eq(pendingOf(binding), ['arr-1']);
+  it('el nombre no demuestra identidad: un Coro nuevo con otra letra nunca hereda el arreglo', () => {
+    // v1: Coro = AAA, Puente = BBB. v2: Final = AAA, Coro = BBB.
+    const v1 = parseSongSections(['[Coro]', 'AAA', '', '[Puente]', 'BBB'].join('\n'));
+    const v2 = parseSongSections(['[Final]', 'AAA', '', '[Coro]', 'BBB'].join('\n'));
+    const onlyChorus = certifyArrangement(removeArrangementSection(createArrangement(v1, idSequence()), 'arr-2'), 1, v1)!;
+    eq(onlyChorus.sections.map((entry) => entry.label), ['Coro']);
+    const binding = bindArrangement(v2, onlyChorus, 2);
+    eq(pendingOf(binding), ['arr-1'], 'el Coro viejo no se va al Coro nuevo');
     eq(playableArrangement(binding), undefined);
-    // Y el bloque sigue apuntando a donde apuntaba: nada se reasignó por detrás.
-    eq(binding.state === 'pending' ? binding.arrangement.sections[0].sourceSectionId : '', 'section-1');
+    eq(binding.state === 'pending' ? binding.arrangement.sections[0].sourceSectionId : '', 'section-1', 'y sigue apuntando donde apuntaba');
   });
 
-  it('un nombre repetido en la canción nueva queda pendiente: no se adivina cuál de los dos es', () => {
-    const twice = parseSongSections(`${SONG}\n\n[Coro]\nOtra letra del coro`);
+  it('dos coros antes y uno solo después: pendiente, aunque el nombre sea único ahora', () => {
+    const twoChoruses = parseSongSections(['[Coro]', 'Primero', '', '[Coro]', 'Segundo'].join('\n'));
+    const first = certifyArrangement(removeArrangementSection(createArrangement(twoChoruses, idSequence()), 'arr-2'), 1, twoChoruses)!;
+    eq(first.sections.map((entry) => entry.sourceSectionId), ['section-1']);
+    const onlySecond = parseSongSections(['[Coro]', 'Segundo'].join('\n'));
+    eq(pendingOf(bindArrangement(onlySecond, first, 2)), ['arr-1']);
+  });
+
+  it('un nombre repetido en la canción nueva queda pendiente', () => {
+    const twice = parseSongSections(`${SONG}\n\n[Coro]\nLetra del coro`);
     eq(pendingOf(bindArrangement(twice, custom(), 2)), ['arr-3']);
   });
 
-  it('el coro escrito y su repetición son el mismo coro: los dos bloques van a él', () => {
-    // "Coro" nombra una sola sección en las dos versiones (la repetición no es otra sección),
-    // así que no hay nada que adivinar: los dos bloques tocan esas mismas líneas.
-    const whole = stampArrangement(createArrangement(SECTIONS, idSequence()), 1, SECTIONS);
-    const binding = bindArrangement(V2, whole, 2);
-    eq(binding.state, 'rebound');
-    const coro = byLabel(V2, 'Coro');
-    eq(
-      playableArrangement(binding)!.sections.filter((entry) => entry.label === 'Coro').map((entry) => entry.sourceSectionId),
-      [coro, coro]
-    );
-  });
-
-  it('un arreglo guardado antes de anotar la estructura se revisa entero a mano', () => {
-    const { songStructure: _old, ...legacy } = custom();
-    void _old;
+  it('un arreglo guardado antes de anotar nada se revisa entero a mano', () => {
+    const legacy = { ...custom(), sections: custom().sections.map(({ source: _evidence, ...entry }) => entry) };
     eq(bindArrangement(SECTIONS, legacy, 1).state, 'current', 'en su propia versión no hay nada que probar');
     eq(pendingOf(bindArrangement(V2, legacy, 2)), ['arr-1', 'arr-3', 'arr-6']);
   });
@@ -663,47 +662,65 @@ describe('El arreglo después de una nueva versión de la canción', () => {
     eq(pendingOf(bindArrangement(removed, custom(), 2)), ['arr-6'], 'eliminada: pendiente');
 
     const added = parseSongSections(`${SONG}\n\n[Final]\nUn final nuevo`);
-    eq(bindArrangement(added, custom(), 2).state, 'rebound', 'añadida con nombre nuevo: el resto se reasigna');
+    eq(bindArrangement(added, custom(), 2).state, 'rebound', 'añadida: el resto sigue demostrable');
 
     const reordered = parseSongSections(['[Puente]', 'Letra del puente', '', '[Intro]', '[C]  [G]', '', '[Verso 1]', 'Letra del verso uno', '', '[Coro]', 'Letra del coro', '', '[Verso 2]', 'Letra del verso dos'].join('\n'));
-    const afterReorder = playableArrangement(bindArrangement(reordered, custom(), 2))!;
     eq(
-      afterReorder.sections.map((entry) => [entry.label, entry.sourceSectionId]),
+      playableArrangement(bindArrangement(reordered, custom(), 2))!.sections.map((entry) => [entry.label, entry.sourceSectionId]),
       [
-        ['Intro', byLabel(reordered, 'Intro')],
-        ['Coro', byLabel(reordered, 'Coro')],
-        ['Puente', byLabel(reordered, 'Puente')],
+        ['Intro', sourceIn(reordered, 'Intro').sectionId],
+        ['Coro', sourceIn(reordered, 'Coro').sectionId],
+        ['Puente', sourceIn(reordered, 'Puente').sectionId],
       ],
       'reordenada: cada bloque sigue a su sección'
     );
 
     const newLyrics = parseSongSections(SONG.replace('Letra del coro', 'Otra letra del coro'));
-    eq(bindArrangement(newLyrics, custom(), 2).state, 'rebound', 'letra cambiada: la estructura no cambia');
+    eq(pendingOf(bindArrangement(newLyrics, custom(), 2)), ['arr-3'], 'letra del coro cambiada: ese bloque se revisa');
     const newChords = parseSongSections(SONG.replace('[C]  [G]', '[D]  [A]'));
-    eq(bindArrangement(newChords, custom(), 2).state, 'rebound', 'acordes cambiados: la estructura no cambia');
+    eq(pendingOf(bindArrangement(newChords, custom(), 2)), ['arr-1'], 'acordes de la intro cambiados: ese bloque se revisa');
   });
 
-  it('elegir la sección de cada bloque pendiente y guardar con la versión nueva', () => {
+  it('duplicar un bloque pendiente y borrar el original deja la copia pendiente', () => {
     const renamed = parseSongSections(SONG.replace('[Puente]', '[Final]'));
     const binding = bindArrangement(renamed, custom(), 2);
     if (binding.state !== 'pending') throw new Error('pendiente');
-    const final = listArrangementSources(renamed).find((source) => source.label === 'Final')!;
-    const chosen = stampArrangement(rebindArrangementSection(binding.arrangement, 'arr-6', final), 2, renamed);
-    eq([chosen.sections[2].sourceSectionId, chosen.sections[2].label, chosen.songVersion], [final.sectionId, 'Final', 2]);
-    eq(chosen.songStructure, songStructureOf(renamed));
-    eq(bindArrangement(renamed, chosen, 2).state, 'current');
-    eq(rebindArrangementSection(chosen, 'no-existe', final), chosen);
+    eq(binding.pendingIds, ['arr-6']);
+
+    // El usuario duplica el bloque pendiente y borra el original.
+    const duplicated = duplicateArrangementSection(binding.arrangement, 'arr-6', idSequence('copia'));
+    const onlyCopy = removeArrangementSection(duplicated, 'arr-6');
+    eq(onlyCopy.sections.map((entry) => entry.id), ['arr-1', 'arr-3', 'copia-1']);
+    // La copia sigue sin poder demostrar qué toca: sigue pendiente y no se guarda.
+    eq(pendingOf(bindArrangement(renamed, onlyCopy, 2)), ['copia-1']);
+    eq(certifyArrangement(onlyCopy, 2, renamed), null, 'guardar sigue bloqueado');
+    eq(arrangementSaveState({ arrangement: onlyCopy, pendingIds: ['copia-1'], reviewedVersion: 2, currentVersion: 2 }), 'pending');
+
+    // Solo al elegir su sección explícitamente deja de estarlo.
+    const chosen = rebindArrangementSection(onlyCopy, 'copia-1', sourceIn(renamed, 'Final'), 2);
+    eq(pendingOf(bindArrangement(renamed, chosen, 2)), 'rebound');
+    const saved = certifyArrangement(chosen, 2, renamed);
+    eq([saved?.songVersion, saved?.sections.map((entry) => entry.source?.version)], [2, [2, 2, 2]]);
+  });
+
+  it('una versión más nueva no convierte un pendiente en revisado', () => {
+    const v2Text = SONG.replace('[Puente]', '[Final]');
+    const v2 = parseSongSections(v2Text);
+    const v3 = parseSongSections(`${v2Text}
+
+[Extra]
+Otra cosa`);
+    const pendingInV2 = bindArrangement(v2, custom(), 2);
+    eq(pendingOf(pendingInV2), ['arr-6']);
+    // Llega la versión 3 y se revisa otra vez: el bloque sigue sin poder demostrar nada.
+    const inV3 = bindArrangement(v3, pendingInV2.state === 'pending' ? pendingInV2.arrangement : custom(), 3);
+    eq(pendingOf(inV3), ['arr-6']);
+    eq(playableArrangement(inV3), undefined);
+    eq(certifyArrangement(pendingInV2.state === 'pending' ? pendingInV2.arrangement : custom(), 3, v3), null);
   });
 
   it('el arreglo se guarda entero: ni a medias ni contra otra versión', () => {
-    const twice = parseSongSections(`${SONG}
-
-[Coro]
-Otra letra del coro`);
-    const renamedAndTwice = parseSongSections(`${SONG.replace('[Puente]', '[Final]')}
-
-[Coro]
-Otra letra del coro`);
+    const renamedAndTwice = parseSongSections(`${SONG.replace('[Puente]', '[Final]')}\n\n[Coro]\nLetra del coro`);
     const binding = bindArrangement(renamedAndTwice, custom(), 2);
     if (binding.state !== 'pending') throw new Error('pendiente');
     eq(binding.pendingIds, ['arr-3', 'arr-6'], 'dos bloques sin resolver');
@@ -712,70 +729,53 @@ Otra letra del coro`);
       arrangementSaveState({ arrangement, pendingIds, reviewedVersion: reviewed, currentVersion: current });
     eq(ready(binding.arrangement, binding.pendingIds, 2, 2), 'pending');
 
-    // Resolver uno solo no certifica el otro: sigue sin poder guardarse.
-    const coro = listArrangementSources(renamedAndTwice).filter((source) => source.label === 'Coro')[0];
-    const half = rebindArrangementSection(binding.arrangement, 'arr-3', coro);
-    eq(ready(half, ['arr-6'], 2, 2), 'pending');
+    const half = rebindArrangementSection(binding.arrangement, 'arr-3', listArrangementSources(renamedAndTwice)[2], 2);
+    eq(pendingOf(bindArrangement(renamedAndTwice, half, 2)), ['arr-6'], 'resolver uno no certifica el otro');
+    eq(certifyArrangement(half, 2, renamedAndTwice), null);
 
-    // Resueltos los dos, se guarda con la versión revisada y su estructura.
-    const final = listArrangementSources(renamedAndTwice).find((source) => source.label === 'Final')!;
-    const whole = stampArrangement(rebindArrangementSection(half, 'arr-6', final), 2, renamedAndTwice);
+    const whole = certifyArrangement(rebindArrangementSection(half, 'arr-6', sourceIn(renamedAndTwice, 'Final'), 2), 2, renamedAndTwice)!;
     eq(ready(whole, [], 2, 2), 'ready');
 
     // Guardado y vuelto a leer desde el almacenamiento, no vuelve a quedar pendiente.
     const setlist = createSetlist({ name: 'Domingo', date: '', description: '' }, { now: NOW, createId: idSequence('s') });
-    const stored = parseStoredSetlists(
-      JSON.stringify({
-        version: SETLIST_STORAGE_VERSION,
-        setlists: [{ ...setlist, items: [{ id: 'i-1', songId: 'x', moment: '', transposeSteps: 0, capoFret: 0, notes: '', arrangement: whole }] }],
-      })
-    ).setlists[0].items[0].arrangement;
-    eq([stored?.songVersion, stored?.songStructure], [2, songStructureOf(renamedAndTwice)]);
-    eq(bindArrangement(renamedAndTwice, stored, 2).state, 'current');
-
-    // Un arreglo guardado mientras quedaban pendientes conserva su versión vieja: sigue pendiente al reabrir.
-    const kept = parseStoredSetlists(
-      JSON.stringify({
-        version: SETLIST_STORAGE_VERSION,
-        setlists: [{ ...setlist, items: [{ id: 'i-1', songId: 'x', moment: '', transposeSteps: 0, capoFret: 0, notes: '', arrangement: half }] }],
-      })
-    ).setlists[0].items[0].arrangement;
-    eq(pendingOf(bindArrangement(renamedAndTwice, kept, 2)), ['arr-3', 'arr-6']);
-    eq(bindArrangement(twice, custom(), 2).state, 'pending', 'y el caso original sigue pendiente');
+    const storedOf = (arrangement: SetlistArrangement) =>
+      parseStoredSetlists(
+        JSON.stringify({
+          version: SETLIST_STORAGE_VERSION,
+          setlists: [{ ...setlist, items: [{ id: 'i-1', songId: 'x', moment: '', transposeSteps: 0, capoFret: 0, notes: '', arrangement }] }],
+        })
+      ).setlists[0].items[0].arrangement;
+    eq(bindArrangement(renamedAndTwice, storedOf(whole), 2).state, 'current');
+    eq(pendingOf(bindArrangement(renamedAndTwice, storedOf(half), 2)), ['arr-6'], 'lo guardado a medias sigue pendiente al reabrir');
   });
 
   it('una canción que cambia con el editor abierto no certifica lo revisado contra la anterior', () => {
-    const reviewed = stampArrangement(custom(), 1, SECTIONS);
+    const reviewed = custom();
     const state = (current: number) =>
       arrangementSaveState({ arrangement: reviewed, pendingIds: [], reviewedVersion: 1, currentVersion: current });
     eq(state(1), 'ready');
     eq(state(2), 'song-changed', 'la canción cambió mientras se revisaba: no se guarda');
-    // Sin arreglo propio no hay nada que certificar.
     eq(arrangementSaveState({ arrangement: null, pendingIds: [], reviewedVersion: 1, currentVersion: 2 }), 'ready');
-    // Al revisar otra vez contra la versión nueva, el trabajo se conserva y lo dudoso vuelve a quedar pendiente.
     const again = bindArrangement(parseSongSections(SONG.replace('[Puente]', '[Final]')), reviewed, 2);
     eq(pendingOf(again), ['arr-6']);
     eq(again.state === 'pending' ? again.arrangement.sections[1].voices : [], ['women'], 'las voces elegidas siguen ahí');
   });
 
-  it('las ediciones, las copias y el almacenamiento conservan la versión y la estructura', () => {
-    const stamped = stampArrangement(custom(), 4, SECTIONS);
-    const structure = songStructureOf(SECTIONS);
-    eq(moveArrangementSection(stamped, 'arr-6', 0).songStructure, structure);
-    eq(duplicateArrangementSection(stamped, 'arr-3', idSequence('d')).songVersion, 4);
-    eq(removeArrangementSection(stamped, 'arr-1').songStructure, structure);
-    eq(addArrangementSection(stamped, listArrangementSources(SECTIONS)[0], idSequence('n')).songVersion, 4);
-    eq(updateArrangementSection(stamped, 'arr-1', { repeatCount: 2 }).songStructure, structure);
-    eq(duplicateArrangement(stamped, idSequence('c')).songStructure, structure);
-    const stored = sanitizeArrangement(JSON.parse(JSON.stringify(stamped)));
-    eq([stored?.songVersion, stored?.songStructure], [4, structure]);
-    for (const songVersion of [0, -1, 1.5, '2', null]) {
-      eq('songVersion' in (sanitizeArrangement({ ...stamped, songVersion }) ?? {}), false);
+  it('las ediciones, las copias y el almacenamiento conservan la evidencia de cada bloque', () => {
+    const saved = custom();
+    const evidence = (arrangement: SetlistArrangement) => arrangement.sections.map((entry) => entry.source?.signature ?? null);
+    eq(evidence(moveArrangementSection(saved, 'arr-6', 0)).length, 3);
+    eq(evidence(removeArrangementSection(saved, 'arr-1')), evidence(saved).slice(1));
+    eq(evidence(updateArrangementSection(saved, 'arr-1', { repeatCount: 2 })), evidence(saved));
+    eq(evidence(duplicateArrangement(saved, idSequence('c'))), evidence(saved));
+    eq(duplicateArrangementSection(saved, 'arr-3', idSequence('d')).sections[2].source, saved.sections[1].source, 'la copia hereda la evidencia del original');
+    const stored = sanitizeArrangement(JSON.parse(JSON.stringify(saved)));
+    eq([stored?.songVersion, evidence(stored!)], [1, evidence(saved)]);
+    for (const source of [{ signature: 'x' }, { version: 2 }, { signature: 3, version: 2 }, 'x', null]) {
+      const broken = sanitizeArrangement({ ...saved, sections: saved.sections.map((entry) => ({ ...entry, source })) });
+      eq(broken?.sections.every((entry) => entry.source === undefined), true);
     }
-    for (const songStructure of [['Coro', 3], 'Coro', 7]) {
-      eq('songStructure' in (sanitizeArrangement({ ...stamped, songStructure }) ?? {}), false);
-    }
-    eq(arrangementVersionOf(custom()), 1);
-    eq(arrangementVersionOf(stamped), 4);
+    eq(arrangementVersionOf({ sections: saved.sections }), 1);
+    eq(arrangementVersionOf(saved), 1);
   });
 });

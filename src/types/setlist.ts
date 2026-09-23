@@ -43,6 +43,16 @@ export interface ArrangementSection {
   /** The section of the song text it plays ("section-3"), never its name. */
   sourceSectionId: string;
   /**
+   * What proves this block plays the right section. Section ids are
+   * positions in one version of the song's text, so they only mean something
+   * together with the version they were checked against; the signature is
+   * what that section actually said (its name and its lines with their
+   * chords). A block whose evidence doesn't hold for the version being played
+   * is not played at all: someone reviews it. Absent in blocks saved before
+   * this was recorded, which are reviewed by hand on any version change.
+   */
+  source?: { signature: string; version: number };
+  /**
    * The name the section had when it was added ("Coro", "Verso 1"). Kept so an
    * arrangement can still be read after the song's text changed.
    */
@@ -78,14 +88,6 @@ export interface SetlistArrangement {
    * songs had versions: those were all made on version 1.
    */
   songVersion?: number;
-  /**
-   * The names of every section of the song at that version, in order. Without
-   * it there is no way to tell whether a block's name meant one section or
-   * several back then, and a block can only be moved to a section of a newer
-   * version when it was unambiguous on both sides. Absent in arrangements
-   * saved before this was recorded: those are reviewed by hand.
-   */
-  songStructure?: string[];
 }
 
 export interface SetlistItem {

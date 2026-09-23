@@ -6,6 +6,7 @@ import type { PerformanceRecord } from '../src/types/performance';
 import type { Setlist, SetlistItem } from '../src/types/setlist';
 import type { Song } from '../src/types/song';
 import { parseSongSections } from '../src/utils/chordParser';
+import { sectionSignature } from '../src/utils/arrangement';
 import {
   createEvent,
   findOccurrence,
@@ -107,7 +108,11 @@ const SENCILLAMENTE = song(
 const GLORIA = song('gloria', 'Gloria', 'D');
 const OFERTORIO = song('ofertorio', 'Ofertorio', 'C');
 const SONGS = new Map([SENCILLAMENTE, GLORIA, OFERTORIO].map((entry) => [entry.id, entry]));
-const [VERSO, CORO] = parseSongSections(SENCILLAMENTE.content).map((section) => section.id);
+const SENCILLAMENTE_SECTIONS = parseSongSections(SENCILLAMENTE.content);
+const [VERSO, CORO] = SENCILLAMENTE_SECTIONS.map((section) => section.id);
+/** What a block of the fixture's arrangement wrote down about the section it plays. */
+const signatureOf = (sectionId: string) =>
+  sectionSignature(SENCILLAMENTE_SECTIONS.find((section) => section.id === sectionId)!, SENCILLAMENTE_SECTIONS);
 
 const member = (id: string, name: string, roles: MinistryMember['roles'] = ['singer']): MinistryMember => ({
   id,
@@ -157,7 +162,6 @@ const SETLIST: Setlist = {
       transitionToNext: { type: 'stop', instruction: '' },
       arrangement: {
         songVersion: 1,
-        songStructure: ['Verso 1', 'Coro'],
         sections: [
           {
             id: 'a-verso',
@@ -168,6 +172,7 @@ const SETLIST: Setlist = {
             assignedMemberIds: ['maria'],
             instruction: 'Solo voz y piano',
             transition: { type: 'continue' },
+            source: { signature: signatureOf(VERSO), version: 1 },
           },
           {
             id: 'a-coro',
@@ -178,6 +183,7 @@ const SETLIST: Setlist = {
             assignedMemberIds: ['laura'],
             instruction: '',
             transition: { type: 'jump', targetId: 'a-verso' },
+            source: { signature: signatureOf(CORO), version: 1 },
           },
         ],
       },

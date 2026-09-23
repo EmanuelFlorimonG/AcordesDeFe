@@ -16,6 +16,7 @@ import {
 import type { SetlistArrangement } from '../../types/setlist';
 import type { SongSection } from '../../types/song';
 import { useReorderList } from '../../hooks/useReorderList';
+import { createId } from '../../utils/createId';
 import { memberNames, useMinistryData } from '../../hooks/ministryContext';
 import {
   addArrangementSection,
@@ -45,6 +46,8 @@ import { iconButton, secondaryButton, sectionHeading, textField } from './ui';
 interface ArrangementEditorProps {
   /** The song's sections, as it is written in the songbook */
   songSections: SongSection[];
+  /** The published version those sections belong to: what a new block is checked against */
+  songVersion: number;
   /** Undefined while the song is played exactly as it is written */
   arrangement: SetlistArrangement | undefined;
   onChange: (arrangement: SetlistArrangement | undefined) => void;
@@ -73,6 +76,7 @@ type OpenDialog = { kind: 'section'; id: string } | { kind: 'add' } | { kind: 'r
  */
 export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
   songSections,
+  songVersion,
   arrangement,
   onChange,
   participantIds,
@@ -100,7 +104,7 @@ export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
   // Until something is changed there is nothing stored: the song's own
   // structure is the arrangement, and the first edit is what writes one down.
   const edit = (change: (current: SetlistArrangement) => SetlistArrangement) => {
-    onChange(change(arrangement ?? createArrangement(songSections)));
+    onChange(change(arrangement ?? createArrangement(songSections, createId, songVersion)));
   };
 
   const {
@@ -402,7 +406,7 @@ export const ArrangementEditor: React.FC<ArrangementEditorProps> = ({
                   key={source.sectionId}
                   type="button"
                   onClick={() => {
-                    edit((current) => addArrangementSection(current, source));
+                    edit((current) => addArrangementSection(current, source, createId, songVersion));
                     closeDialog();
                   }}
                   className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 focus-visible:outline-none focus-visible:bg-slate-50 dark:focus-visible:bg-dark-800"

@@ -115,6 +115,27 @@ export interface ArrangementSource {
   sectionId: string;
   label: string;
   kind: SectionKind | null;
+  /** What this section says, to recognise it again in another version (see sectionSignature) */
+  signature: string;
+}
+
+/**
+ * What a section is, written down: its name and the lines it puts on the
+ * page, with their chords, exactly as the song has them. It is not its
+ * position and it is not only its name, so it can be looked for again in
+ * another version of the song without guessing: two sections match only when
+ * they say the same thing.
+ *
+ * A bare "Coro" that repeats the chorus is the chorus: it signs as the
+ * section it repeats.
+ */
+export function sectionSignature(section: SongSection, sections: SongSection[]): string {
+  const played = section.repeatOf ? sections.find((entry) => entry.id === section.repeatOf) ?? section : section;
+  return JSON.stringify([
+    sectionLabel(played),
+    played.header?.kind ?? null,
+    played.lines.filter((line) => line.type !== 'empty').map((line) => line.raw.trimEnd()),
+  ]);
 }
 
 /**
@@ -130,13 +151,16 @@ export function listArrangementSources(sections: SongSection[]): ArrangementSour
       sectionId: section.id,
       label: sectionLabel(section),
       kind: section.header?.kind ?? null,
+      signature: sectionSignature(section, sections),
     }));
 }
 
-function newSection(source: ArrangementSource, makeId: IdFactory): ArrangementSection {
+function newSection(source: ArrangementSource, makeId: IdFactory, songVersion?: number): ArrangementSection {
   return {
     id: makeId(),
     sourceSectionId: source.sectionId,
+    // Chosen from the song as it is now: that is what this block plays.
+    ...(songVersion === undefined ? {} : { source: { signature: source.signature, version: songVersion } }),
     label: source.label,
     repeatCount: MIN_REPEAT_COUNT,
     voices: [],
@@ -155,14 +179,21 @@ function newSection(source: ArrangementSource, makeId: IdFactory): ArrangementSe
  */
 export function createArrangement(
   sections: SongSection[],
-  makeId: IdFactory = createId
+  makeId: IdFactory = createId,
+  songVersion?: number
 ): SetlistArrangement {
   const entries: ArrangementSection[] = [];
   for (const section of sections) {
     if (section.header === null && !hasContent(section)) continue;
-    entries.push(newSection({ sectionId: section.id, label: sectionLabel(section), kind: null }, makeId));
+    entries.push(
+      newSection(
+        { sectionId: section.id, label: sectionLabel(section), kind: null, signature: sectionSignature(section, sections) },
+        makeId,
+        songVersion
+      )
+    );
   }
-  return { sections: entries };
+  return { sections: entries, ...(songVersion === undefined ? {} : { songVersion }) };
 }
 
 /**
@@ -274,10 +305,11 @@ export function removeArrangementSection(
 export function addArrangementSection(
   arrangement: SetlistArrangement,
   source: ArrangementSource,
-  makeId: IdFactory = createId
+  makeId: IdFactory = createId,
+  songVersion?: number
 ): SetlistArrangement {
   if (arrangement.sections.length >= MAX_ARRANGEMENT_SECTIONS) return arrangement;
-  return { ...arrangement, sections: [...arrangement.sections, newSection(source, makeId)] };
+  return { ...arrangement, sections: [...arrangement.sections, newSection(source, makeId, songVersion)] };
 }
 
 /** Member ids as stored: real strings, each one once, in the order given. */
@@ -342,7 +374,6 @@ export function duplicateArrangement(
           : { ...section.transition },
     })),
     ...(arrangement.songVersion !== undefined ? { songVersion: arrangement.songVersion } : {}),
-    ...(arrangement.songStructure !== undefined ? { songStructure: [...arrangement.songStructure] } : {}),
   };
 }
 
@@ -388,9 +419,17 @@ export function sanitizeArrangement(
     const id = !storedId || seen.has(storedId) ? makeId() : storedId;
     seen.add(id);
 
+    const evidence =
+      isRecord(entry.source) &&
+      typeof entry.source.signature === 'string' &&
+      Number.isInteger(entry.source.version) &&
+      (entry.source.version as number) >= 1
+        ? { signature: entry.source.signature, version: entry.source.version as number }
+        : undefined;
     sections.push({
       id,
       sourceSectionId,
+      ...(evidence ? { source: evidence } : {}),
       label: typeof entry.label === 'string' ? entry.label.trim().slice(0, 60) : '',
       repeatCount: clampRepeatCount(entry.repeatCount),
       voices: normalizeVoices(entry.voices),
@@ -402,24 +441,12 @@ export function sanitizeArrangement(
 
   if (sections.length === 0) return undefined;
   const songVersion = Number.isInteger(value.songVersion) && (value.songVersion as number) >= 1 ? (value.songVersion as number) : undefined;
-  const songStructure = Array.isArray(value.songStructure) && value.songStructure.every((label) => typeof label === 'string')
-    ? (value.songStructure as string[]).map((label) => label.slice(0, 60))
-    : undefined;
-  return {
-    sections: withoutBrokenJumps(sections),
-    ...(songVersion !== undefined ? { songVersion } : {}),
-    ...(songStructure !== undefined ? { songStructure } : {}),
-  };
+  return { sections: withoutBrokenJumps(sections), ...(songVersion !== undefined ? { songVersion } : {}) };
 }
 
 // ---------------------------------------------------------------------------
 // An arrangement after the song got a new version
 // ---------------------------------------------------------------------------
-
-/** The names of a song's sections, in order: what an arrangement records to prove what a name meant. */
-export function songStructureOf(sections: SongSection[]): string[] {
-  return listArrangementSources(sections).map((source) => source.label);
-}
 
 /** The version an arrangement was made on; arrangements older than versions were made on 1. */
 export function arrangementVersionOf(arrangement: SetlistArrangement): number {
@@ -455,16 +482,15 @@ export type ArrangementBinding =
  * Re-points the blocks of an arrangement made on another version of the song.
  *
  * Section ids are positions ("section-3"), so after an edit that adds, removes
- * or reorders sections they may point at the wrong place. A block is moved
- * only when its name meant exactly one section on BOTH sides:
- *   - the arrangement recorded the song's structure when it was saved, and
- *     that name appears exactly once in it, and
- *   - it appears exactly once among the sections of the song now (a bare
- *     "Coro" that repeats the chorus is that same section).
- * Anything else stays pending: a name that is gone, repeated, doubtful, or an
- * arrangement that never recorded what its names meant. Two choruses where one
- * was dropped must never be matched by name: the block kept "Coro (primero)"
- * and the one left may be the other one.
+ * or reorders sections they may point somewhere else. A block is moved only
+ * when the section it was checked against is still there, word for word:
+ *   - the block wrote down what that section said (its signature), and
+ *   - exactly one section of the song now says the same thing, and
+ *   - no other section of the song now carries that same name.
+ * Anything else waits for someone: a section that was edited, removed,
+ * renamed, repeated, or a block that never wrote down what it played. A name
+ * proves nothing on its own — a "Coro" of one version and a "Coro" of the
+ * next can be different words entirely.
  */
 export function bindArrangement(
   sections: SongSection[],
@@ -475,22 +501,20 @@ export function bindArrangement(
   if (arrangementVersionOf(arrangement) === songVersion) return { state: 'current', arrangement };
 
   const sources = listArrangementSources(sections);
-  const byLabel = new Map<string, ArrangementSource[]>();
-  for (const source of sources) byLabel.set(source.label, [...(byLabel.get(source.label) ?? []), source]);
-  // What each name meant in the version this arrangement was made on. Without
-  // it nothing can be proven, and every block is reviewed by hand.
-  const before = new Map<string, number>();
-  for (const label of arrangement.songStructure ?? []) before.set(label, (before.get(label) ?? 0) + 1);
-  const proven = arrangement.songStructure !== undefined;
+  const labelCount = new Map<string, number>();
+  for (const source of sources) labelCount.set(source.label, (labelCount.get(source.label) ?? 0) + 1);
 
   const pendingIds: string[] = [];
   const rebound = arrangement.sections.map((entry) => {
-    const matches = entry.label ? byLabel.get(entry.label) ?? [] : [];
-    if (!proven || matches.length !== 1 || before.get(entry.label) !== 1) {
+    // Already checked against this very version: nothing to prove.
+    if (entry.source?.version === songVersion && sources.some((source) => source.sectionId === entry.sourceSectionId)) return entry;
+    const signature = entry.source?.signature;
+    const matches = signature === undefined ? [] : sources.filter((source) => source.signature === signature);
+    if (matches.length !== 1 || (labelCount.get(matches[0].label) ?? 0) !== 1) {
       pendingIds.push(entry.id);
       return entry;
     }
-    return matches[0].sectionId === entry.sourceSectionId ? entry : { ...entry, sourceSectionId: matches[0].sectionId };
+    return { ...entry, sourceSectionId: matches[0].sectionId, label: matches[0].label };
   });
   const result: SetlistArrangement = { ...arrangement, sections: rebound };
   return pendingIds.length > 0 ? { state: 'pending', arrangement: result, pendingIds } : { state: 'rebound', arrangement: result };
@@ -522,28 +546,42 @@ export function arrangementSaveState(session: {
   return session.reviewedVersion === session.currentVersion ? 'ready' : 'song-changed';
 }
 
-/** Points one pending block at a section of the song as it is now. */
+/** Points one pending block at a section of the song as it is now, chosen by someone. */
 export function rebindArrangementSection(
   arrangement: SetlistArrangement,
   id: string,
-  source: ArrangementSource
+  source: ArrangementSource,
+  songVersion: number
 ): SetlistArrangement {
   if (!arrangement.sections.some((section) => section.id === id)) return arrangement;
   return {
     ...arrangement,
     sections: arrangement.sections.map((section) =>
-      section.id === id ? { ...section, sourceSectionId: source.sectionId, label: source.label } : section
+      section.id === id
+        ? { ...section, sourceSectionId: source.sectionId, label: source.label, source: { signature: source.signature, version: songVersion } }
+        : section
     ),
   };
 }
 
 /**
- * The arrangement as it is saved: stamped with the version of the song it was
- * checked against, and with that version's section names, so a later version
- * can tell what each name meant here.
+ * The arrangement as it is saved, when every block can say what it plays.
+ *
+ * Each block writes down the section it points at, so a later version of the
+ * song can be checked against it. Null when any block is still waiting for
+ * someone to choose: saving then would record blocks nobody checked as if
+ * they had been, which is exactly what must never happen.
  */
-export function stampArrangement(arrangement: SetlistArrangement, songVersion: number, sections: SongSection[]): SetlistArrangement {
-  return { ...arrangement, songVersion, songStructure: songStructureOf(sections) };
+export function certifyArrangement(arrangement: SetlistArrangement, songVersion: number, sections: SongSection[]): SetlistArrangement | null {
+  const binding = bindArrangement(sections, arrangement, songVersion);
+  if (binding.state === 'pending') return null;
+  const byId = new Map(sections.map((section) => [section.id, section]));
+  const certified = (binding.state === 'none' ? arrangement : binding.arrangement).sections.map((entry) => {
+    const section = byId.get(entry.sourceSectionId);
+    return section ? { ...entry, source: { signature: sectionSignature(section, sections), version: songVersion } } : entry;
+  });
+  if (certified.some((entry) => entry.source?.version !== songVersion)) return null;
+  return { ...arrangement, sections: certified, songVersion };
 }
 
 // ---------------------------------------------------------------------------
