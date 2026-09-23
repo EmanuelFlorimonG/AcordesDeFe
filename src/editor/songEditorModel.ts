@@ -60,11 +60,13 @@ export interface EditorSection {
   /**
    * How the header was written, because it decides what the section covers:
    * "[Coro]" holds every line until the next header, "Coro:" only the stanza
-   * right below it. A section read from a song keeps the form it had, so
-   * editing one part never moves the boundaries of another. New sections are
-   * written in brackets.
+   * right below it, and 'none' is a block the song carries with no name of
+   * its own (what follows a "Coro:" stanza, a closing note). A section read
+   * from a song keeps the form it had, so editing one part never moves the
+   * boundaries of another, and a block that never had a name is not asked for
+   * one. Absent in sections written here, which are bracketed.
    */
-  headerForm?: 'bracket' | 'label';
+  headerForm?: 'bracket' | 'label' | 'none';
   /** Set when this appearance repeats an earlier section; its own lines are then unused */
   repeatOf: string | null;
   lines: EditorLine[];
@@ -503,7 +505,7 @@ export function contentToEditor(content: string, meta: SongMeta = emptySongMeta(
     return {
       id,
       label: fullLabel,
-      ...(section.header?.form === 'label' ? { headerForm: 'label' as const } : {}),
+      headerForm: section.header ? (section.header.form === 'label' ? 'label' : 'bracket') : 'none',
       repeatOf: null,
       lines: section.lines.map((line) => {
         if (line.type === 'empty') return createLine(makeId);
@@ -572,9 +574,15 @@ export function validateEditorDocument(doc: EditorDocument): EditorIssue[] {
     if (!label) continue;
     while (cursor < parsed.length) {
       const candidate = parsed[cursor++];
-      // Content sections are written bracketed and repeats as cues; a lyric line
-      // that happens to read as a header is skipped by requiring that form.
-      const expected = section.repeatOf ? parseSectionHeader(repeatHeader(effectiveLabel(doc, section)))?.form : 'bracket';
+      // Each section is looked for with the header it is actually written
+      // with ("[Coro]" or "Coro:", repeats as cues), so a lyric line that
+      // happens to read as a header is skipped without asking a "Coro:"
+      // section to look like a bracketed one.
+      const expected = section.repeatOf
+        ? parseSectionHeader(repeatHeader(effectiveLabel(doc, section)))?.form
+        : section.headerForm === 'label'
+          ? 'label'
+          : 'bracket';
       if (candidate.header && candidate.header.form === expected && normalize(rebuildLabel(candidate.header)) === label) {
         parsedIdByEditorId.set(section.id, candidate.id);
         break;
@@ -606,7 +614,9 @@ export function validateEditorDocument(doc: EditorDocument): EditorIssue[] {
       return;
     }
 
-    if (!label && index > 0) {
+    // A block the song itself carries without a name keeps it that way; only
+    // one written here without a name has to be named.
+    if (!label && index > 0 && section.headerForm !== 'none') {
       issues.push({ code: 'label-required', severity: 'error', sectionId: section.id, message: 'Ponle nombre a esta sección.' });
     } else if (label && isChordSymbol(label)) {
       issues.push({ code: 'label-is-chord', severity: 'error', sectionId: section.id, message: `«${label}» se leería como un acorde. Elige otro nombre.` });
@@ -666,7 +676,9 @@ export function parseEditorDocument(value: unknown, makeId: IdFactory = createId
   const sections = value.sections.filter(isRecord).map((section): EditorSection => ({
     id: text(section.id) || makeId(),
     label: text(section.label),
-    ...(section.headerForm === 'label' ? { headerForm: 'label' as const } : {}),
+    ...(section.headerForm === 'label' || section.headerForm === 'bracket' || section.headerForm === 'none'
+      ? { headerForm: section.headerForm }
+      : {}),
     repeatOf: typeof section.repeatOf === 'string' ? section.repeatOf : null,
     lines: (Array.isArray(section.lines) ? section.lines : []).filter(isRecord).map((line) => {
       const lineText = cleanLyricText(text(line.text));

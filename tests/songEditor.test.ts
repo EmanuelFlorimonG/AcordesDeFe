@@ -47,6 +47,7 @@ import {
   setLineText,
   splitLine,
   updateSection,
+  emptySongMeta,
   validateEditorDocument,
   wordBoundary,
   type EditorDocument,
@@ -67,6 +68,9 @@ import { parseYouTubeId } from '../src/editor/youtube';
 import { parseSongSections, transposeSongContent } from '../src/utils/chordParser';
 import { compareSongs } from '../src/admin/songDiff';
 import { draftToSong, songToDraft } from '../src/catalog/songDraft';
+
+/** Song text is written line by line in these tests; this is what joins it. */
+const NEWLINE = String.fromCharCode(10);
 
 let checks = 0;
 const eq = <T>(actual: T, expected: T, message?: string) => {
@@ -1061,6 +1065,38 @@ describe('Editar una parte no cambia las demás', () => {
     }
     eq(differ, []);
     checks += 96;
+  });
+
+  it('una repetición encuentra su sección aunque el encabezado sea «Coro:»', () => {
+    // Codex: abrir fiesta-de-fe, cambiar solo el tempo y validar daba repeat-unresolved.
+    const published = songToDraft(MOCK_SONGS.find((entry) => entry.id === 'fiesta-de-fe')!);
+    const opened = openedOf(published);
+    eq(opened.sections.find((section) => section.label === 'Coro')?.headerForm, 'label');
+    const onlyTempo = { ...opened, meta: { ...opened.meta, tempo: 100 } };
+    eq(validateEditorDocument(onlyTempo).map((issue) => issue.code), []);
+    eq(editorToSongDraft(onlyTempo).content, published.content, 'y el texto sigue siendo el mismo');
+
+    // Todas las canciones que escriben así algún encabezado validan igual de limpio.
+    const withLabelHeaders = MOCK_SONGS.filter((entry) =>
+      openedOf(songToDraft(entry)).sections.some((section) => section.headerForm === 'label')
+    );
+    eq(withLabelHeaders.length > 0, true);
+    const broken = withLabelHeaders.filter((entry) => {
+      const document = openedOf(songToDraft(entry));
+      const edited = { ...document, meta: { ...document.meta, tempo: 96, year: '2026' } };
+      return validateEditorDocument(edited).some((issue) => issue.severity === 'error');
+    });
+    eq(broken.map((entry) => entry.id), [], 'ninguna canción con «Coro:» queda con errores por cambiar datos');
+
+    // Las repeticiones con corchetes siguen funcionando, y una repetición imposible se sigue avisando.
+    const bracketed = contentToEditor(['[Coro]', 'Hola', '', 'Coro'].join(NEWLINE), emptySongMeta());
+    eq(validateEditorDocument(bracketed).map((issue) => issue.code), []);
+    // Y un coro escrito con dos puntos también puede ser el destino de una repetición.
+    const withColon = contentToEditor(['Coro:', 'Hola', '', '[Verso 1]', 'Letra', '', 'Coro'].join(NEWLINE), emptySongMeta());
+    eq(withColon.sections.map((section) => section.headerForm), ['label', 'bracket', undefined], 'la llamada no es un encabezado más');
+    eq(withColon.sections[2].repeatOf, withColon.sections[0].id, 'la llamada repite ese coro');
+    eq(validateEditorDocument(withColon).map((issue) => issue.code), []);
+    eq(editorToContent(withColon).startsWith('Coro:'), true, 'y se sigue escribiendo con dos puntos');
   });
 
   it('«sin cambios» significa lo mismo en el editor, en el panel y en la base de datos', () => {
