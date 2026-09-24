@@ -19,10 +19,47 @@ import {
  * a corrupt or hand-edited entry is repaired or skipped, never allowed to
  * crash the app, and unreadable data is backed up before it can be
  * overwritten.
+ *
+ * Setlists belong to whoever made them, so each identity keeps its own:
+ * visitors write where they always have, and each signed-in account writes
+ * beside it under its own user id (see setlistKeys). Nothing is ever copied
+ * between them on its own; taking what was made as a visitor into an account
+ * will be something the person asks for, later and explicitly.
  */
 
 export const SETLIST_STORAGE_KEY = 'genesaret_setlists';
 export const SETLIST_BACKUP_KEY = 'genesaret_setlists_backup';
+
+/**
+ * Whose setlists these are: nobody's in particular (a visitor), or one
+ * account's. Only the user id Supabase Auth proves is ever used — never a
+ * name, an address or anything the browser could make up.
+ */
+export type SetlistScope = { kind: 'guest' } | { kind: 'user'; userId: string };
+
+export const GUEST_SETLISTS: SetlistScope = { kind: 'guest' };
+export const userSetlists = (userId: string): SetlistScope => ({ kind: 'user', userId });
+
+/** A short name for a scope, to tell one from another. */
+export function scopeId(scope: SetlistScope): string {
+  return scope.kind === 'guest' ? 'guest' : `u:${scope.userId.trim()}`;
+}
+
+/**
+ * Where a scope reads and writes, or null when it has nowhere: an identity
+ * with no id owns no storage, and sharing the visitor's would be worse than
+ * keeping its setlists only for this visit.
+ *
+ * The id is encoded, so two different ids can never land on the same key
+ * however strange one of them looks, and no id can ever spell the visitor's.
+ */
+export function setlistKeys(scope: SetlistScope): { data: string; backup: string } | null {
+  if (scope.kind === 'guest') return { data: SETLIST_STORAGE_KEY, backup: SETLIST_BACKUP_KEY };
+  const id = scope.userId.trim();
+  if (!id) return null;
+  const suffix = `:u:${encodeURIComponent(id)}`;
+  return { data: `${SETLIST_STORAGE_KEY}${suffix}`, backup: `${SETLIST_BACKUP_KEY}${suffix}` };
+}
 /**
  * 2 added the musical arrangement of each entry, 3 the transition to the next
  * song, 4 the team (participants) and who sings each block. Older versions are
@@ -44,6 +81,8 @@ export interface SetlistLoadResult {
 }
 
 export interface SetlistRepository {
+  /** The storage key this repository writes, so a change elsewhere can be told apart; null when it keeps nothing */
+  readonly key?: string | null;
   load(): SetlistLoadResult;
   save(setlists: Setlist[]): void;
 }
@@ -169,8 +208,10 @@ function getBrowserStorage(): KeyValueStorage | null {
 }
 
 export function createLocalSetlistRepository(
-  storage: KeyValueStorage | null = getBrowserStorage()
+  storage: KeyValueStorage | null = getBrowserStorage(),
+  scope: SetlistScope = GUEST_SETLISTS
 ): SetlistRepository {
+  const keys = setlistKeys(scope);
   const read = (key: string) => {
     try {
       return storage?.getItem(key) ?? null;
@@ -187,15 +228,18 @@ export function createLocalSetlistRepository(
   };
 
   return {
+    key: keys?.data ?? null,
     load() {
-      const raw = read(SETLIST_STORAGE_KEY);
+      if (!keys) return { setlists: [], recoveredFromUnreadableData: false };
+      const raw = read(keys.data);
       const { setlists, unreadable } = parseStoredSetlists(raw);
       // Keep the original text before any later save can overwrite it.
-      if (unreadable && raw !== null) write(SETLIST_BACKUP_KEY, raw);
+      if (unreadable && raw !== null) write(keys.backup, raw);
       return { setlists, recoveredFromUnreadableData: unreadable };
     },
     save(setlists) {
-      write(SETLIST_STORAGE_KEY, serializeSetlists(setlists));
+      if (!keys) return;
+      write(keys.data, serializeSetlists(setlists));
     },
   };
 }

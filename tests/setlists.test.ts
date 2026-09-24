@@ -29,7 +29,11 @@ import {
   SETLIST_BACKUP_KEY,
   SETLIST_STORAGE_KEY,
   SETLIST_STORAGE_VERSION,
+  GUEST_SETLISTS,
   createLocalSetlistRepository,
+  scopeId,
+  setlistKeys,
+  userSetlists,
   parseStoredSetlists,
 } from '../src/storage/setlistStorage';
 import {
@@ -554,5 +558,123 @@ describe('Clasificar por momento de la misa', () => {
       '',
       'sin momento, la canción entra sin clasificar'
     );
+  });
+});
+
+// --- Whose setlists these are -------------------------------------------------------
+
+describe('Cada cuenta guarda sus setlists aparte', () => {
+  const JUAN = '6f1c2a4e-8b3d-4c5e-9f70-1a2b3c4d5e6f';
+  const MARIA = '0f8fad5b-d9cb-469f-a165-70867728950e';
+  const named = (name: string) => createSetlist({ name }, { now: 1_700_000_000_000, createId: () => `id-${name}` });
+
+  /** One browser: every scope writes into the same storage, under its own key. */
+  const browser = () => {
+    const data = new Map<string, string>();
+    return {
+      data,
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => void data.set(key, value),
+    };
+  };
+  const guestRepo = (storage: ReturnType<typeof browser>) => createLocalSetlistRepository(storage, GUEST_SETLISTS);
+  const userRepo = (storage: ReturnType<typeof browser>, userId: string) =>
+    createLocalSetlistRepository(storage, userSetlists(userId));
+
+  it('las claves: el invitado donde siempre, cada cuenta en la suya', () => {
+    eq(setlistKeys(GUEST_SETLISTS), { data: 'genesaret_setlists', backup: 'genesaret_setlists_backup' });
+    eq(setlistKeys(userSetlists(JUAN)), {
+      data: `genesaret_setlists:u:${JUAN}`,
+      backup: `genesaret_setlists_backup:u:${JUAN}`,
+    });
+    eq(scopeId(GUEST_SETLISTS), 'guest');
+    eq(scopeId(userSetlists(JUAN)), `u:${JUAN}`);
+  });
+
+  it('un id raro no puede colarse en el sitio de otro', () => {
+    // Codificado: dos ids distintos nunca caen en la misma clave…
+    eq(setlistKeys(userSetlists('a/b'))?.data, 'genesaret_setlists:u:a%2Fb');
+    eq(setlistKeys(userSetlists('a%2Fb'))?.data, 'genesaret_setlists:u:a%252Fb');
+    eq(setlistKeys(userSetlists('a b'))?.data !== setlistKeys(userSetlists('a+b'))?.data, true);
+    // …y ninguno puede escribir la del invitado.
+    for (const id of ['', '   ', '../', ':u:', 'genesaret_setlists']) {
+      const keys = setlistKeys(userSetlists(id));
+      eq(keys?.data === 'genesaret_setlists', false, id);
+      eq(keys?.backup === 'genesaret_setlists_backup', false, id);
+    }
+    // Sin id no hay dónde guardar, y no se usa el del invitado: sólo esta visita.
+    eq(setlistKeys(userSetlists('  ')), null);
+    const nowhere = createLocalSetlistRepository(browser(), userSetlists(''));
+    nowhere.save([named('Suelta')]);
+    eq(nowhere.load(), { setlists: [], recoveredFromUnreadableData: false });
+  });
+
+  it('Juan guarda lo suyo y María no lo ve; y al revés', () => {
+    const storage = browser();
+    userRepo(storage, JUAN).save([named('A')]);
+    eq(userRepo(storage, MARIA).load().setlists, [], 'María no ve la A de Juan');
+    userRepo(storage, MARIA).save([named('B')]);
+    eq(userRepo(storage, JUAN).load().setlists.map((s) => s.name), ['A'], 'y Juan sigue con la suya');
+    eq(userRepo(storage, MARIA).load().setlists.map((s) => s.name), ['B']);
+    eq([...storage.data.keys()].sort(), [`genesaret_setlists:u:${MARIA}`, `genesaret_setlists:u:${JUAN}`].sort());
+  });
+
+  it('el invitado sigue donde siempre, y nadie le copia nada', () => {
+    const storage = browser();
+    guestRepo(storage).save([named('De invitado')]);
+    eq(storage.data.has('genesaret_setlists'), true, 'la clave de toda la vida');
+    // Entrar no copia nada a la cuenta…
+    eq(userRepo(storage, JUAN).load().setlists, []);
+    userRepo(storage, JUAN).save([named('A')]);
+    // …y salir devuelve exactamente lo que había.
+    eq(guestRepo(storage).load().setlists.map((s) => s.name), ['De invitado']);
+    // Volver a entrar recupera lo de la cuenta.
+    eq(userRepo(storage, JUAN).load().setlists.map((s) => s.name), ['A']);
+    eq([...storage.data.keys()].sort(), ['genesaret_setlists', `genesaret_setlists:u:${JUAN}`]);
+  });
+
+  it('los respaldos también son de cada uno', () => {
+    const storage = browser();
+    storage.setItem('genesaret_setlists', 'esto no es json');
+    storage.setItem(`genesaret_setlists:u:${JUAN}`, '{"version":99,"setlists":[]}');
+    eq(guestRepo(storage).load().recoveredFromUnreadableData, true);
+    eq(userRepo(storage, JUAN).load().recoveredFromUnreadableData, true);
+    eq(storage.data.get('genesaret_setlists_backup'), 'esto no es json');
+    eq(storage.data.get(`genesaret_setlists_backup:u:${JUAN}`), '{"version":99,"setlists":[]}');
+    eq(storage.data.has(`genesaret_setlists_backup:u:${MARIA}`), false, 'María no tiene respaldo de nada');
+  });
+
+  it('lo que ya estaba guardado se sigue leyendo igual', () => {
+    const storage = browser();
+    // Versión 4, la actual.
+    storage.setItem('genesaret_setlists', JSON.stringify({ version: SETLIST_STORAGE_VERSION, setlists: [named('Actual')] }));
+    eq(guestRepo(storage).load().setlists.map((s) => s.name), ['Actual']);
+    // Y las anteriores, incluida la lista pelada del principio.
+    storage.setItem('genesaret_setlists', JSON.stringify({ version: 1, setlists: [named('Vieja')] }));
+    eq(guestRepo(storage).load().setlists.map((s) => s.name), ['Vieja']);
+    storage.setItem('genesaret_setlists', JSON.stringify([named('Antiquísima')]));
+    const migrated = guestRepo(storage).load().setlists;
+    eq(migrated.map((s) => s.name), ['Antiquísima']);
+    eq(migrated[0].participantIds, [], 'lo que no existía entonces queda vacío, no roto');
+  });
+
+  it('cerrar sesión no borra ninguna clave', () => {
+    const storage = browser();
+    guestRepo(storage).save([named('De invitado')]);
+    userRepo(storage, JUAN).save([named('A')]);
+    const before = [...storage.data.keys()].sort();
+    // Salir es dejar de escribir ahí: leer como invitado no toca lo de Juan.
+    guestRepo(storage).load();
+    guestRepo(storage).save([named('De invitado')]);
+    eq([...storage.data.keys()].sort(), before, 'las mismas claves que antes');
+    eq(userRepo(storage, JUAN).load().setlists.map((s) => s.name), ['A'], 'y con lo mismo dentro');
+  });
+
+  it('cada repositorio sabe qué clave es la suya, para no confundir avisos de otras pestañas', () => {
+    const storage = browser();
+    eq(guestRepo(storage).key, 'genesaret_setlists');
+    eq(userRepo(storage, JUAN).key, `genesaret_setlists:u:${JUAN}`);
+    eq(userRepo(storage, MARIA).key !== userRepo(storage, JUAN).key, true);
+    eq(createLocalSetlistRepository(storage, userSetlists('')).key, null, 'sin sitio, ninguna clave que escuchar');
   });
 });

@@ -37,6 +37,7 @@ import { parseSuggestEditHash, suggestEditHash } from './catalog/editAvailabilit
 import { adminHash } from './admin/routes';
 import { canOpenAdminPanel, useEditorialRole } from './admin/useEditorialRole';
 import { useSession } from './auth/useSession';
+import { GUEST_SETLISTS, userSetlists } from './storage/setlistStorage';
 import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -225,7 +226,14 @@ export function App() {
   // while moving from one song to the next (setlists).
   const [isRehearsing, setIsRehearsing] = useState(false);
 
-  const setlists = useSetlists();
+  /**
+   * Whose setlists are on screen: nobody's in particular until somebody signs
+   * in. Signing in or out changes the scope, and with it the store; nothing is
+   * ever copied from one to the other.
+   */
+  const signedInUserId = sessionState.state === 'signed-in' ? sessionState.session.userId : null;
+  const setlistScope = useMemo(() => (signedInUserId ? userSetlists(signedInUserId) : GUEST_SETLISTS), [signedInUserId]);
+  const setlists = useSetlists(setlistScope);
   // The people of the ministry and the keys they usually sing in.
   const ministry = useMinistry();
   const ministryData = useMemo<MinistryData>(

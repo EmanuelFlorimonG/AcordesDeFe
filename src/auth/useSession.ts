@@ -15,6 +15,9 @@ import type { AppServices } from './supabaseSession';
  * the database: the editorial panel does it in src/admin/useEditorialRole.
  */
 
+/** The same answer every time, so nothing downstream sees a new object each render. */
+const SIGNED_OUT = { state: 'signed-out' } as const;
+
 export type SessionState =
   | { state: 'loading' }
   | { state: 'signed-out' }
@@ -77,7 +80,7 @@ export function useSession(): SessionState {
     if (!services) return;
     let cancelled = false;
     const apply = (session: AppSession | null) => {
-      if (!cancelled) setStatus(session ? { state: 'signed-in', session } : { state: 'signed-out' });
+      if (!cancelled) setStatus(session ? { state: 'signed-in', session } : SIGNED_OUT);
     };
     services.auth.currentSession().then(apply, () => apply(null));
     const unsubscribe = services.auth.subscribe(apply);
@@ -87,5 +90,5 @@ export function useSession(): SessionState {
     };
   }, [services]);
 
-  return absent ? { state: 'signed-out' } : status;
+  return absent ? SIGNED_OUT : status;
 }

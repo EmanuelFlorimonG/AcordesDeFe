@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Setlist, SetlistDetails } from '../types/setlist';
 import type { Song } from '../types/song';
 import {
-  SETLIST_STORAGE_KEY,
+  GUEST_SETLISTS,
   createLocalSetlistRepository,
+  scopeId,
   type SetlistRepository,
+  type SetlistScope,
 } from '../storage/setlistStorage';
 import {
   addSetlistParticipants,
@@ -22,6 +24,9 @@ import {
   updateSetlistItem,
   type SetlistItemChanges,
 } from '../utils/setlists';
+
+/** The same empty list every time: a scope being read is not new data each render. */
+const NONE: Setlist[] = [];
 
 export interface SetlistsStore {
   setlists: Setlist[];
@@ -52,31 +57,50 @@ export interface SetlistsStore {
  * The app's setlists: state plus actions. Every change goes through the pure
  * functions in utils/setlists and is saved through a repository, which is the
  * only place that knows where setlists are stored.
+ *
+ * `scope` says whose setlists these are. Signing in or out changes it, and
+ * the new ones are read in that very render, before anything is painted: no
+ * frame ever shows one account what belongs to another. Nothing is copied
+ * from one scope to another, and leaving one behind does not erase it.
  */
-export function useSetlists(repository?: SetlistRepository): SetlistsStore {
-  const repo = useMemo(() => repository ?? createLocalSetlistRepository(), [repository]);
-  const [initial] = useState(() => repo.load());
-  const [setlists, setSetlists] = useState<Setlist[]>(initial.setlists);
+export function useSetlists(scope: SetlistScope = GUEST_SETLISTS, repository?: SetlistRepository): SetlistsStore {
+  // The scope is the caller's: it changes when the person signing in changes,
+  // and not on every render (see App).
+  const scopeName = scopeId(scope);
+  const repo = useMemo(() => repository ?? createLocalSetlistRepository(undefined, scope), [repository, scope]);
 
-  // Save after changes, never on first load: unreadable data stays untouched
-  // (and backed up) until the user actually changes something.
-  const hasLoadedRef = useRef(false);
+  // `justRead` marks a store that came straight from storage, so a read is
+  // never written back: unreadable data stays untouched (and backed up) until
+  // somebody actually changes something.
+  const read = useCallback(() => ({ scope: scopeId(scope), justRead: true, ...repo.load() }), [repo, scope]);
+  const [store, setStore] = useState(read);
+
+  // The account changed: its setlists are read now, during this render, so
+  // nothing of the previous one is ever painted.
+  if (store.scope !== scopeName) setStore(read());
+  const setlists = useMemo(() => (store.scope === scopeName ? store.setlists : NONE), [store, scopeName]);
+
+  const setSetlists = useCallback(
+    (update: (current: Setlist[]) => Setlist[]) =>
+      setStore((current) => ({ ...current, justRead: false, setlists: update(current.setlists) })),
+    []
+  );
+
+  // Save after changes, never after a read.
   useEffect(() => {
-    if (!hasLoadedRef.current) {
-      hasLoadedRef.current = true;
-      return;
-    }
-    repo.save(setlists);
-  }, [repo, setlists]);
+    if (store.justRead) return;
+    repo.save(store.setlists);
+  }, [repo, store]);
 
-  // Another tab changed the setlists: show the same data here.
+  // Another tab changed these setlists: show the same data here. Only these:
+  // what another account wrote in its own key is none of this tab's business.
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === SETLIST_STORAGE_KEY) setSetlists(repo.load().setlists);
+      if (repo.key && event.key === repo.key) setStore(read());
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
-  }, [repo]);
+  }, [repo, read]);
 
   const change = useCallback((id: string, update: (setlist: Setlist, now: number) => Setlist) => {
     setSetlists((current) => {
@@ -90,7 +114,7 @@ export function useSetlists(repository?: SetlistRepository): SetlistsStore {
       });
       return changed ? next : current;
     });
-  }, []);
+  }, [setSetlists]);
 
   const getSetlist = useCallback((id: string) => setlists.find((setlist) => setlist.id === id) ?? null, [setlists]);
 
@@ -98,7 +122,7 @@ export function useSetlists(repository?: SetlistRepository): SetlistsStore {
     const setlist = createSetlist(details, { now: Date.now() });
     setSetlists((current) => [...current, setlist]);
     return setlist;
-  }, []);
+  }, [setSetlists]);
 
   const duplicate = useCallback(
     (id: string, details: Partial<SetlistDetails>) => {
@@ -108,12 +132,12 @@ export function useSetlists(repository?: SetlistRepository): SetlistsStore {
       setSetlists((current) => [...current, copy]);
       return copy;
     },
-    [setlists]
+    [setlists, setSetlists]
   );
 
   return {
     setlists,
-    recoveredFromUnreadableData: initial.recoveredFromUnreadableData,
+    recoveredFromUnreadableData: store.recoveredFromUnreadableData,
     getSetlist,
     create,
     duplicate,
