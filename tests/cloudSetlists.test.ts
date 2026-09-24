@@ -636,9 +636,16 @@ describe('Este paso no sincroniza nada', () => {
       }
     };
     walk('src');
+    // El motor de reconciliación toma de aquí el tipo de una fila ya leída, y
+    // nada más: un `import type` desaparece al compilar y no llama a nadie.
     const users = files.filter(
       (file) => file !== 'src/storage/cloudSetlists.ts' && readFileSync(file, 'utf8').includes('cloudSetlists')
     );
-    eq(users, [], 'la capa cloud existe y todavía no la usa nadie');
+    eq(users, ['src/storage/setlistSync.ts'], 'la capa cloud existe y todavía no la llama nadie');
+    eq(
+      readFileSync('src/storage/setlistSync.ts', 'utf8').includes("import type { CloudSetlistRead } from './cloudSetlists'"),
+      true,
+      'y lo que toma es sólo el tipo'
+    );
   });
 });
