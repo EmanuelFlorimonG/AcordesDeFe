@@ -222,6 +222,19 @@ describe('Cliente REST con la sesión del revisor', () => {
 
 // --- Editorial repository -----------------------------------------------------------
 
+/** These tests never write: a write here is a mistake, and says so. */
+const noWrites = {
+  insert: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+  update: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+  remove: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+};
+
 function fakeClient(handlers: { select?: (table: string, query: string) => unknown[]; rpc?: (fn: string, args: Record<string, unknown>) => unknown; count?: (table: string, query: string) => number } = {}) {
   const log: string[] = [];
   const client: SupabaseClient = {
@@ -236,6 +249,7 @@ function fakeClient(handlers: { select?: (table: string, query: string) => unkno
     async invoke() {
       throw new Error('el panel no usa Edge Functions');
     },
+    ...noWrites,
     async count(table: string, query: string) {
       log.push(`count ${table}?${query}`);
       return handlers.count?.(table, query) ?? 0;

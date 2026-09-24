@@ -21,6 +21,19 @@ const eq = (actual: unknown, expected: unknown, message?: string) => {
 };
 after(() => console.log(`catalogStore: ${checks} comprobaciones`));
 
+/** These tests never write: a write here is a mistake, and says so. */
+const noWrites = {
+  insert: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+  update: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+  remove: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+};
+
 const PROJECT = 'https://abc.supabase.co';
 
 /**
@@ -506,6 +519,7 @@ describe('Catálogo remoto: una sola fuente, entera o ninguna', () => {
       rpc: async <T,>() => [] as T,
       invoke: async <T,>() => ({}) as T,
       count: async () => 0,
+      ...noWrites,
     };
     const result = await fetchRemoteCatalog(createSupabaseSongRepository(client));
     eq(result, { ok: false, reason: 'invalid' });
@@ -548,6 +562,7 @@ describe('Un catálogo remoto se acepta entero y con su versión', () => {
     rpc: async <T,>() => [] as T,
     invoke: async <T,>() => ({}) as T,
     count: async () => 0,
+    ...noWrites,
   });
   const answerFor = (patch: Partial<SongRow>) =>
     fetchRemoteCatalog(createSupabaseSongRepository(rowsOf([{ ...songToRow(MOCK_SONGS[0]), current_version: 1, ...patch }])));
@@ -618,6 +633,7 @@ describe('Un catálogo remoto se acepta entero y con su versión', () => {
       rpc: async <T,>() => [] as T,
       invoke: async <T,>() => ({}) as T,
       count: async () => 0,
+      ...noWrites,
     };
     eq(await fetchRemoteCatalog(createSupabaseSongRepository(client)), { ok: false, reason: 'invalid' });
   });
@@ -664,6 +680,7 @@ describe('Una fila del catálogo es lo que la base de datos promete', () => {
     rpc: async <T,>() => [] as T,
     invoke: async <T,>() => ({}) as T,
     count: async () => 0,
+    ...noWrites,
   });
   const rowOf = (patch: Partial<SongRow>): SongRow => ({ ...songToRow(MOCK_SONGS[0]), current_version: 1, ...patch });
   const answerFor = (patch: Partial<SongRow>) => fetchRemoteCatalog(createSupabaseSongRepository(rowsOf([rowOf(patch)])));

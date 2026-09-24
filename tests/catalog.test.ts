@@ -1,5 +1,6 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { Song } from '../src/types/song';
 import { MOCK_SONGS } from '../src/data/mockSongs';
 import { bundledSongRepository } from '../src/catalog/bundledCatalog';
@@ -492,6 +493,227 @@ describe('Cliente REST', () => {
   });
 });
 
+// --- Escrituras autenticadas ---------------------------------------------------------
+// Infraestructura únicamente: aquí no hay setlists de verdad, ni sincronización, ni
+// ningún Supabase real. Sólo qué pide este cliente y qué hace con lo que le contestan.
+
+describe('Escrituras del cliente REST', () => {
+  const URL_BASE = 'https://abc.supabase.co';
+  const config = { url: URL_BASE, anonKey: 'sb_publishable_x' };
+  const headersOf = (call: Call) => call.init.headers as Record<string, string>;
+  const row = {
+    owner_id: '6f1c2a4e-8b3d-4c5e-9f70-1a2b3c4d5e6f',
+    id: 'setlist-1234',
+    name: 'Misa Domingo',
+    revision: 1,
+  };
+
+  it('INSERT va por POST con el cuerpo tal cual, y devuelve lo escrito', async () => {
+    const { calls, fetchImpl } = fakeFetch(() => ({ status: 201, body: [row] }));
+    const client = createSupabaseClient(config, fetchImpl);
+    const written = await client.insert<typeof row>('setlists', { id: 'setlist-1234', name: 'Misa Domingo' });
+
+    eq(calls[0].init.method, 'POST');
+    eq(calls[0].url, `${URL_BASE}/rest/v1/setlists`);
+    eq(calls[0].init.body, '{"id":"setlist-1234","name":"Misa Domingo"}', 'el JSON es exactamente el que se pasó');
+    eq(headersOf(calls[0])['Content-Type'], 'application/json');
+    eq(headersOf(calls[0]).Prefer, 'return=representation', 'se piden de vuelta las filas escritas');
+    eq(written, [row]);
+
+    // Lo que no se pasa no se inventa: owner_id lo pone la base de datos desde
+    // auth.uid(). El cliente no lo deduce del correo, ni del nombre, ni de nada
+    // que se pueda falsificar en un navegador.
+    eq(String(calls[0].init.body).includes('owner_id'), false);
+    // Y una lista de filas va como lista, sin envolverse en nada.
+    await client.insert('setlists', [{ id: 'a' }, { id: 'b' }]);
+    eq(calls[1].init.body, '[{"id":"a"},{"id":"b"}]');
+  });
+
+  it('la clave pública siempre; el token de la sesión sólo cuando la hay', async () => {
+    const { calls, fetchImpl } = fakeFetch(() => ({ body: [row] }));
+    let token: string | null = 'token-de-la-sesion';
+    const client = createSupabaseClient(config, fetchImpl, { accessToken: async () => token });
+
+    await client.insert('setlists', { id: 'setlist-1234' });
+    eq([headersOf(calls[0]).apikey, headersOf(calls[0]).Authorization], ['sb_publishable_x', 'Bearer token-de-la-sesion']);
+
+    // Sin sesión no se finge ninguna: sale la petición pública y es la base de
+    // datos la que dice que no. Aquí no se inventa nada para parecer otra cosa.
+    token = null;
+    await client.update('setlists', { id: 'setlist-1234' }, { name: 'Otra' });
+    eq([headersOf(calls[1]).apikey, headersOf(calls[1]).Authorization], ['sb_publishable_x', undefined]);
+
+    // Con una clave antigua (JWT) el Authorization de la clave es lo que hay, y
+    // el token de la persona lo sustituye en cuanto existe.
+    const legacy = jwt({ role: 'anon' });
+    const anonClient = createSupabaseClient({ url: URL_BASE, anonKey: legacy }, fetchImpl, { accessToken: async () => token });
+    await anonClient.remove('setlists', { id: 'setlist-1234' });
+    eq(headersOf(calls[2]).Authorization, `Bearer ${legacy}`);
+    token = 'token-de-la-sesion';
+    await anonClient.remove('setlists', { id: 'setlist-1234' });
+    eq(headersOf(calls[3]).Authorization, 'Bearer token-de-la-sesion');
+  });
+
+  it('un INSERT repetible: on_conflict, y sin pisar lo que ya está', async () => {
+    const { calls, fetchImpl } = fakeFetch(() => ({ body: [] }));
+    const client = createSupabaseClient(config, fetchImpl);
+
+    // Ignorar duplicados es dejar intacto lo que ya hay: no sobrescribe nada.
+    await client.insert('setlists', [row], { onConflict: 'owner_id,id', ignoreDuplicates: true });
+    eq(calls[0].url, `${URL_BASE}/rest/v1/setlists?on_conflict=owner_id%2Cid`);
+    eq(headersOf(calls[0]).Prefer, 'return=representation,resolution=ignore-duplicates');
+    eq(headersOf(calls[0]).Prefer.includes('merge-duplicates'), false, 'lo de la nube no se reemplaza a espaldas de nadie');
+
+    // Y lo que no es un nombre de columna no llega a la URL.
+    assert.throws(() => client.insert('setlists', [row], { onConflict: 'id,(select 1)', ignoreDuplicates: true }));
+    checks++;
+    // Los dos van juntos: PostgREST sólo mira on_conflict cuando se le dice qué
+    // hacer con el choque, así que uno sin el otro sería un INSERT corriente
+    // disfrazado de repetible, que falla en cuanto se reintenta.
+    assert.throws(() => client.insert('setlists', [row], { ignoreDuplicates: true }));
+    checks++;
+    assert.throws(() => client.insert('setlists', [row], { onConflict: 'owner_id,id' }));
+    checks++;
+    assert.throws(() => client.insert('setlists; drop table setlists', [row]));
+    checks++;
+  });
+
+  it('UPDATE va por PATCH sobre las filas que se digan', async () => {
+    const { calls, fetchImpl } = fakeFetch(() => ({ body: [{ ...row, revision: 2 }] }));
+    const client = createSupabaseClient(config, fetchImpl);
+
+    const changed = await client.update<typeof row>('setlists', { id: 'setlist-1234' }, { name: 'Misa del domingo', revision: 2 });
+    eq(calls[0].init.method, 'PATCH');
+    eq(calls[0].url, `${URL_BASE}/rest/v1/setlists?id=eq.setlist-1234`);
+    eq(calls[0].init.body, '{"name":"Misa del domingo","revision":2}');
+    eq(headersOf(calls[0]).Prefer, 'return=representation');
+    eq(changed, [{ ...row, revision: 2 }], 'contesta con la fila cambiada');
+
+    // Concurrencia optimista: la fila se cambia sólo si sigue en la revisión que
+    // se leyó. Los filtros se acumulan, y todos tienen que cumplirse.
+    await client.update('setlists', { id: 'setlist-1234', revision: 2 }, { name: 'Otra' });
+    eq(calls[1].url, `${URL_BASE}/rest/v1/setlists?id=eq.setlist-1234&revision=eq.2`);
+
+    // Un id con caracteres raros se codifica: nunca se convierte en otro filtro.
+    await client.update('setlists', { id: 'a&revision=eq.9' }, { name: 'x' });
+    eq(calls[2].url, `${URL_BASE}/rest/v1/setlists?id=eq.a%26revision%3Deq.9`);
+
+    // Sin filtros sería "todas las filas que pueda tocar", que no es nunca lo
+    // que nadie quiere escribir.
+    assert.throws(() => client.update('setlists', {}, { name: 'x' }));
+    checks++;
+    assert.throws(() => client.update('setlists', { 'id;drop': 'x' }, { name: 'x' }));
+    checks++;
+  });
+
+  it('alguien cambió la fila antes: cero filas, y quien llama decide', async () => {
+    // El contrato exacto que usará la sincronización. Se escribe "cambia el
+    // setlist 123 si sigue en la revisión 4"; si ya va por la 5, el PATCH no
+    // alcanza ninguna fila. PostgREST contesta 200 con una lista vacía, y eso
+    // no es un fallo: es la respuesta, y significa que hay que volver a leer.
+    const { calls, fetchImpl } = fakeFetch(() => ({ status: 200, body: [] }));
+    const client = createSupabaseClient(config, fetchImpl, { accessToken: async () => 'token-de-la-sesion' });
+
+    const changed = await client.update<typeof row>(
+      'setlists',
+      { id: 'setlist-123', revision: 4 },
+      { name: 'Misa del domingo', revision: 5 }
+    );
+
+    eq(changed, [], 'ninguna excepción: una lista vacía, distinguible de [fila]');
+    eq(calls[0].init.method, 'PATCH');
+    eq(calls[0].url, `${URL_BASE}/rest/v1/setlists?id=eq.setlist-123&revision=eq.4`);
+    eq(headersOf(calls[0]).Prefer, 'return=representation', 'sin representación no habría forma de distinguirlo');
+  });
+
+  it('cero filas no es un error; lo que contesta PostgREST, sí', async () => {
+    const vacio = fakeFetch(() => ({ body: [] }));
+    const client = createSupabaseClient(config, vacio.fetchImpl);
+    // Nadie alcanzó la fila: o ya no está, o es de otra persona, o alguien la
+    // cambió antes. Quien llama decide qué hacer; esto no es una excepción.
+    eq(await client.update('setlists', { id: 'setlist-1234', revision: 1 }, { name: 'x' }), []);
+    eq(await client.remove('setlists', { id: 'setlist-1234' }), []);
+
+    const roto = fakeFetch(() => ({
+      status: 409,
+      body: { message: 'duplicate key value', code: '23505', details: 'Key (owner_id, id) already exists.' },
+    }));
+    await assert.rejects(
+      createSupabaseClient(config, roto.fetchImpl).insert('setlists', [row]),
+      (error: unknown) =>
+        error instanceof SupabaseRequestError &&
+        error.status === 409 &&
+        error.code === '23505' &&
+        error.details === 'Key (owner_id, id) already exists.'
+    );
+    checks++;
+
+    // Lo mismo cuando Row Level Security dice que no: el código llega entero.
+    const negado = fakeFetch(() => ({ status: 403, body: { message: 'row-level security', code: '42501' } }));
+    await assert.rejects(
+      createSupabaseClient(config, negado.fetchImpl).update('setlists', { id: 'setlist-1234' }, { name: 'x' }),
+      (error: unknown) => error instanceof SupabaseRequestError && error.status === 403 && error.code === '42501'
+    );
+    checks++;
+    await assert.rejects(
+      createSupabaseClient(config, negado.fetchImpl).remove('setlists', { id: 'setlist-1234' }),
+      (error: unknown) => error instanceof SupabaseRequestError && error.code === '42501'
+    );
+    checks++;
+  });
+
+  it('DELETE va por DELETE, filtrado, y dice qué se llevó', async () => {
+    const { calls, fetchImpl } = fakeFetch(() => ({ body: [row] }));
+    const client = createSupabaseClient(config, fetchImpl);
+
+    const removed = await client.remove<typeof row>('setlists', { id: 'setlist-1234' });
+    eq(calls[0].init.method, 'DELETE');
+    eq(calls[0].url, `${URL_BASE}/rest/v1/setlists?id=eq.setlist-1234`);
+    eq(calls[0].init.body, undefined, 'un borrado no lleva cuerpo');
+    eq(headersOf(calls[0]).Prefer, 'return=representation');
+    eq(removed, [row]);
+
+    await client.remove('setlists', { id: 'setlist-1234', revision: 3 });
+    eq(calls[1].url, `${URL_BASE}/rest/v1/setlists?id=eq.setlist-1234&revision=eq.3`);
+    assert.throws(() => client.remove('setlists', {}));
+    checks++;
+  });
+
+  it('cada escritura puede cancelarse', async () => {
+    const { calls, fetchImpl } = fakeFetch(() => ({ body: [] }));
+    const client = createSupabaseClient(config, fetchImpl);
+    const controller = new AbortController();
+    await client.insert('setlists', [row], { signal: controller.signal });
+    await client.update('setlists', { id: 'setlist-1234' }, { name: 'x' }, { signal: controller.signal });
+    await client.remove('setlists', { id: 'setlist-1234' }, { signal: controller.signal });
+    eq(calls.map((call) => call.init.signal), [controller.signal, controller.signal, controller.signal]);
+  });
+
+  it('el cliente REST no se salta Row Level Security por ningún lado', () => {
+    // Ni claves de servidor, ni un segundo cliente, ni cabeceras que cambien de
+    // rol: lo único que identifica a alguien aquí es su access token.
+    const source = readFileSync('src/lib/supabase.ts', 'utf8');
+    for (const forbidden of ['service_role', 'sb_secret', 'SECURITY DEFINER', 'createClient(', 'x-supabase-role']) {
+      eq(source.includes(forbidden), false, forbidden);
+    }
+    // owner_id no se nombra: el cliente no lo pone, no lo deduce y no lo lee.
+    eq(source.includes("'owner_id'"), false, 'de quién es una fila lo decide la base de datos');
+  });
+});
+
+/** These tests never write: a write here is a mistake, and says so. */
+const noWrites = {
+  insert: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+  update: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+  remove: async () => {
+    throw new Error('estas pruebas no escriben');
+  },
+};
+
 function fakeClient(handlers: {
   select?: (table: string, query: string) => unknown[];
   rpc?: (fn: string, args: Record<string, unknown>) => unknown;
@@ -514,6 +736,7 @@ function fakeClient(handlers: {
     async count() {
       return 0;
     },
+    ...noWrites,
   };
   return { client, queries };
 }
@@ -555,6 +778,7 @@ describe('Repositorios de Supabase (preparados)', () => {
         select: async () => [],
         rpc: async <T,>() => [] as T,
         count: async () => 0,
+        ...noWrites,
         invoke: async () => {
           throw new SupabaseRequestError(message, status, null);
         },
@@ -571,7 +795,7 @@ describe('Repositorios de Supabase (preparados)', () => {
       checks++;
     }
     // An answer without a receipt is a failure, never a fake success.
-    const empty = createSupabaseSubmissionRepository({ select: async () => [], rpc: async <T,>() => [] as T, count: async () => 0, invoke: async <T,>() => ({}) as T });
+    const empty = createSupabaseSubmissionRepository({ select: async () => [], rpc: async <T,>() => [] as T, count: async () => 0, invoke: async <T,>() => ({}) as T, ...noWrites });
     await assert.rejects(empty.submit(payload), (error: unknown) => error instanceof SubmissionError && error.reason === 'unavailable');
     checks++;
   });
@@ -746,6 +970,7 @@ describe('Propuestas de edición: versión base', () => {
         select: async () => [],
         rpc: async <T,>() => [] as T,
         count: async () => 0,
+        ...noWrites,
         invoke: async () => {
           throw new SupabaseRequestError(message, status, null);
         },
