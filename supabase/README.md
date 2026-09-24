@@ -148,7 +148,7 @@ Para atender una solicitud de borrado, se vacían `contributor_name` y
 `contributor_email` de la propuesta (la fila se conserva si ya produjo una
 versión publicada).
 
-## Importar las 97 canciones (fase posterior)
+## Importar las canciones incluidas (fase posterior)
 
 Aún no se hace. Cuando toque, cada canción se insertará con su `id` actual
 (`songToRow` en `src/catalog/supabaseSongRepository.ts` produce la fila exacta)

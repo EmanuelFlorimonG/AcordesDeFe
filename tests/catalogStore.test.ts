@@ -25,11 +25,11 @@ const PROJECT = 'https://abc.supabase.co';
 
 /**
  * What Supabase returns for a song: the row read back (youtubeId "" becomes
- * absent), with the published version every row carries — the 97 imported
+ * absent), with the published version every row carries — the 110 imported
  * ones are at version 1, like in the real project.
  */
 const remoteForm = (song: Song, version = 1) => songFromRow({ ...songToRow(song), current_version: version }) as Song;
-const REMOTE_97 = MOCK_SONGS.map((song) => remoteForm(song));
+const REMOTE_SONGS = MOCK_SONGS.map((song) => remoteForm(song));
 const NEW_SONG: Song = {
   id: 'cancion-nueva-6c',
   title: 'Canción nueva aprobada',
@@ -78,18 +78,18 @@ const BUNDLED_IDS = MOCK_SONGS.map((song) => song.id).sort();
 // --- Cache --------------------------------------------------------------------------
 
 describe('Caché del último catálogo remoto válido', () => {
-  it('las 97 van y vuelven idénticas a como las lee el remoto', () => {
+  it('las 110 van y vuelven idénticas a como las lee el remoto', () => {
     const storage = memoryStorage();
     const cache = createCatalogCache(storage, PROJECT);
-    eq(cache.write(REMOTE_97, new Date('2026-09-19T05:00:00Z')), true);
+    eq(cache.write(REMOTE_SONGS, new Date('2026-09-19T05:00:00Z')), true);
     const read = cache.read();
     eq(read?.savedAt, '2026-09-19T05:00:00.000Z');
-    eq(read?.songs, REMOTE_97);
+    eq(read?.songs, REMOTE_SONGS);
   });
 
   it('otra versión, otro proyecto o JSON dañado: no se usa', () => {
     const storage = memoryStorage();
-    createCatalogCache(storage, PROJECT).write(REMOTE_97);
+    createCatalogCache(storage, PROJECT).write(REMOTE_SONGS);
     eq(createCatalogCache(storage, 'https://otro.supabase.co').read(), null);
     const stored = JSON.parse(storage.data.get(CATALOG_CACHE_KEY)!);
     storage.data.set(CATALOG_CACHE_KEY, JSON.stringify({ ...stored, version: CATALOG_CACHE_VERSION + 1 }));
@@ -114,7 +114,7 @@ describe('Caché del último catálogo remoto válido', () => {
 
   it('guarda la versión publicada de cada canción y la devuelve igual', () => {
     const storage = memoryStorage();
-    const versioned = [{ ...REMOTE_97[0], version: 3 }, REMOTE_97[1]];
+    const versioned = [{ ...REMOTE_SONGS[0], version: 3 }, REMOTE_SONGS[1]];
     eq(createCatalogCache(storage, PROJECT).write(versioned), true);
     const stored = JSON.parse(storage.data.get(CATALOG_CACHE_KEY)!);
     eq([stored.version, stored.rows[0].current_version, stored.rows[1].current_version], [2, 3, 1]);
@@ -143,16 +143,16 @@ describe('Caché del último catálogo remoto válido', () => {
     eq(JSON.parse(storage.data.get('genesaret_setlists')!).setlists[0].items[0].songId, 'huracan-hakuna');
     eq(JSON.parse(storage.data.get('genesaret_performance_history')!).records.length, 1);
     // Y en cuanto vuelve la conexión, la respuesta remota la reemplaza.
-    cache.write(REMOTE_97, new Date('2026-09-20T05:00:00Z'));
-    eq(cache.read()?.songs.length, REMOTE_97.length);
+    cache.write(REMOTE_SONGS, new Date('2026-09-20T05:00:00Z'));
+    eq(cache.read()?.songs.length, REMOTE_SONGS.length);
   });
 
   it('sin espacio, demasiado grande o sin almacenamiento: no se guarda y nada se rompe', () => {
     const full = { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError'); } };
-    eq(createCatalogCache(full, PROJECT).write(REMOTE_97), false);
+    eq(createCatalogCache(full, PROJECT).write(REMOTE_SONGS), false);
     const huge: Song[] = [{ ...NEW_SONG, content: 'x'.repeat(MAX_CATALOG_CACHE_BYTES) }];
     eq(createCatalogCache(memoryStorage(), PROJECT).write(huge), false);
-    eq(createCatalogCache(null, PROJECT).write(REMOTE_97), false);
+    eq(createCatalogCache(null, PROJECT).write(REMOTE_SONGS), false);
     eq(createCatalogCache(null, PROJECT).read(), null);
     eq(createCatalogCache(memoryStorage(), PROJECT).write([]), false);
   });
@@ -163,18 +163,18 @@ describe('Caché del último catálogo remoto válido', () => {
 describe('Una sola fuente completa a la vez', () => {
   it('incluido sin caché → remoto: primero las incluidas, luego el remoto, y la caché queda guardada', async () => {
     const storage = memoryStorage();
-    const remote = fakeRemote([...REMOTE_97, NEW_SONG]);
+    const remote = fakeRemote([...REMOTE_SONGS, NEW_SONG]);
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: remote.repository, cache: createCatalogCache(storage, PROJECT) });
-    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().songs.length], ['bundled', 'idle', 97]);
+    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().songs.length], ['bundled', 'idle', 110]);
     await store.refresh({ force: true });
-    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().songs.length], ['remote', 'ok', 98]);
-    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 98);
+    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().songs.length], ['remote', 'ok', 111]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 111);
   });
 
   it('caché → remoto idéntico: mismas canciones, mismos objetos, nada vuelve a pintarse', async () => {
     const storage = memoryStorage();
-    createCatalogCache(storage, PROJECT).write(REMOTE_97);
-    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote(REMOTE_97).repository, cache: createCatalogCache(storage, PROJECT) });
+    createCatalogCache(storage, PROJECT).write(REMOTE_SONGS);
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote(REMOTE_SONGS).repository, cache: createCatalogCache(storage, PROJECT) });
     const before = store.getSnapshot();
     eq(before.source, 'cache');
     await store.refresh({ force: true });
@@ -185,8 +185,8 @@ describe('Una sola fuente completa a la vez', () => {
 
   it('caché → remoto actualizado: aparece la canción nueva y la caché se reemplaza', async () => {
     const storage = memoryStorage();
-    createCatalogCache(storage, PROJECT).write(REMOTE_97);
-    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_97, NEW_SONG]).repository, cache: createCatalogCache(storage, PROJECT) });
+    createCatalogCache(storage, PROJECT).write(REMOTE_SONGS);
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_SONGS, NEW_SONG]).repository, cache: createCatalogCache(storage, PROJECT) });
     await store.refresh({ force: true });
     eq(store.getSnapshot().byId.get(NEW_SONG.id), NEW_SONG);
     eq(createCatalogCache(storage, PROJECT).read()?.songs.some((song) => song.id === NEW_SONG.id), true);
@@ -194,24 +194,24 @@ describe('Una sola fuente completa a la vez', () => {
 
   it('caché → Supabase caído: se sigue mostrando la caché (con la canción solo remota) y la caché no se toca', async () => {
     const storage = memoryStorage();
-    createCatalogCache(storage, PROJECT).write([...REMOTE_97, NEW_SONG], new Date('2026-09-19T05:00:00Z'));
+    createCatalogCache(storage, PROJECT).write([...REMOTE_SONGS, NEW_SONG], new Date('2026-09-19T05:00:00Z'));
     const saved = storage.data.get(CATALOG_CACHE_KEY);
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote(new Error('503')).repository, cache: createCatalogCache(storage, PROJECT) });
     await store.refresh({ force: true });
     const snapshot = store.getSnapshot();
-    eq([snapshot.source, snapshot.remote, snapshot.savedAt, snapshot.songs.length], ['cache', 'failed', '2026-09-19T05:00:00.000Z', 98]);
+    eq([snapshot.source, snapshot.remote, snapshot.savedAt, snapshot.songs.length], ['cache', 'failed', '2026-09-19T05:00:00.000Z', 111]);
     eq(store.availability(NEW_SONG.id), 'available');
     eq(storage.data.get(CATALOG_CACHE_KEY), saved);
   });
 
-  it('incluido → Supabase caído: siguen las 97 incluidas, avisando del fallo', async () => {
+  it('incluido → Supabase caído: siguen las 110 incluidas, avisando del fallo', async () => {
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote(new Error('503')).repository, cache: createCatalogCache(memoryStorage(), PROJECT) });
     await store.refresh({ force: true });
-    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().songs.length], ['bundled', 'failed', 97]);
+    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().songs.length], ['bundled', 'failed', 110]);
   });
 
   it('remoto cargado → el siguiente refresco falla o llega vacío: nada de lo que había se pierde', async () => {
-    const remote = fakeRemote([...REMOTE_97, NEW_SONG]);
+    const remote = fakeRemote([...REMOTE_SONGS, NEW_SONG]);
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: remote.repository, cache: null });
     await store.refresh({ force: true });
     const loaded = store.getSnapshot().songs;
@@ -225,32 +225,32 @@ describe('Una sola fuente completa a la vez', () => {
 
   it('una respuesta vacía nunca reemplaza un catálogo válido ni la caché', async () => {
     const storage = memoryStorage();
-    createCatalogCache(storage, PROJECT).write(REMOTE_97);
+    createCatalogCache(storage, PROJECT).write(REMOTE_SONGS);
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([]).repository, cache: createCatalogCache(storage, PROJECT) });
     await store.refresh({ force: true });
-    eq([store.getSnapshot().source, store.getSnapshot().songs.length], ['cache', 97]);
-    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 97);
+    eq([store.getSnapshot().source, store.getSnapshot().songs.length], ['cache', 110]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 110);
   });
 
-  it('97 incluidas + 97 remotas = 97 visibles, y el remoto manda', async () => {
-    const edited = { ...REMOTE_97[0], title: `${REMOTE_97[0].title} (corregida)` };
-    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([edited, ...REMOTE_97.slice(1)]).repository, cache: null });
+  it('110 incluidas + 110 remotas = 110 visibles, y el remoto manda', async () => {
+    const edited = { ...REMOTE_SONGS[0], title: `${REMOTE_SONGS[0].title} (corregida)` };
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([edited, ...REMOTE_SONGS.slice(1)]).repository, cache: null });
     await store.refresh({ force: true });
-    eq(store.getSnapshot().songs.length, 97);
+    eq(store.getSnapshot().songs.length, 110);
     eq(ids(store), BUNDLED_IDS);
     eq(store.getSnapshot().byId.get(edited.id)?.title, edited.title);
   });
 
   it('una canción oculta en Supabase no reaparece desde las incluidas', async () => {
-    const hidden = REMOTE_97[5].id;
-    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote(REMOTE_97.filter((song) => song.id !== hidden)).repository, cache: null });
+    const hidden = REMOTE_SONGS[5].id;
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote(REMOTE_SONGS.filter((song) => song.id !== hidden)).repository, cache: null });
     await store.refresh({ force: true });
-    eq([store.getSnapshot().songs.length, store.getSnapshot().byId.has(hidden)], [96, false]);
+    eq([store.getSnapshot().songs.length, store.getSnapshot().byId.has(hidden)], [109, false]);
     eq(store.availability(hidden), 'missing');
   });
 
   it('todas las fuentes en el mismo orden: pasar al remoto no reordena nada', async () => {
-    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_97].reverse()).repository, cache: null });
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_SONGS].reverse()).repository, cache: null });
     const before = store.getSnapshot().songs.map((song) => song.id);
     await store.refresh({ force: true });
     eq(store.getSnapshot().songs.map((song) => song.id), before);
@@ -266,13 +266,13 @@ describe('Disponibilidad de una canción por su id', () => {
     eq(store.availability(NEW_SONG.id), 'unverified');
     eq(unavailableText(store.availability(NEW_SONG.id)), 'No disponible sin conexión');
     eq(store.availability(MOCK_SONGS[0].id), 'available');
-    remote.set(REMOTE_97);
+    remote.set(REMOTE_SONGS);
     await store.refresh({ force: true });
     eq([store.availability(NEW_SONG.id), unavailableText('missing')], ['missing', 'Ya no está en el cancionero']);
   });
 
   it('un setlist resuelve una canción solo remota con el mismo mapa que el resto de la app', async () => {
-    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_97, NEW_SONG]).repository, cache: null });
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_SONGS, NEW_SONG]).repository, cache: null });
     const setlist = { items: [{ id: 'item-1', songId: NEW_SONG.id }] } as unknown as Parameters<typeof getFirstPlayableItem>[0];
     const playable = (item: { songId: string }) => store.getSnapshot().byId.has(item.songId);
     eq(getFirstPlayableItem(setlist, playable), null);
@@ -281,7 +281,7 @@ describe('Disponibilidad de una canción por su id', () => {
   });
 
   it('búsqueda y categorías incluyen la canción aprobada en cuanto llega', async () => {
-    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_97, NEW_SONG]).repository, cache: null });
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_SONGS, NEW_SONG]).repository, cache: null });
     const empty = { categories: [], artists: [], keys: [], seasons: [] } as unknown as Parameters<typeof searchSongs>[2];
     eq(searchSongs(store.getSnapshot().searchIndex, 'canción nueva aprobada', empty).some((match) => match.song.id === NEW_SONG.id), false);
     await store.refresh({ force: true });
@@ -293,7 +293,7 @@ describe('Disponibilidad de una canción por su id', () => {
 describe('Refrescos y vuelta atrás', () => {
   it('como máximo uno por intervalo salvo forzado, y dos a la vez comparten la misma petición', async () => {
     let clock = 0;
-    const remote = fakeRemote(REMOTE_97);
+    const remote = fakeRemote(REMOTE_SONGS);
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: remote.repository, cache: null, minIntervalMs: 1000, now: () => clock });
     await Promise.all([store.refresh({ force: true }), store.refresh({ force: true })]);
     eq(remote.calls(), 1);
@@ -308,7 +308,7 @@ describe('Refrescos y vuelta atrás', () => {
 
   it('el lector remoto se carga una sola vez, en el primer refresco', async () => {
     let loads = 0;
-    const remote = fakeRemote(REMOTE_97);
+    const remote = fakeRemote(REMOTE_SONGS);
     const store = createCatalogStore({
       bundled: MOCK_SONGS,
       remote: async () => {
@@ -331,10 +331,10 @@ describe('Refrescos y vuelta atrás', () => {
       ['bundled', 'bundled', 'bundled', 'bundled', 'remote', 'remote', 'bundled', 'bundled']
     );
     const storage = memoryStorage();
-    createCatalogCache(storage, PROJECT).write([...REMOTE_97, NEW_SONG]);
+    createCatalogCache(storage, PROJECT).write([...REMOTE_SONGS, NEW_SONG]);
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: null, cache: createCatalogCache(storage, PROJECT) });
     await store.refresh({ force: true });
-    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().songs.length], ['bundled', 'disabled', 97]);
+    eq([store.getSnapshot().source, store.getSnapshot().remote, store.getSnapshot().songs.length], ['bundled', 'disabled', 110]);
     eq(store.availability(NEW_SONG.id), 'missing');
   });
 });
@@ -382,86 +382,86 @@ describe('Catálogo remoto: una sola fuente, entera o ninguna', () => {
     return [snapshot.configuredSource, snapshot.source, snapshot.remote, snapshot.fallbackReason, snapshot.songs.length];
   };
   /** A remote answer that is not a catalog: one row that can't be read. */
-  const withBrokenSong = [...REMOTE_97.slice(0, 3), { id: 'rota', title: 'Rota' } as unknown as Song];
+  const withBrokenSong = [...REMOTE_SONGS.slice(0, 3), { id: 'rota', title: 'Rota' } as unknown as Song];
 
   it('1. bundled explícito: no pregunta a Supabase ni lee la caché', async () => {
-    const storage = cacheWith([...REMOTE_97, NEW_SONG]);
-    const remote = fakeRemote([...REMOTE_97, NEW_SONG]);
+    const storage = cacheWith([...REMOTE_SONGS, NEW_SONG]);
+    const remote = fakeRemote([...REMOTE_SONGS, NEW_SONG]);
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: null, cache: createCatalogCache(storage, PROJECT) });
     await store.refresh({ force: true });
-    eq(state(store), ['bundled', 'bundled', 'disabled', null, 97]);
+    eq(state(store), ['bundled', 'bundled', 'disabled', null, 110]);
     eq(remote.calls(), 0);
     eq(store.availability(NEW_SONG.id), 'missing');
   });
 
   it('2, 16. remote válido: se usa y se guarda en la caché', async () => {
     const storage = memoryStorage();
-    const store = storeOn(REMOTE_97, storage);
+    const store = storeOn(REMOTE_SONGS, storage);
     await store.refresh({ force: true });
-    eq(state(store), ['remote', 'remote', 'ok', null, 97]);
-    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 97);
+    eq(state(store), ['remote', 'remote', 'ok', null, 110]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 110);
   });
 
   it('3, 4, 17, 25. el catálogo remoto se usa entero y tal cual: ni se le suman las incluidas ni se repite nada', async () => {
-    const bigger = [...REMOTE_97, NEW_SONG, { ...NEW_SONG, id: 'otra-aprobada', title: 'Otra aprobada' }];
+    const bigger = [...REMOTE_SONGS, NEW_SONG, { ...NEW_SONG, id: 'otra-aprobada', title: 'Otra aprobada' }];
     const store = storeOn(bigger, memoryStorage());
     await store.refresh({ force: true });
     const snapshot = store.getSnapshot();
-    eq([snapshot.source, snapshot.songs.length], ['remote', 99]);
+    eq([snapshot.source, snapshot.songs.length], ['remote', 112]);
     eq(snapshot.songs.length, new Set(snapshot.songs.map((song) => song.id)).size, 'sin duplicados');
     eq(snapshot.byId.has(NEW_SONG.id), true);
 
     // Un catálogo remoto más corto que el incluido tampoco se completa con él.
-    const shorter = storeOn(REMOTE_97.slice(0, 5), null);
+    const shorter = storeOn(REMOTE_SONGS.slice(0, 5), null);
     await shorter.refresh({ force: true });
-    eq(shorter.getSnapshot().songs.map((song) => song.id).sort(), REMOTE_97.slice(0, 5).map((song) => song.id).sort());
+    eq(shorter.getSnapshot().songs.map((song) => song.id).sort(), REMOTE_SONGS.slice(0, 5).map((song) => song.id).sort());
   });
 
   it('5, 26. red caída o lenta con caché válida: se usa la caché, y la caché sigue intacta', async () => {
-    const storage = cacheWith([...REMOTE_97, NEW_SONG]);
+    const storage = cacheWith([...REMOTE_SONGS, NEW_SONG]);
     const store = storeOn(new Error('sin red'), storage);
-    eq(state(store), ['remote', 'cache', 'idle', null, 98], 'la caché se muestra desde el primer render');
+    eq(state(store), ['remote', 'cache', 'idle', null, 111], 'la caché se muestra desde el primer render');
     await store.refresh({ force: true });
-    eq(state(store), ['remote', 'cache', 'failed', 'error', 98]);
-    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 98, 'no se borró por fallar la petición');
+    eq(state(store), ['remote', 'cache', 'failed', 'error', 111]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 111, 'no se borró por fallar la petición');
 
-    const slow = storeOn('never', cacheWith(REMOTE_97), { timeoutMs: 10 });
+    const slow = storeOn('never', cacheWith(REMOTE_SONGS), { timeoutMs: 10 });
     await slow.refresh({ force: true });
-    eq(state(slow), ['remote', 'cache', 'failed', 'timeout', 97]);
+    eq(state(slow), ['remote', 'cache', 'failed', 'timeout', 110]);
   });
 
   it('6. red caída sin caché: las canciones incluidas', async () => {
     const store = storeOn(new Error('sin red'), memoryStorage());
     await store.refresh({ force: true });
-    eq(state(store), ['remote', 'bundled', 'failed', 'error', 97]);
+    eq(state(store), ['remote', 'bundled', 'failed', 'error', 110]);
     eq(store.getSnapshot().byId.has(NEW_SONG.id), false);
   });
 
   it('7, 15. respuesta remota inválida con caché válida: se usa la caché y no se sobrescribe', async () => {
-    const storage = cacheWith([...REMOTE_97, NEW_SONG]);
+    const storage = cacheWith([...REMOTE_SONGS, NEW_SONG]);
     const store = storeOn(withBrokenSong, storage);
     await store.refresh({ force: true });
-    eq(state(store), ['remote', 'cache', 'failed', 'invalid', 98]);
-    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 98, 'la caché buena sigue ahí');
+    eq(state(store), ['remote', 'cache', 'failed', 'invalid', 111]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 111, 'la caché buena sigue ahí');
 
     // Ids repetidos: lo mismo.
-    const repeated = storeOn([...REMOTE_97, REMOTE_97[0]], cacheWith(REMOTE_97));
+    const repeated = storeOn([...REMOTE_SONGS, REMOTE_SONGS[0]], cacheWith(REMOTE_SONGS));
     await repeated.refresh({ force: true });
-    eq(state(repeated), ['remote', 'cache', 'failed', 'invalid', 97]);
+    eq(state(repeated), ['remote', 'cache', 'failed', 'invalid', 110]);
   });
 
   it('8, 9, 10, 11. caché inválida, corrupta, de otro formato o ilegible: las canciones incluidas', async () => {
     const corrupt = memoryStorage({ [CATALOG_CACHE_KEY]: '{roto' });
     const store = storeOn(withBrokenSong, corrupt);
     await store.refresh({ force: true });
-    eq(state(store), ['remote', 'bundled', 'failed', 'invalid', 97]);
+    eq(state(store), ['remote', 'bundled', 'failed', 'invalid', 110]);
 
     const unknownFormat = memoryStorage({
-      [CATALOG_CACHE_KEY]: JSON.stringify({ version: 99, projectUrl: PROJECT, savedAt: 'x', rows: REMOTE_97.map(songToRow) }),
+      [CATALOG_CACHE_KEY]: JSON.stringify({ version: 99, projectUrl: PROJECT, savedAt: 'x', rows: REMOTE_SONGS.map(songToRow) }),
     });
     const other = storeOn(new Error('sin red'), unknownFormat);
     await other.refresh({ force: true });
-    eq(state(other), ['remote', 'bundled', 'failed', 'error', 97]);
+    eq(state(other), ['remote', 'bundled', 'failed', 'error', 110]);
 
     const throwing = {
       getItem: () => {
@@ -471,7 +471,7 @@ describe('Catálogo remoto: una sola fuente, entera o ninguna', () => {
     };
     const blocked = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote(new Error('sin red')).repository, cache: createCatalogCache(throwing, PROJECT) });
     await blocked.refresh({ force: true });
-    eq(state(blocked), ['remote', 'bundled', 'failed', 'error', 97]);
+    eq(state(blocked), ['remote', 'bundled', 'failed', 'error', 110]);
   });
 
   it('12. si no se puede escribir la caché, el catálogo remoto se usa igual', async () => {
@@ -481,22 +481,22 @@ describe('Catálogo remoto: una sola fuente, entera o ninguna', () => {
         throw new Error('QuotaExceededError');
       },
     };
-    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_97, NEW_SONG]).repository, cache: createCatalogCache(readOnly, PROJECT) });
+    const store = createCatalogStore({ bundled: MOCK_SONGS, remote: fakeRemote([...REMOTE_SONGS, NEW_SONG]).repository, cache: createCatalogCache(readOnly, PROJECT) });
     await store.refresh({ force: true });
-    eq(state(store), ['remote', 'remote', 'ok', null, 98]);
+    eq(state(store), ['remote', 'remote', 'ok', null, 111]);
   });
 
   it('13, 14. lo que no es un catálogo se rechaza entero', () => {
     eq(validateCatalogSnapshot([]), { ok: false, reason: 'empty' });
-    eq(validateCatalogSnapshot([REMOTE_97[0], REMOTE_97[0]]).ok, false, 'id repetido');
-    eq(validateCatalogSnapshot([REMOTE_97[0], null]).ok, false, 'entrada vacía');
-    eq(validateCatalogSnapshot([{ ...REMOTE_97[0], id: '' }]).ok, false, 'id vacío');
-    eq(validateCatalogSnapshot([{ ...REMOTE_97[0], content: undefined } as unknown as Song]).ok, false, 'sin letra');
-    eq(validateCatalogSnapshot([{ ...REMOTE_97[0], tags: 'no' } as unknown as Song]).ok, false, 'etiquetas que no son lista');
-    eq(validateCatalogSnapshot([{ ...REMOTE_97[0], version: 0 }]).ok, false, 'versión imposible');
-    eq(validateCatalogSnapshot([{ ...REMOTE_97[0], version: 1.5 }]).ok, false, 'versión decimal');
-    eq(validateCatalogSnapshot(REMOTE_97).ok, true);
-    eq(validateCatalogSnapshot([{ ...REMOTE_97[0], version: 4 }]).ok, true);
+    eq(validateCatalogSnapshot([REMOTE_SONGS[0], REMOTE_SONGS[0]]).ok, false, 'id repetido');
+    eq(validateCatalogSnapshot([REMOTE_SONGS[0], null]).ok, false, 'entrada vacía');
+    eq(validateCatalogSnapshot([{ ...REMOTE_SONGS[0], id: '' }]).ok, false, 'id vacío');
+    eq(validateCatalogSnapshot([{ ...REMOTE_SONGS[0], content: undefined } as unknown as Song]).ok, false, 'sin letra');
+    eq(validateCatalogSnapshot([{ ...REMOTE_SONGS[0], tags: 'no' } as unknown as Song]).ok, false, 'etiquetas que no son lista');
+    eq(validateCatalogSnapshot([{ ...REMOTE_SONGS[0], version: 0 }]).ok, false, 'versión imposible');
+    eq(validateCatalogSnapshot([{ ...REMOTE_SONGS[0], version: 1.5 }]).ok, false, 'versión decimal');
+    eq(validateCatalogSnapshot(REMOTE_SONGS).ok, true);
+    eq(validateCatalogSnapshot([{ ...REMOTE_SONGS[0], version: 4 }]).ok, true);
   });
 
   it('14. una fila ilegible del servidor no se esconde: invalida la respuesta', async () => {
@@ -514,12 +514,12 @@ describe('Catálogo remoto: una sola fuente, entera o ninguna', () => {
   it('18, 19, 20. al pasar a remoto, los datos de este navegador siguen resolviendo', async () => {
     const favorites = ['huracan-hakuna', 'alfarero'];
     const setlistSongIds = ['sencillamente-dios', NEW_SONG.id];
-    const store = storeOn([...REMOTE_97, NEW_SONG], memoryStorage());
+    const store = storeOn([...REMOTE_SONGS, NEW_SONG], memoryStorage());
     const bundledIds = store.getSnapshot().songs.map((song) => song.id).sort();
     await store.refresh({ force: true });
     const snapshot = store.getSnapshot();
 
-    // Los 97 ids históricos son exactamente los mismos.
+    // Los 110 ids históricos son exactamente los mismos.
     eq(snapshot.songs.filter((song) => song.id !== NEW_SONG.id).map((song) => song.id).sort(), bundledIds);
     eq(favorites.every((id) => snapshot.byId.has(id)), true, 'favoritas');
     eq(setlistSongIds.every((id) => snapshot.byId.has(id)), true, 'entradas de Setlist, incluida la canción solo remota');
@@ -527,8 +527,8 @@ describe('Catálogo remoto: una sola fuente, entera o ninguna', () => {
   });
 
   it('21, 22. la versión publicada viaja hasta la propuesta de edición', async () => {
-    const published = { ...REMOTE_97[0], version: 4 };
-    const store = storeOn([published, ...REMOTE_97.slice(1)], memoryStorage());
+    const published = { ...REMOTE_SONGS[0], version: 4 };
+    const store = storeOn([published, ...REMOTE_SONGS.slice(1)], memoryStorage());
     await store.refresh({ force: true });
     const song = store.getSnapshot().byId.get(published.id)!;
     eq(song.version, 4, 'Song.version es current_version, no un 1 inventado');
@@ -592,16 +592,16 @@ describe('Un catálogo remoto se acepta entero y con su versión', () => {
 
   it('una respuesta con la versión rota no reemplaza una caché buena', async () => {
     const storage = memoryStorage();
-    createCatalogCache(storage, PROJECT).write([...REMOTE_97, NEW_SONG]);
-    const withoutVersion = REMOTE_97.map(({ version: _dropped, ...song }) => song as Song);
+    createCatalogCache(storage, PROJECT).write([...REMOTE_SONGS, NEW_SONG]);
+    const withoutVersion = REMOTE_SONGS.map(({ version: _dropped, ...song }) => song as Song);
     const store = createCatalogStore({
       bundled: MOCK_SONGS,
       remote: fakeRemote(withoutVersion).repository,
       cache: createCatalogCache(storage, PROJECT),
     });
     await store.refresh({ force: true });
-    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['cache', 'invalid', 98]);
-    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 98, 'la caché buena sigue entera');
+    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['cache', 'invalid', 111]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 111, 'la caché buena sigue entera');
   });
 
   it('un catálogo que no cabe en las páginas que se piden no se da por bueno', async () => {
@@ -647,11 +647,11 @@ describe('Un catálogo remoto se acepta entero y con su versión', () => {
     // Mientras no hay respuesta, lo que se abrió se sigue leyendo.
     eq(songOnScreen(store, retirada.id, retirada)?.id, retirada.id);
 
-    remote.set(REMOTE_97.filter((song) => song.id !== retirada.id));
+    remote.set(REMOTE_SONGS.filter((song) => song.id !== retirada.id));
     await store.refresh({ force: true });
     eq(store.getSnapshot().source, 'remote');
     eq(songOnScreen(store, retirada.id, retirada), null, 'retirada: no se sigue mostrando la versión incluida');
-    eq(songOnScreen(store, REMOTE_97[1].id, null)?.id, REMOTE_97[1].id, 'las demás se leen del catálogo activo');
+    eq(songOnScreen(store, REMOTE_SONGS[1].id, null)?.id, REMOTE_SONGS[1].id, 'las demás se leen del catálogo activo');
     eq(songOnScreen(store, null, retirada), null);
   });
 });
@@ -742,18 +742,18 @@ describe('Una fila del catálogo es lo que la base de datos promete', () => {
     ]);
   });
 
-  it('las 97 incluidas cumplen el contrato: la frontera no endurece el cancionero', () => {
+  it('las 110 incluidas cumplen el contrato: la frontera no endurece el cancionero', () => {
     const problems = MOCK_SONGS.map((song) => catalogRowProblem({ ...songToRow(song), current_version: 1 })).filter(Boolean);
     eq(problems, [], 'las canciones que trae la app no pasarían por la frontera remota');
     // Y dan la vuelta entera: guardadas en la caché, se leen igual.
     const cache = createCatalogCache(memoryStorage(), PROJECT);
-    eq(cache.write(REMOTE_97), true);
-    eq(cache.read()?.songs.length, 97);
+    eq(cache.write(REMOTE_SONGS), true);
+    eq(cache.read()?.songs.length, 110);
   });
 
   it('remota inválida, caché buena: se queda la caché, intacta', async () => {
     const storage = memoryStorage();
-    createCatalogCache(storage, PROJECT).write(REMOTE_97);
+    createCatalogCache(storage, PROJECT).write(REMOTE_SONGS);
     const badRemote: SongRepository = {
       source: 'remote',
       listSongs: () => createSupabaseSongRepository(rowsOf([rowOf({ original_key: 4 as unknown as string })])).listSongs(),
@@ -761,8 +761,8 @@ describe('Una fila del catálogo es lo que la base de datos promete', () => {
     };
     const store = createCatalogStore({ bundled: MOCK_SONGS, remote: badRemote, cache: createCatalogCache(storage, PROJECT) });
     await store.refresh({ force: true });
-    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['cache', 'invalid', 97]);
-    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 97, 'la caché buena no se toca');
+    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['cache', 'invalid', 110]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 110, 'la caché buena no se toca');
   });
 
   it('remota inválida sin caché: las incluidas; caché inválida: las incluidas', async () => {
@@ -780,7 +780,7 @@ describe('Una fila del catálogo es lo que la base de datos promete', () => {
     eq(rota.read(), null);
     const conCacheRota = createCatalogStore({ bundled: MOCK_SONGS, remote: failingRemote, cache: rota });
     await conCacheRota.refresh({ force: true });
-    eq([conCacheRota.getSnapshot().source, conCacheRota.getSnapshot().songs.length], ['bundled', 97]);
+    eq([conCacheRota.getSnapshot().source, conCacheRota.getSnapshot().songs.length], ['bundled', 110]);
   });
 
   it('remota válida: se usa, y se guarda para la próxima vez', async () => {
@@ -788,7 +788,7 @@ describe('Una fila del catálogo es lo que la base de datos promete', () => {
     const rows = MOCK_SONGS.map((song) => ({ ...songToRow(song), current_version: 1 }));
     const store = createCatalogStore({ bundled: [], remote: createSupabaseSongRepository(rowsOf(rows)), cache: createCatalogCache(storage, PROJECT) });
     await store.refresh({ force: true });
-    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['remote', null, 97]);
-    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 97);
+    eq([store.getSnapshot().source, store.getSnapshot().fallbackReason, store.getSnapshot().songs.length], ['remote', null, 110]);
+    eq(createCatalogCache(storage, PROJECT).read()?.songs.length, 110);
   });
 });

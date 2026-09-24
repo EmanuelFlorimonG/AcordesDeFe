@@ -3013,4 +3013,327 @@ Dibujó mi cabeza, mi oreja también
 Dibujó mi nariz, mi boca también
 Soy el dibujo perfecto de Dios`
   }
+,
+  {
+    id: 'vamos-claretianos',
+    title: 'Vamos Claretianos',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Vamos Claretianos a evangelizar,
+él Hijo de Dios se quiere entregar
+y mostrar su rostro a los sencillos,
+démosle la oportunidad.
+
+En las calles, háblales,
+por las casas cántales,
+en el barrio ámales
+con el amor de Dios.
+
+Faltan muchos niños por catequizar
+y a muchos hogares no llega el pan,
+hemos de servirle como a Cristo,
+démosle la oportunidad.
+
+Viven los enfermos en la soledad,
+grita el carcelero: “no caben más”.
+El cristiano debe dar un signo,
+démosle la oportunidad.`
+  },
+  {
+    id: 'la-fuerza-del-espiritu',
+    title: 'La Fuerza del Espíritu',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `La fuerza del Espíritu mueve a Claret
+a ser en todo tiempo testigo de la fe. (bis)
+
+María inmaculada le prende el corazón
+y abraza a todo el mundo brindándole su amor.
+
+Desea que los hombres conozcan al Señor,
+procura que se nutran con el divino amor.
+
+Sufre y nada le arredra si sufre por amor,
+asume la renuncia, se alegra en el dolor.
+
+Acepta las calumnias, derrama su perdón,
+la cruz de Jesucristo es gloria y es honor.
+
+Trabajo y sufrimiento, su fuente de oración,
+le lleva a las almas, a darle gloria a Dios.`
+  },
+  {
+    id: 'danza-claretiana',
+    title: 'Danza Claretiana',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Su voz llevaba la Palabra,
+su pecho un sagrario fue.
+Cruzó por mares y montañas
+sembrando el reino de la fe.
+Tuvo que dejar familia y bienes,
+fue a navegar por otros mares.
+Escuchó la Palabra de Dios, cuando le cuestionó:
+
+¿Qué aprovecha al hombre ganar el mundo entero
+si al final se pierde la vida y el reino?
+
+Dejó el telar por la Palabra,
+cambió su don por la misión.
+Dejó sus bienes por los pobres,
+a quienes dio su corazón.
+Fue a predicar a nobles gentes,
+tuvo que vivir entre palacios,
+pero no se dejó envanecer.
+Siempre se cuestionó:
+
+¿Qué aprovecha al hombre...?`
+  },
+  {
+    id: 'claret-fuego-ardiente',
+    title: 'Claret Fuego Ardiente',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Claret fuego ardiente,
+Claret siempre orante,
+Claret obediente
+a la voluntad del Padre.
+
+Misionero incansable,
+catequista perenne,
+hermano y amigo,
+fiel y creyente.
+
+Obrero del Reino,
+profeta valiente,
+pastor humilde,
+hijo obediente.
+
+Testigo de Cristo,
+mártir viviente,
+voz de los pobres,
+fuego ardiente.`
+  },
+  {
+    id: 'claret-misionero-de-luz',
+    title: 'Claret Misionero de Luz',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Es Claret misionero de luz,
+es Claret misionero de sol,
+con su vara y su cayado ejemplo nos dio. (bis)
+
+Entregaba todo su amor,
+no le importaba raza o color,
+para hacer el bien Dios le envió, Dios le envió.
+
+A los pobres de corazón el camino les enseñó,
+solo busca a Cristo en su interior, en su interior.
+
+A los niños también amó,
+por los enfermos también oró,
+todas sus plegarias Dios escuchó.
+
+En cada pueblo que visitó,
+su misión divina les dejó,
+es una gran familia la Congregación, su congregación.`
+  },
+  {
+    id: 'consagracion-filial',
+    title: 'Consagración Filial',
+    categories: ['Otros'],
+    tags: ['Claret', 'María'],
+    chordsUsed: [],
+    content: `Nos consagramos a tu amor materno
+para que encarnes a Jesús en nuestras vidas
+y nos formes en tu seno misionero,
+renovando nuestras fuerzas cada día.
+Y nos formes en tu seno misionero,
+corazón inmaculado de María.
+
+Madre, fórmanos en tu corazón,
+Madre, envíanos;
+Madre, habla por nosotros,
+ama por nosotros.
+
+Enséñanos a escuchar la Palabra
+y a guardarla como tú en el corazón,
+para ser tierra fecunda y cultivada
+que da fruto cada año al sembrador;
+para ser tierra fecunda y cultivada,
+trigo limpio y Evangelio vivo de Dios.`
+  },
+  {
+    id: 'claret-cristiano-de-fuego',
+    title: 'Claret Cristiano de Fuego',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Claret cristiano de fuego,
+pobre, casto y compasivo,
+misionero al rojo vivo,
+con afanes de andariego
+y ardor de contemplativo.
+
+Este es aquel siervo bueno
+que sus talentos dobló,
+que muerto al mundo vivió
+y como un hijo del trueno,
+que sus talentos dobló,
+que muerto al mundo vivió,
+y como un hijo del trueno,
+de oriente a poniente ardió.
+
+Era una flecha certera
+que va al blanco con pasión:
+tenía en el corazón
+de su Madre y Medianera,
+que va al blanco con pasión,
+tenía en el corazón
+de su Madre y Medianera,
+de su Madre y Medianera,
+la aljaba de su ilusión.`
+  },
+  {
+    id: 'himno-a-claret',
+    title: 'Himno a Claret',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Pasó el Señor cruzando tu camino
+y al verte por tu nombre te llamó,
+para hacerte testigo de su Reino
+como fiel mensajero de su voz.
+Y tú pasabas mares y montañas
+proclamando el mensaje del amor,
+llegaste hasta las islas más lejanas
+anunciando a los hombres el perdón.
+
+Claret, voz peregrina
+que va sembrando la gran noticia, la salvación,
+no importan razas ni pueblos,
+sólo hay un Padre, sólo un Señor.
+Claret, desde tu vida
+Dios nos señala nuestra tarea, nuestra misión.
+Vamos siguiendo tus huellas
+gritando al mundo: Dios es Amor.
+
+La luz del Evangelio fue tu rumbo,
+tu vida Cristo mismo la llenó,
+y la hiciste llegar hasta los hombres
+como el Hijo de María se nos dio.
+Nosotros seguiremos tus caminos,
+como nueva familia del Señor.
+Queremos ser también la luz del mundo,
+levadura de vida y salvación.`
+  },
+  {
+    id: 'misionero-ideal',
+    title: 'Misionero Ideal',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Misionero ideal, oh, Claret mi buen amigo,
+por el mundo voy contigo al encuentro del Señor.
+
+Quisiera ser como tú,
+trabajar todo el día en la viña del Señor,
+que otro use mis redes, que otro use el telar,
+mi denario, mi herencia: el rostro de Dios.
+
+Quisiera ser como tú,
+recorrer los caminos con un fuego interior,
+arrastrar a los hombres tras un gran ideal
+y decirle a las islas el paso de Dios.
+
+Quisiera ser como tú,
+y sentir la ternura del materno corazón;
+que me envíe su brazo a los pueblos del Sur
+y me diga al oído: “Tu Madre soy yo”.`
+  },
+  {
+    id: 'el-padre-claret',
+    title: 'El Padre Claret',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `El Padre Claret, ay ombe, ay ombe,
+el Padre Claret. (bis)
+
+Fuiste fabricante de la vocación
+y a todos los hombres les mostraba a Dios.
+
+A los campos de España fuiste a misionar
+y hoy somos el fruto de tu caminar.
+
+Somos tus testigos, somos tus hermanos,
+somos el futuro de los Claretianos.
+A María Madre tú nos enseñaste,
+para que la amemos como tú la amaste.`
+  },
+  {
+    id: 'un-cantar-para-claret',
+    title: 'Un Cantar para Claret',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `San Antonio María Claret,
+a las Antillas tú llegaste,
+San Antonio María Claret,
+a Cristo nos enseñaste
+y es nuestro deber enseñar lo que tú enseñaste
+y es nuestro deber tratarte de imitar.
+
+Gracias Padre, gracias por la vida entregada,
+gloria a ti y al cielo por dejarnos una esperanza.
+
+El mundo actual de odio y de guerra,
+el mundo actual no tiene esperanza;
+y la juventud de hoy la ilusión quiere entregar,
+la ilusión que tú nos diste en tu vida terrenal.`
+  },
+  {
+    id: 'los-claretianos-unidos',
+    title: 'Los Claretianos Unidos',
+    artist: 'Martín Delgado y Francis Serrano',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Los claretianos unidos, por el amor, por el amor,
+son misioneros de Cristo y del perdón, y del perdón.
+
+La familia unida con Claret
+va camino del año 2000,
+la esperanza es su bandera
+y la fe su espalda que nada doblega. (bis)
+
+Porque Claret es nuestro amigo de corazón, de corazón,
+es nuestro guía divino gracias a Dios, gracias a Dios.
+
+La familia unida con Claret... (bis)`
+  },
+  {
+    id: 'como-claret-misionero-quiero-ser',
+    title: 'Como Claret Misionero Quiero Ser',
+    categories: ['Otros'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `Como Claret, misionero quiero ser,
+misionero quiero ser como Claret. (bis)
+
+Andando por los caminos
+predicó el Padre Claret.
+Yo quiero seguir sus huellas,
+misionero quiero ser.
+
+Fue Claret hombre de fuego,
+testigo del Dios de amor,
+tuvo por madre a María
+y su corazón amó.`
+  }
 ];

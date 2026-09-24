@@ -165,16 +165,29 @@ describe('Las canciones del cancionero', () => {
     }
   });
 
-  it('91 clasificadas y 6 pendientes de revisar', () => {
+  it('91 clasificadas y 19 pendientes de revisar', () => {
     const unclassified = MOCK_SONGS.filter((song) => getSongSeasons(song).length === 0).map((song) => song.id);
-    eq(MOCK_SONGS.length, 97);
+    eq(MOCK_SONGS.length, 110);
     eq(unclassified.sort(), [
+      'claret-cristiano-de-fuego',
+      'claret-fuego-ardiente',
+      'claret-misionero-de-luz',
+      'como-claret-misionero-quiero-ser',
+      'consagracion-filial',
+      'danza-claretiana',
+      'el-padre-claret',
       'gloria-a-dios-en-el-cielo-pascua',
+      'himno-a-claret',
+      'la-fuerza-del-espiritu',
       'llegara-con-la-luz',
+      'los-claretianos-unidos',
       'mi-amigo-claret',
+      'misionero-ideal',
       'que-alegria-cuando-me-dijeron',
       'salve-regina',
       'siempre-es-pentecostes',
+      'un-cantar-para-claret',
+      'vamos-claretianos',
     ]);
     eq(MOCK_SONGS.filter(isAllYearSong).length, 78);
   });

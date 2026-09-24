@@ -429,7 +429,7 @@ describe('Del editor a la canción', () => {
       else failing.push(song.id);
     }
     eq(failing, [], 'letra, acordes y repeticiones idénticos');
-    eq(exact, 97);
+    eq(exact, 110);
   });
 
   it('un documento guardado se lee con cuidado', () => {
@@ -922,7 +922,7 @@ describe('Sugerir una edición de una canción publicada', () => {
     eq(createSongDraftStore(storage).load(key)?.previous, [{ document, version: 1 }]);
   });
 
-  it('abrir cualquiera de las 97 y enviar sin tocar nada no propone ningún cambio', () => {
+  it('abrir cualquiera de las 110 y enviar sin tocar nada no propone ningún cambio', () => {
     const differ: string[] = [];
     for (const catalogSong of MOCK_SONGS) {
       const published = songToDraft(catalogSong);
@@ -999,7 +999,7 @@ describe('Editar una parte no cambia las demás', () => {
     return contentToEditor(content, meta);
   };
 
-  it('abrir y volver a escribir las 97 deja la misma estructura', () => {
+  it('abrir y volver a escribir las 110 deja la misma estructura', () => {
     const differ: string[] = [];
     for (const catalogSong of MOCK_SONGS) {
       const published = songToDraft(catalogSong);
@@ -1010,7 +1010,7 @@ describe('Editar una parte no cambia las demás', () => {
     checks += 96;
   });
 
-  it('recuperar el borrador guardado de cualquiera de las 97 no propone ningún cambio', () => {
+  it('recuperar el borrador guardado de cualquiera de las 110 no propone ningún cambio', () => {
     const differ: string[] = [];
     for (const catalogSong of MOCK_SONGS) {
       const published = songToDraft(catalogSong);
@@ -1031,7 +1031,7 @@ describe('Editar una parte no cambia las demás', () => {
     checks += 96;
   });
 
-  it('cambiar solo el tempo, o solo los datos, no toca la música de las 97', () => {
+  it('cambiar solo el tempo, o solo los datos, no toca la música de las 110', () => {
     const differ: string[] = [];
     for (const catalogSong of MOCK_SONGS) {
       const published = songToDraft(catalogSong);
@@ -1364,7 +1364,7 @@ describe('Un acorde nunca parte un signo', () => {
     }
   });
 
-  it('las 97 incluidas: cada acorde ya está en un borde de signo', () => {
+  it('las 110 incluidas: cada acorde ya está en un borde de signo', () => {
     for (const song of MOCK_SONGS) {
       for (const section of contentToEditor(song.content, emptySongMeta(), idSequence(song.id)).sections) {
         for (const entry of section.lines) {

@@ -72,11 +72,11 @@ const draftOf = (overrides: Partial<SongDraft> = {}): SongDraft => ({
 // --- The catalog as it is -------------------------------------------------------
 
 describe('Catálogo incluido: nada cambia', () => {
-  it('las 97 canciones, en el mismo orden y con los mismos ids', async () => {
+  it('las 110 canciones, en el mismo orden y con los mismos ids', async () => {
     eq(bundledSongRepository.source, 'bundled');
-    eq(bundledSongRepository.getAll().length, 97);
+    eq(bundledSongRepository.getAll().length, 110);
     eq(bundledSongRepository.getAll().map((song) => song.id), MOCK_SONGS.map((song) => song.id));
-    eq((await bundledSongRepository.listSongs()).length, 97);
+    eq((await bundledSongRepository.listSongs()).length, 110);
     eq(await bundledSongRepository.getSong('sencillamente-dios'), MOCK_SONGS.find((song) => song.id === 'sencillamente-dios'));
     eq(await bundledSongRepository.getSong('no-existe'), null);
     eq(bundledSongRepository.getAll()[0], MOCK_SONGS[0], 'los mismos objetos: SongViewer recibe exactamente lo mismo');
@@ -85,7 +85,7 @@ describe('Catálogo incluido: nada cambia', () => {
   it('listSongs devuelve una copia: nadie puede alterar el catálogo', async () => {
     const list = await bundledSongRepository.listSongs();
     list.pop();
-    eq(bundledSongRepository.getAll().length, 97);
+    eq(bundledSongRepository.getAll().length, 110);
   });
 
   it('la búsqueda da los mismos resultados leyendo del repositorio', () => {
@@ -103,10 +103,10 @@ describe('Catálogo incluido: nada cambia', () => {
   it('todos los ids se pueden importar tal cual a la base de datos', () => {
     for (const song of MOCK_SONGS) assert.ok(isSongId(song.id), song.id);
     checks++;
-    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 97, 'sin ids repetidos');
+    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 110, 'sin ids repetidos');
   });
 
-  it('las 97 canciones pasan la validación sin errores (las restricciones SQL son las mismas)', () => {
+  it('las 110 canciones pasan la validación sin errores (las restricciones SQL son las mismas)', () => {
     const failing = MOCK_SONGS.map((song) => ({ id: song.id, result: validateSongDraft(songToDraft(song)) })).filter(
       (entry) => !entry.result.ok
     );
@@ -117,12 +117,12 @@ describe('Catálogo incluido: nada cambia', () => {
 // --- Lossless conversions ------------------------------------------------------------
 
 describe('Conversiones sin pérdida', () => {
-  it('Song → Draft → Song, para las 97', () => {
+  it('Song → Draft → Song, para las 110', () => {
     for (const song of MOCK_SONGS) assert.deepStrictEqual(draftToSong(songToDraft(song), song.id), song, song.id);
     checks++;
   });
 
-  it('Song → fila SQL → Song, para las 97', () => {
+  it('Song → fila SQL → Song, para las 110', () => {
     for (const song of MOCK_SONGS) {
       // The only difference allowed: youtubeId "" ("no video") is stored as null and comes back absent.
       const expected = { ...song };
@@ -580,7 +580,7 @@ describe('Repositorios de Supabase (preparados)', () => {
 // --- Transition: backend first, bundled catalog as safety net ----------------------------
 
 describe('Catálogo remoto: solo traer y comprobar', () => {
-  /** The 97 as the backend hands them over: each one with its published version. */
+  /** The 110 as the backend hands them over: each one with its published version. */
   const published = (songs: Song[]) => songs.map((song) => ({ ...song, version: 1 }));
   const remoteWith = (songs: Song[] | Error | 'never'): SongRepository => ({
     source: 'remote',

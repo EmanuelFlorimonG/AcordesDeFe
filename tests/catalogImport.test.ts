@@ -12,8 +12,8 @@ const eq = (actual: unknown, expected: unknown) => {
 after(() => console.log(`catalogImport: ${checks} comprobaciones`));
 
 describe('Auditoría de las canciones incluidas antes de importarlas', () => {
-  it('97 canciones, ningún id repetido, todas cumplen las restricciones de la tabla', () => {
-    eq(auditCatalogRows(MOCK_SONGS), { total: 97, duplicateIds: [], invalidRows: [] });
+  it('110 canciones, ningún id repetido, todas cumplen las restricciones de la tabla', () => {
+    eq(auditCatalogRows(MOCK_SONGS), { total: 110, duplicateIds: [], invalidRows: [] });
   });
 
   it('la auditoría detecta lo que la base de datos rechazaría', () => {
@@ -33,12 +33,12 @@ describe('SQL de importación', () => {
   const sql = buildCatalogImportSql(MOCK_SONGS, { dryRun: false, source: 'test' });
   const dry = buildCatalogImportSql(MOCK_SONGS, { dryRun: true, source: 'test' });
 
-  it('lleva los 97 ids exactamente como están, y comprueba cada columna al leerla', () => {
+  it('lleva los 110 ids exactamente como están, y comprueba cada columna al leerla', () => {
     const rows = JSON.parse(sql.slice(sql.indexOf('$rows$') + 6, sql.lastIndexOf('$rows$')));
-    eq(rows.length, 97);
+    eq(rows.length, 110);
     eq(rows.map((row: { id: string }) => row.id), MOCK_SONGS.map((song) => song.id));
     eq(rows[0], songToRow(MOCK_SONGS[0]));
-    eq(sql.includes('v_expected constant integer := 97'), true);
+    eq(sql.includes('v_expected constant integer := 110'), true);
     eq(sql.includes('s.content is not distinct from x.content'), true);
     eq(sql.includes('GENESARET:import:ids_taken'), true);
   });
