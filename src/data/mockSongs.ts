@@ -3315,7 +3315,7 @@ y la fe su espalda que nada doblega. (bis)
 Porque Claret es nuestro amigo de corazón, de corazón,
 es nuestro guía divino gracias a Dios, gracias a Dios.
 
-La familia unida con Claret... (bis)`
+La familia...`
   },
   {
     id: 'como-claret-misionero-quiero-ser',
