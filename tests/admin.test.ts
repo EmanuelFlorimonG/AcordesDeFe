@@ -1,7 +1,8 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { AuthApiError, AuthRetryableFetchError, type SupabaseClient as SupabaseJsClient } from '@supabase/supabase-js';
-import { checkSignInForm, resolveAccess, type AdminSession } from '../src/admin/auth';
+import { resolveAccess } from '../src/admin/auth';
+import { checkSignInForm, hasStoredSession, type AppSession } from '../src/auth/session';
 import { EditorialError, createEditorialRepository, toEditorialError } from '../src/admin/editorialRepository';
 import { suggestNewSongId, songIdProblem } from '../src/admin/review';
 import { adminHash, isAdminHash, parseAdminRoute, sectionOf } from '../src/admin/routes';
@@ -9,11 +10,12 @@ import { matchesSubmission } from '../src/admin/search';
 import { compareSongs, lineToText } from '../src/admin/songDiff';
 import { emptySongDraft, type SongDraft } from '../src/catalog/songDraft';
 import { songDraftChanges } from '../src/catalog/submission';
-import { createSupabaseAdminAuth } from '../src/admin/supabaseAuth';
+import { createSupabaseAuth } from '../src/auth/supabaseSession';
 import { SupabaseRequestError, createSupabaseClient, readSupabaseConfig, type SupabaseClient } from '../src/lib/supabase';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { canOpenAdminPanel, hasStoredEditorialSession } from '../src/admin/editorialSession';
+import { canOpenAdminPanel } from '../src/admin/useEditorialRole';
 import { Sidebar } from '../src/components/Layout/Sidebar';
 import { AdminLayout } from '../src/components/Admin/AdminLayout';
 
@@ -26,7 +28,7 @@ after(() => console.log(`admin: ${checks} comprobaciones`));
 
 const USER = '6f1c2a4e-8b3d-4c5e-9f70-1a2b3c4d5e6f';
 const SUBMISSION = '0f8fad5b-d9cb-469f-a165-70867728950e';
-const session: AdminSession = { userId: USER, email: 'equipo@example.com' };
+const session: AppSession = { userId: USER, email: 'equipo@example.com' };
 
 // --- Routes -------------------------------------------------------------------------
 
@@ -130,7 +132,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 describe('Sesión con Supabase Auth', () => {
   it('login correcto: sesión con id y correo; el token solo sale para las peticiones', async () => {
     const { js, calls } = fakeSupabaseJs();
-    const auth = createSupabaseAdminAuth(js);
+    const auth = createSupabaseAuth(js);
     eq(await auth.currentSession(), null);
     eq(await auth.accessToken(), null);
     eq(await auth.signIn(' equipo@example.com ', 'secreta'), { ok: true, session });
@@ -147,7 +149,7 @@ describe('Sesión con Supabase Auth', () => {
       [new Error('raro'), 'unavailable'],
     ];
     for (const [error, reason] of cases) {
-      const auth = createSupabaseAdminAuth(fakeSupabaseJs({ signIn: () => error }).js);
+      const auth = createSupabaseAuth(fakeSupabaseJs({ signIn: () => error }).js);
       eq(await auth.signIn('equipo@example.com', 'mala'), { ok: false, reason });
       eq(await auth.currentSession(), null);
     }
@@ -155,13 +157,13 @@ describe('Sesión con Supabase Auth', () => {
 
   it('restaurar al recargar: la sesión guardada vuelve sin pedir la contraseña', async () => {
     const { js } = fakeSupabaseJs({ stored: { user: { id: USER, email: 'equipo@example.com' }, access_token: 't' } });
-    eq(await createSupabaseAdminAuth(js).currentSession(), session);
+    eq(await createSupabaseAuth(js).currentSession(), session);
   });
 
   it('logout: cierra la sesión local y avisa a quien escucha (fuera del callback de Supabase)', async () => {
     const { js, calls } = fakeSupabaseJs();
-    const auth = createSupabaseAdminAuth(js);
-    const seen: Array<AdminSession | null> = [];
+    const auth = createSupabaseAuth(js);
+    const seen: Array<AppSession | null> = [];
     const unsubscribe = auth.subscribe((value) => seen.push(value));
     await auth.signIn('equipo@example.com', 'secreta');
     await auth.signOut();
@@ -599,16 +601,16 @@ describe('Sesión editorial en el cancionero', () => {
   });
 
   it('la pista de que hay sesión: sólo lo que Supabase guarda, y nada más', () => {
-    eq(hasStoredEditorialSession(storageWith(storedSession)), true);
-    eq(hasStoredEditorialSession(storageWith(JSON.stringify({ refresh_token: 'solo-refresh' }))), true);
-    eq(hasStoredEditorialSession(storageWith(null)), false, 'un visitante no tiene nada guardado');
-    eq(hasStoredEditorialSession(storageWith('')), false);
-    eq(hasStoredEditorialSession(storageWith('{no es json')), false);
-    eq(hasStoredEditorialSession(storageWith('null')), false);
-    eq(hasStoredEditorialSession(storageWith(JSON.stringify({ access_token: 42 }))), false);
-    eq(hasStoredEditorialSession(storageWith(JSON.stringify({ isAdmin: true, role: 'admin' }))), false, 'una bandera inventada no es una sesión');
-    eq(hasStoredEditorialSession(blockedStorage), false, 'con el almacenamiento bloqueado, como si no hubiera sesión');
-    eq(hasStoredEditorialSession(null), false);
+    eq(hasStoredSession(storageWith(storedSession)), true);
+    eq(hasStoredSession(storageWith(JSON.stringify({ refresh_token: 'solo-refresh' }))), true);
+    eq(hasStoredSession(storageWith(null)), false, 'un visitante no tiene nada guardado');
+    eq(hasStoredSession(storageWith('')), false);
+    eq(hasStoredSession(storageWith('{no es json')), false);
+    eq(hasStoredSession(storageWith('null')), false);
+    eq(hasStoredSession(storageWith(JSON.stringify({ access_token: 42 }))), false);
+    eq(hasStoredSession(storageWith(JSON.stringify({ isAdmin: true, role: 'admin' }))), false, 'una bandera inventada no es una sesión');
+    eq(hasStoredSession(blockedStorage), false, 'con el almacenamiento bloqueado, como si no hubiera sesión');
+    eq(hasStoredSession(null), false);
   });
 
   it('el camino al panel se abre sólo con un rol que confirma la base de datos', () => {
@@ -624,7 +626,7 @@ describe('Sesión editorial en el cancionero', () => {
   it('el navegador no concede el rol: lo concede la base de datos', async () => {
     // Una sesión inventada en el almacenamiento pasa la pista…
     const forged = storageWith(JSON.stringify({ access_token: 'inventado', user: { id: USER } }));
-    eq(hasStoredEditorialSession(forged), true, 'la pista sólo decide si vale la pena preguntar');
+    eq(hasStoredSession(forged), true, 'la pista sólo decide si vale la pena preguntar');
     // …y no obtiene nada, porque el rol lo responde la base de datos con RLS.
     eq(canOpenAdminPanel(await resolveAccess(session, async () => null)), false);
     eq(canOpenAdminPanel(await resolveAccess(session, async () => 'superadmin')), false, 'un rol que no existe no vale');
@@ -634,9 +636,26 @@ describe('Sesión editorial en el cancionero', () => {
 
   it('una sesión caducada o cerrada deja de abrir el panel', async () => {
     // Cerrar sesión borra lo que Supabase guardaba: la próxima lectura no ve nada…
-    eq(hasStoredEditorialSession(storageWith(null)), false);
+    eq(hasStoredSession(storageWith(null)), false);
     // …y mientras tanto, el propio Auth avisa con una sesión nula.
     eq(await resolveAccess(null, async () => 'admin'), { state: 'signed-out' });
+  });
+
+  it('un solo cliente de Supabase Auth en todo el proyecto', () => {
+    // Dos clientes con la misma clave de almacenamiento se pelean por el mismo
+    // refresh token y terminan cerrando sesiones al azar. Debe haber uno.
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) walk(path);
+        else if (/\.tsx?$/.test(entry.name)) files.push(path);
+      }
+    };
+    walk('src');
+    eq(files.filter((file) => readFileSync(file, 'utf8').includes('createClient(')), ['src/auth/supabaseSession.ts'], 'sólo la capa compartida crea el cliente de Auth');
+    const keys = files.filter((file) => readFileSync(file, 'utf8').includes("'genesaret_admin_auth'"));
+    eq(keys, ['src/auth/session.ts'], 'y la clave de la sesión se declara una sola vez');
   });
 
   it('sin Supabase configurado, el cancionero sigue funcionando', () => {

@@ -1,11 +1,11 @@
 import React, { useId, useState } from 'react';
 import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
-import { SIGN_IN_MESSAGES, checkSignInForm, type AdminAuth } from '../../admin/auth';
+import { SIGN_IN_MESSAGES, checkSignInForm, type AppAuth } from '../../auth/session';
 import { fieldLabel, primaryButton, textField } from '../Setlists/ui';
 import { AdminCentered } from './AdminCentered';
 
 interface AdminLoginProps {
-  auth: AdminAuth;
+  auth: AppAuth;
 }
 
 /**

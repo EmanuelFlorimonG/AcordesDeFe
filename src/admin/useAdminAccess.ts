@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { resolveAccess, type AdminAccess, type AdminSession } from './auth';
+import { resolveAccess, type AdminAccess } from './auth';
+import type { AppSession } from '../auth/session';
 import type { EditorialRepository } from './editorialRepository';
-import type { AdminServices } from './supabaseAuth';
+import type { AppServices } from '../auth/supabaseSession';
 
 /**
- * The panel's access, kept in step with Supabase Auth: restored from the
- * stored session on load, updated on sign-in, sign-out and expiry. The role
- * is asked again only when the user changes, not on every token refresh.
+ * The editorial access of whoever is signed in, kept in step with Supabase
+ * Auth: restored from the stored session on load, updated on sign-in,
+ * sign-out and expiry. The role is asked again only when the user changes,
+ * not on every token refresh.
  */
-export function useAdminAccess(services: AdminServices | null, repository: EditorialRepository | null): {
+export function useAdminAccess(services: AppServices | null, repository: EditorialRepository | null): {
   access: AdminAccess;
   recheck: () => void;
 } {
@@ -22,7 +24,7 @@ export function useAdminAccess(services: AdminServices | null, repository: Edito
     let sequence = 0;
     let lastUser: string | null | undefined;
 
-    const apply = async (session: AdminSession | null) => {
+    const apply = async (session: AppSession | null) => {
       const userId = session?.userId ?? null;
       if (cancelled || userId === lastUser) return;
       lastUser = userId;

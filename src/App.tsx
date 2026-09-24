@@ -33,7 +33,7 @@ import {
 } from './app/lazyScreens';
 import { parseSuggestEditHash, suggestEditHash } from './catalog/editAvailability';
 import { adminHash } from './admin/routes';
-import { canOpenAdminPanel, useEditorialAccess } from './admin/editorialSession';
+import { canOpenAdminPanel, useEditorialRole } from './admin/useEditorialRole';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
@@ -144,10 +144,10 @@ export function App() {
   /**
    * Whether whoever is reading the songbook signed in at #/admin and still
    * has a valid session: the only thing it changes here is a quiet way back
-   * into the panel (see editorialSession.ts). Nothing editorial is shown, and
+   * into the panel (see useEditorialRole.ts). Nothing editorial is shown, and
    * the database still decides everything.
    */
-  const editorialAccess = useEditorialAccess();
+  const editorialAccess = useEditorialRole();
   /** The code in #/propuesta/<code>, if any */
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
   /** The song in #/song/<id>/sugerir */

@@ -1,26 +1,25 @@
 import { createClient, isAuthApiError, isAuthRetryableFetchError, type Session, type SupabaseClient as SupabaseJsClient } from '@supabase/supabase-js';
 import { createSupabaseClient, getSupabaseStatus, type SupabaseClient, type SupabaseConfig } from '../lib/supabase';
-import type { AdminAuth, AdminSession, SignInFailure } from './auth';
-import { ADMIN_AUTH_STORAGE_KEY } from './editorialSession';
+import { AUTH_STORAGE_KEY, type AppAuth, type AppSession, type SignInFailure } from './session';
 
 /**
- * Supabase Auth for the admin panel, and the data client that goes with it.
+ * Supabase Auth for the whole app, and the data client that goes with it.
  *
- * This file is only imported by the admin screens (lazy), so the public app
- * never downloads supabase-js. One instance of each, created on first use:
+ * The one and only place where a Supabase Auth client is created. Two clients
+ * sharing a storage key fight over the same refresh token and end up signing
+ * people out at random, so there is exactly one, made on first use and kept:
  *   - the Supabase JS client, used ONLY for Auth (sign-in, session storage,
  *     token refresh, sign-out);
  *   - the project's own REST client (src/lib/supabase.ts), the same one the
- *     public side uses, carrying the reviewer's access token so Row Level
- *     Security applies to them.
+ *     public side uses, carrying the signed-in user's access token so Row
+ *     Level Security applies to them.
  * Both use the public anon/publishable key; nothing secret reaches the browser.
+ *
+ * This file is the heavy half (it brings supabase-js with it), so it is only
+ * ever imported dynamically: a visitor with no session never downloads it.
  */
 
-// Where Supabase keeps the session in this browser. It lives in the light
-// module so the songbook can look for it without downloading supabase-js.
-export { ADMIN_AUTH_STORAGE_KEY } from './editorialSession';
-
-function toSession(session: Session | null): AdminSession | null {
+function toSession(session: Session | null): AppSession | null {
   return session?.user ? { userId: session.user.id, email: session.user.email ?? null } : null;
 }
 
@@ -34,7 +33,7 @@ function toFailure(error: unknown): SignInFailure {
   return 'unavailable';
 }
 
-export function createSupabaseAdminAuth(js: SupabaseJsClient): AdminAuth {
+export function createSupabaseAuth(js: SupabaseJsClient): AppAuth {
   return {
     async currentSession() {
       const { data, error } = await js.auth.getSession();
@@ -68,33 +67,33 @@ export function createSupabaseAdminAuth(js: SupabaseJsClient): AdminAuth {
   };
 }
 
-export interface AdminServices {
-  auth: AdminAuth;
-  /** REST client acting as the signed-in reviewer */
+export interface AppServices {
+  auth: AppAuth;
+  /** REST client acting as the signed-in user: Row Level Security applies to them */
   data: SupabaseClient;
 }
 
-let services: AdminServices | null | undefined;
+let services: AppServices | null | undefined;
 
-export function createAdminServices(config: SupabaseConfig): AdminServices {
+export function createAppServices(config: SupabaseConfig): AppServices {
   const js = createClient(config.url, config.anonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       // No magic links or OAuth: nothing to read from the URL (the app uses its hash for routes).
       detectSessionInUrl: false,
-      storageKey: ADMIN_AUTH_STORAGE_KEY,
+      storageKey: AUTH_STORAGE_KEY,
     },
   });
-  const auth = createSupabaseAdminAuth(js);
+  const auth = createSupabaseAuth(js);
   return { auth, data: createSupabaseClient(config, fetch, { accessToken: () => auth.accessToken() }) };
 }
 
-/** The panel's services, created once; null when this build has no Supabase. */
-export function getAdminServices(): AdminServices | null {
+/** The app's Auth and data client, created once; null when this build has no Supabase. */
+export function getAppServices(): AppServices | null {
   if (services === undefined) {
     const status = getSupabaseStatus();
-    services = status.state === 'configured' ? createAdminServices(status.config) : null;
+    services = status.state === 'configured' ? createAppServices(status.config) : null;
   }
   return services;
 }

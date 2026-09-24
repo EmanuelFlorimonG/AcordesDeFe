@@ -3,7 +3,7 @@ import { LoaderCircle, LogOut } from 'lucide-react';
 import { createEditorialRepository, type EditorialRepository } from '../../admin/editorialRepository';
 import { adminHash, parseAdminRoute, sectionOf, type AdminRoute } from '../../admin/routes';
 import type { EditorialRole } from '../../catalog/reviewContract';
-import { getAdminServices } from '../../admin/supabaseAuth';
+import { getAppServices } from '../../auth/supabaseSession';
 import { useAdminAccess } from '../../admin/useAdminAccess';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { secondaryButton } from '../Setlists/ui';
@@ -29,7 +29,7 @@ const readHash = () => window.location.hash;
  * it. Visitors are never asked to sign in; only this address has a sign-in.
  */
 const AdminApp: React.FC = () => {
-  const services = useMemo(() => getAdminServices(), []);
+  const services = useMemo(() => getAppServices(), []);
   const repository = useMemo(() => (services ? createEditorialRepository(services.data) : null), [services]);
   const { access, recheck } = useAdminAccess(services, repository);
   const hash = useSyncExternalStore(subscribeToHash, readHash);
