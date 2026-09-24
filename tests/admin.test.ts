@@ -28,7 +28,14 @@ after(() => console.log(`admin: ${checks} comprobaciones`));
 
 const USER = '6f1c2a4e-8b3d-4c5e-9f70-1a2b3c4d5e6f';
 const SUBMISSION = '0f8fad5b-d9cb-469f-a165-70867728950e';
-const session: AppSession = { userId: USER, email: 'equipo@example.com' };
+const session: AppSession = { userId: USER, email: 'equipo@example.com', displayName: 'Equipo', emailConfirmed: true };
+/** A user as Supabase hands it over: its name lives in its own metadata. */
+const FAKE_USER = (email: string) => ({
+  id: USER,
+  email,
+  user_metadata: { display_name: 'Equipo' },
+  email_confirmed_at: '2026-01-01T00:00:00.000Z',
+});
 
 // --- Routes -------------------------------------------------------------------------
 
@@ -107,7 +114,7 @@ function fakeSupabaseJs(options: { signIn?: () => unknown; stored?: unknown } = 
     },
     async signInWithPassword(credentials: { email: string; password: string }) {
       calls.push(`signIn:${credentials.email}`);
-      const result = options.signIn?.() ?? { user: { id: USER, email: credentials.email }, access_token: 'jwt-de-prueba' };
+      const result = options.signIn?.() ?? { user: FAKE_USER(credentials.email), access_token: 'jwt-de-prueba' };
       if (result instanceof Error) return { data: { session: null, user: null }, error: result };
       stored = result;
       listeners.forEach((listener) => listener('SIGNED_IN', stored));
@@ -156,7 +163,7 @@ describe('Sesión con Supabase Auth', () => {
   });
 
   it('restaurar al recargar: la sesión guardada vuelve sin pedir la contraseña', async () => {
-    const { js } = fakeSupabaseJs({ stored: { user: { id: USER, email: 'equipo@example.com' }, access_token: 't' } });
+    const { js } = fakeSupabaseJs({ stored: { user: FAKE_USER('equipo@example.com'), access_token: 't' } });
     eq(await createSupabaseAuth(js).currentSession(), session);
   });
 

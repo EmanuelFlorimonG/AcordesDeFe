@@ -5,8 +5,10 @@ import { getCatalogStore, refreshCatalog, useCatalog } from './catalog/useCatalo
 import { songOnScreen } from './catalog/catalogStore';
 import {
   About,
+  AccountDialog,
   AuthorsView,
   CalendarView,
+  CatalogFallbackNotice,
   CategoriesView,
   Contact,
   EventDetail,
@@ -16,24 +18,26 @@ import {
   MemberDetail,
   MemberFormDialog,
   MembersView,
+  NewPasswordScreen,
   PerformanceDetail,
   PlaylistsView,
   PrivacyPolicy,
+  ProposalEditScreen,
   SetlistDetail,
   SetlistsView,
+  SongEditProposalScreen,
   SongEditorScreen,
+  SongUnavailableScreen,
+  SongViewer,
   TermsConditions,
   TrackingScreen,
-  SongViewer,
   prefetchSongViewer,
-  CatalogFallbackNotice,
-  SongUnavailableScreen,
-  ProposalEditScreen,
-  SongEditProposalScreen,
 } from './app/lazyScreens';
 import { parseSuggestEditHash, suggestEditHash } from './catalog/editAvailability';
 import { adminHash } from './admin/routes';
 import { canOpenAdminPanel, useEditorialRole } from './admin/useEditorialRole';
+import { useSession } from './auth/useSession';
+import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
@@ -104,7 +108,9 @@ type AppPage =
   | 'tracking'
   | 'proposalEdit'
   /** Suggesting an edit of a published song: #/song/<id>/sugerir */
-  | 'songEdit';
+  | 'songEdit'
+  /** Setting a new password, after the link from the recovery mail */
+  | 'newPassword';
 
 /** The public editor: #/canciones/nueva */
 const NEW_SONG_ROUTE = '#/canciones/nueva';
@@ -148,6 +154,9 @@ export function App() {
    * the database still decides everything.
    */
   const editorialAccess = useEditorialRole();
+  /** Who is reading, if anyone signed in. An account is optional everywhere. */
+  const sessionState = useSession();
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
   /** The code in #/propuesta/<code>, if any */
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
   /** The song in #/song/<id>/sugerir */
@@ -341,6 +350,10 @@ export function App() {
 
       if (hash === '#/privacidad') {
         setPage('privacy');
+        return;
+      }
+      if (hash === NEW_PASSWORD_HASH) {
+        setPage('newPassword');
         return;
       }
       if (hash === NEW_SONG_ROUTE) {
@@ -1258,6 +1271,8 @@ export function App() {
 
   const renderContent = () => {
     switch (page) {
+      case 'newPassword':
+        return <NewPasswordScreen onDone={handleBackToDashboard} />;
       case 'privacy':
         return <PrivacyPolicy onBack={handleBackToDashboard} />;
       case 'terms':
@@ -1441,7 +1456,24 @@ export function App() {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
         onOpenAdmin={canOpenAdminPanel(editorialAccess) ? () => navigateTo(adminHash.overview()) : undefined}
+        session={sessionState.state === 'signed-in' ? sessionState.session : null}
+        isSessionLoading={sessionState.state === 'loading'}
+        onOpenAccount={() => setIsAccountOpen(true)}
       />
+
+      {isAccountOpen && (
+        <Suspense fallback={null}>
+          <AccountDialog
+            session={sessionState.state === 'signed-in' ? sessionState.session : null}
+            editorial={canOpenAdminPanel(editorialAccess)}
+            onOpenAdmin={() => {
+              setIsAccountOpen(false);
+              navigateTo(adminHash.overview());
+            }}
+            onClose={() => setIsAccountOpen(false)}
+          />
+        </Suspense>
+      )}
 
       <div className="flex flex-col flex-grow min-w-0">
         <Topbar

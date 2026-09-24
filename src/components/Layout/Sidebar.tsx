@@ -1,5 +1,6 @@
 import React from 'react';
-import { Cross, ListMusic, ListOrdered, Heart, Tags, Users, UserRound, CalendarDays, History, ListPlus, ShieldCheck, Sun, Moon, X, Quote } from 'lucide-react';
+import { Cross, ListMusic, ListOrdered, Heart, Tags, Users, UserRound, CalendarDays, History, ListPlus, LogIn, ShieldCheck, Sun, Moon, X, Quote } from 'lucide-react';
+import { initialOf, nameOf, type AppSession } from '../../auth/session';
 
 export type SidebarSection =
   | 'cancionero'
@@ -25,6 +26,11 @@ interface SidebarProps {
    * else, which is almost everyone, and the songbook looks the same as ever.
    */
   onOpenAdmin?: () => void;
+  /** Whoever signed in, or null. An account is optional: everything works without one. */
+  session?: AppSession | null;
+  /** A session is being restored: the row waits instead of saying the wrong thing */
+  isSessionLoading?: boolean;
+  onOpenAccount?: () => void;
 }
 
 const NAV_ITEMS: Array<{ id: SidebarSection; label: string; icon: React.ElementType }> = [
@@ -47,6 +53,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
   onOpenAdmin,
+  session = null,
+  isSessionLoading = false,
+  onOpenAccount,
 }) => {
   const content = (
     <div className="flex flex-col h-full w-full">
@@ -106,6 +115,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
             Salmo 96, 1
           </p>
         </div>
+
+        {onOpenAccount && (
+          <button
+            onClick={onOpenAccount}
+            aria-label={session ? `Tu cuenta, ${nameOf(session)}` : isSessionLoading ? 'Comprobando tu sesión' : 'Iniciar sesión'}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 mb-2 min-h-[44px] rounded-lg border border-slate-200 dark:border-dark-700 text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-[#2464ED] hover:text-[#2464ED] dark:hover:text-sky-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
+          >
+            {session ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#EAF1FF] dark:bg-blue-500/15 text-[11px] font-bold text-[#1D56D6] dark:text-sky-300"
+                >
+                  {initialOf(session)}
+                </span>
+                <span className="truncate">{nameOf(session)}</span>
+              </>
+            ) : isSessionLoading ? (
+              <>
+                <span aria-hidden="true" className="h-6 w-6 shrink-0 rounded-full bg-slate-100 dark:bg-dark-800" />
+                <span aria-hidden="true" className="h-3 w-24 rounded bg-slate-100 dark:bg-dark-800" />
+                <span className="sr-only">Comprobando tu sesión</span>
+              </>
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                Iniciar sesión
+              </>
+            )}
+          </button>
+        )}
 
         {onOpenAdmin && (
           <button

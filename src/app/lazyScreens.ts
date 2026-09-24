@@ -10,7 +10,8 @@ import { lazy } from 'react';
  * request would cost more than it saves.
  *
  * The public song editor (phase 6B) and the admin panel (phase 6C) go here
- * too, so visitors who only read songs never download them.
+ * too, so visitors who only read songs never download them. So do the account
+ * screens: an account is optional, and nobody pays for one they never open.
  */
 
 export const SetlistsView = lazy(() =>
@@ -99,4 +100,11 @@ export const ProposalEditScreen = lazy(() =>
 );
 export const SongEditProposalScreen = lazy(() =>
   import('../components/Submissions/SongEditProposalScreen').then((module) => ({ default: module.SongEditProposalScreen }))
+);
+
+export const AccountDialog = lazy(() =>
+  import('../components/Account/AccountDialog').then((module) => ({ default: module.AccountDialog }))
+);
+export const NewPasswordScreen = lazy(() =>
+  import('../components/Account/NewPasswordScreen').then((module) => ({ default: module.NewPasswordScreen }))
 );
