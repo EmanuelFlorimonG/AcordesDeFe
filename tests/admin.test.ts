@@ -10,11 +10,16 @@ import { compareSongs, lineToText } from '../src/admin/songDiff';
 import { emptySongDraft, type SongDraft } from '../src/catalog/songDraft';
 import { songDraftChanges } from '../src/catalog/submission';
 import { createSupabaseAdminAuth } from '../src/admin/supabaseAuth';
-import { SupabaseRequestError, createSupabaseClient, type SupabaseClient } from '../src/lib/supabase';
+import { SupabaseRequestError, createSupabaseClient, readSupabaseConfig, type SupabaseClient } from '../src/lib/supabase';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { canOpenAdminPanel, hasStoredEditorialSession } from '../src/admin/editorialSession';
+import { Sidebar } from '../src/components/Layout/Sidebar';
+import { AdminLayout } from '../src/components/Admin/AdminLayout';
 
 let checks = 0;
-const eq = (actual: unknown, expected: unknown) => {
-  assert.deepEqual(actual, expected);
+const eq = (actual: unknown, expected: unknown, message?: string) => {
+  assert.deepEqual(actual, expected, message);
   checks++;
 };
 after(() => console.log(`admin: ${checks} comprobaciones`));
@@ -570,5 +575,122 @@ describe('Comparación publicada | propuesta', () => {
   it('las líneas vuelven a la notación del cancionero con los acordes en su sitio', () => {
     eq(lineToText({ kind: 'lyrics', text: 'Señor, quiero', chords: [{ at: 0, chord: 'G' }, { at: 7, chord: 'D/F#' }] }), '[G]Señor, [D/F#]quiero');
     eq(lineToText({ kind: 'lyrics', text: '', chords: [{ at: 0, chord: 'G' }, { at: 0, chord: 'D' }] }), '[G][D]');
+  });
+});
+
+// --- The editorial session, seen from the songbook ----------------------------------
+
+describe('Sesión editorial en el cancionero', () => {
+  const storageWith = (value: string | null) => ({
+    getItem: () => value,
+    setItem: () => {},
+  });
+  const blockedStorage = {
+    getItem: () => {
+      throw new Error('storage bloqueado');
+    },
+    setItem: () => {},
+  };
+  const storedSession = JSON.stringify({
+    access_token: 'ey.fake.token',
+    refresh_token: 'refresh',
+    expires_at: 4102444800,
+    user: { id: USER, email: 'equipo@example.com' },
+  });
+
+  it('la pista de que hay sesión: sólo lo que Supabase guarda, y nada más', () => {
+    eq(hasStoredEditorialSession(storageWith(storedSession)), true);
+    eq(hasStoredEditorialSession(storageWith(JSON.stringify({ refresh_token: 'solo-refresh' }))), true);
+    eq(hasStoredEditorialSession(storageWith(null)), false, 'un visitante no tiene nada guardado');
+    eq(hasStoredEditorialSession(storageWith('')), false);
+    eq(hasStoredEditorialSession(storageWith('{no es json')), false);
+    eq(hasStoredEditorialSession(storageWith('null')), false);
+    eq(hasStoredEditorialSession(storageWith(JSON.stringify({ access_token: 42 }))), false);
+    eq(hasStoredEditorialSession(storageWith(JSON.stringify({ isAdmin: true, role: 'admin' }))), false, 'una bandera inventada no es una sesión');
+    eq(hasStoredEditorialSession(blockedStorage), false, 'con el almacenamiento bloqueado, como si no hubiera sesión');
+    eq(hasStoredEditorialSession(null), false);
+  });
+
+  it('el camino al panel se abre sólo con un rol que confirma la base de datos', () => {
+    eq(canOpenAdminPanel({ state: 'ready', session, role: 'admin' }), true);
+    eq(canOpenAdminPanel({ state: 'ready', session, role: 'reviewer' }), true, 'un revisor también entra; sus permisos los decide el servidor');
+    eq(canOpenAdminPanel({ state: 'signed-out' }), false, 'un visitante, no');
+    eq(canOpenAdminPanel({ state: 'loading' }), false, 'mientras se comprueba, tampoco: nada parpadea');
+    eq(canOpenAdminPanel({ state: 'checking', session }), false);
+    eq(canOpenAdminPanel({ state: 'no-role', session }), false, 'una cuenta sin rol editorial, no');
+    eq(canOpenAdminPanel({ state: 'error', session }), false, 'y si no se pudo comprobar, tampoco');
+  });
+
+  it('el navegador no concede el rol: lo concede la base de datos', async () => {
+    // Una sesión inventada en el almacenamiento pasa la pista…
+    const forged = storageWith(JSON.stringify({ access_token: 'inventado', user: { id: USER } }));
+    eq(hasStoredEditorialSession(forged), true, 'la pista sólo decide si vale la pena preguntar');
+    // …y no obtiene nada, porque el rol lo responde la base de datos con RLS.
+    eq(canOpenAdminPanel(await resolveAccess(session, async () => null)), false);
+    eq(canOpenAdminPanel(await resolveAccess(session, async () => 'superadmin')), false, 'un rol que no existe no vale');
+    eq(canOpenAdminPanel(await resolveAccess(null, async () => 'admin')), false, 'sin sesión no hay panel');
+    eq(canOpenAdminPanel(await resolveAccess(session, async () => 'reviewer')), true, 'y con un rol de verdad, sí');
+  });
+
+  it('una sesión caducada o cerrada deja de abrir el panel', async () => {
+    // Cerrar sesión borra lo que Supabase guardaba: la próxima lectura no ve nada…
+    eq(hasStoredEditorialSession(storageWith(null)), false);
+    // …y mientras tanto, el propio Auth avisa con una sesión nula.
+    eq(await resolveAccess(null, async () => 'admin'), { state: 'signed-out' });
+  });
+
+  it('sin Supabase configurado, el cancionero sigue funcionando', () => {
+    // Sin URL ni clave no hay servicios que abrir: openEditorialSession devuelve
+    // null y el cancionero nunca ofrece el panel.
+    eq(readSupabaseConfig({}).state, 'unconfigured');
+    eq(canOpenAdminPanel({ state: 'signed-out' }), false);
+  });
+});
+
+// --- What the songbook and the panel actually render --------------------------------
+
+describe('El acceso al panel en la interfaz', () => {
+  const sidebar = (onOpenAdmin?: () => void) =>
+    renderToStaticMarkup(
+      createElement(Sidebar, {
+        activeSection: 'cancionero',
+        onNavigate: () => {},
+        isDarkMode: false,
+        onToggleDarkMode: () => {},
+        isOpen: false,
+        onClose: () => {},
+        onOpenAdmin,
+      })
+    );
+
+  it('un visitante no ve el panel; un usuario editorial sí', () => {
+    eq(sidebar().includes('Panel editorial'), false, 'la aplicación pública se ve igual que siempre');
+    eq(sidebar(() => {}).includes('Panel editorial'), true);
+    // El mismo menú es el del móvil (el cajón usa este contenido), así que aparece en ambos.
+    eq(sidebar(() => {}).match(/Panel editorial/g)?.length, 1);
+  });
+
+  it('"Ver el cancionero" es un enlace, no un cierre de sesión', () => {
+    let signedOut = 0;
+    const markup = renderToStaticMarkup(
+      createElement(
+        AdminLayout,
+        {
+          section: 'overview',
+          email: 'equipo@example.com',
+          role: 'admin',
+          isDarkMode: false,
+          onToggleDarkMode: () => {},
+          onSignOut: () => {
+            signedOut++;
+          },
+        } as Parameters<typeof AdminLayout>[0],
+        null
+      )
+    );
+    eq(markup.includes('href="#/"'), true, 'lleva al cancionero');
+    eq(markup.includes('Ver el cancionero'), true);
+    eq(markup.includes('Cerrar sesión'), true, 'cerrar sesión sigue existiendo, aparte');
+    eq(signedOut, 0, 'salir del panel no cierra la sesión de nadie');
   });
 });

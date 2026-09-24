@@ -1,6 +1,7 @@
 import { createClient, isAuthApiError, isAuthRetryableFetchError, type Session, type SupabaseClient as SupabaseJsClient } from '@supabase/supabase-js';
 import { createSupabaseClient, getSupabaseStatus, type SupabaseClient, type SupabaseConfig } from '../lib/supabase';
 import type { AdminAuth, AdminSession, SignInFailure } from './auth';
+import { ADMIN_AUTH_STORAGE_KEY } from './editorialSession';
 
 /**
  * Supabase Auth for the admin panel, and the data client that goes with it.
@@ -15,8 +16,9 @@ import type { AdminAuth, AdminSession, SignInFailure } from './auth';
  * Both use the public anon/publishable key; nothing secret reaches the browser.
  */
 
-/** Where Supabase keeps the session in this browser (its own format; never read or written by hand here). */
-export const ADMIN_AUTH_STORAGE_KEY = 'genesaret_admin_auth';
+// Where Supabase keeps the session in this browser. It lives in the light
+// module so the songbook can look for it without downloading supabase-js.
+export { ADMIN_AUTH_STORAGE_KEY } from './editorialSession';
 
 function toSession(session: Session | null): AdminSession | null {
   return session?.user ? { userId: session.user.id, email: session.user.email ?? null } : null;

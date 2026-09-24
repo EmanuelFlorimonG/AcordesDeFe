@@ -10,6 +10,7 @@
     "allowImportingTsExtensions": true,
     "moduleDetection": "force",
     "noEmit": true,
+    "jsx": "react-jsx",
     "noFallthroughCasesInSwitch": true
   },
   "include": ["tests", "scripts/generate-catalog-import.ts", "scripts/verify-remote-catalog.ts"]

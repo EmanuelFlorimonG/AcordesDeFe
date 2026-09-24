@@ -32,6 +32,8 @@ import {
   SongEditProposalScreen,
 } from './app/lazyScreens';
 import { parseSuggestEditHash, suggestEditHash } from './catalog/editAvailability';
+import { adminHash } from './admin/routes';
+import { canOpenAdminPanel, useEditorialAccess } from './admin/editorialSession';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
@@ -139,6 +141,13 @@ const occurrenceHash = (occurrence: Pick<EventOccurrence, 'event' | 'date'>) =>
 
 export function App() {
   const [page, setPage] = useState<AppPage>('app');
+  /**
+   * Whether whoever is reading the songbook signed in at #/admin and still
+   * has a valid session: the only thing it changes here is a quiet way back
+   * into the panel (see editorialSession.ts). Nothing editorial is shown, and
+   * the database still decides everything.
+   */
+  const editorialAccess = useEditorialAccess();
   /** The code in #/propuesta/<code>, if any */
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
   /** The song in #/song/<id>/sugerir */
@@ -1431,6 +1440,7 @@ export function App() {
         onToggleDarkMode={() => setIsDarkMode((v) => !v)}
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
+        onOpenAdmin={canOpenAdminPanel(editorialAccess) ? () => navigateTo(adminHash.overview()) : undefined}
       />
 
       <div className="flex flex-col flex-grow min-w-0">

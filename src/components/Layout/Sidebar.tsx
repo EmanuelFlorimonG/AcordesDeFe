@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cross, ListMusic, ListOrdered, Heart, Tags, Users, UserRound, CalendarDays, History, ListPlus, Sun, Moon, X, Quote } from 'lucide-react';
+import { Cross, ListMusic, ListOrdered, Heart, Tags, Users, UserRound, CalendarDays, History, ListPlus, ShieldCheck, Sun, Moon, X, Quote } from 'lucide-react';
 
 export type SidebarSection =
   | 'cancionero'
@@ -19,6 +19,12 @@ interface SidebarProps {
   onToggleDarkMode: () => void;
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Only for the editorial team, and only while their session is valid: the
+   * way back into the panel without signing in again. Absent for everyone
+   * else, which is almost everyone, and the songbook looks the same as ever.
+   */
+  onOpenAdmin?: () => void;
 }
 
 const NAV_ITEMS: Array<{ id: SidebarSection; label: string; icon: React.ElementType }> = [
@@ -40,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleDarkMode,
   isOpen,
   onClose,
+  onOpenAdmin,
 }) => {
   const content = (
     <div className="flex flex-col h-full w-full">
@@ -99,6 +106,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             Salmo 96, 1
           </p>
         </div>
+
+        {onOpenAdmin && (
+          <button
+            onClick={onOpenAdmin}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 mb-2 rounded-lg border border-slate-200 dark:border-dark-700 text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-[#2464ED] hover:text-[#2464ED] dark:hover:text-sky-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Panel editorial
+          </button>
+        )}
 
         <button
           onClick={onToggleDarkMode}
