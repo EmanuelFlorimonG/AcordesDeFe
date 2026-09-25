@@ -4,10 +4,13 @@ import type { Song } from '../types/song';
 import {
   GUEST_SETLISTS,
   createLocalSetlistRepository,
+  getBrowserStorage,
   scopeId,
   type SetlistRepository,
   type SetlistScope,
 } from '../storage/setlistStorage';
+import { createSetlistDeletionRepository, type SetlistDeletionRepository } from '../storage/setlistDeletions';
+import { createSetlistSyncStore } from '../storage/setlistSync';
 import {
   addSetlistParticipants,
   addSongsToSetlist,
@@ -35,8 +38,14 @@ export interface SetlistsStore {
   getSetlist: (id: string) => Setlist | null;
   create: (details: Partial<SetlistDetails>) => Setlist;
   updateDetails: (id: string, details: Partial<SetlistDetails>) => void;
-  remove: (id: string) => void;
   duplicate: (id: string, details: Partial<SetlistDetails>) => Setlist | null;
+  /**
+   * Deletes a setlist. False means it could not be written down that this was
+   * deliberate, and nothing was deleted: for somebody signed in, that note is
+   * the only thing that will ever tell the cloud to let go of their copy, so
+   * losing it would mean the setlist coming back on the next device.
+   */
+  remove: (id: string) => boolean;
   /** `moment` marks the songs as added for a part of the Mass. */
   addSongs: (id: string, songs: Array<Pick<Song, 'id' | 'recommendedCapo'>>, moment?: string) => void;
   removeItem: (id: string, itemId: string) => void;
@@ -63,11 +72,22 @@ export interface SetlistsStore {
  * frame ever shows one account what belongs to another. Nothing is copied
  * from one scope to another, and leaving one behind does not erase it.
  */
-export function useSetlists(scope: SetlistScope = GUEST_SETLISTS, repository?: SetlistRepository): SetlistsStore {
+export function useSetlists(
+  scope: SetlistScope = GUEST_SETLISTS,
+  repository?: SetlistRepository,
+  deletionRepository?: SetlistDeletionRepository
+): SetlistsStore {
   // The scope is the caller's: it changes when the person signing in changes,
   // and not on every render (see App).
   const scopeName = scopeId(scope);
   const repo = useMemo(() => repository ?? createLocalSetlistRepository(undefined, scope), [repository, scope]);
+  // Where a deliberate deletion is written down, and where to look up what
+  // the cloud was last known to hold. Both keep nothing at all for a visitor.
+  const deletions = useMemo(
+    () => deletionRepository ?? createSetlistDeletionRepository(getBrowserStorage(), scope),
+    [deletionRepository, scope]
+  );
+  const syncBases = useMemo(() => createSetlistSyncStore(getBrowserStorage(), scope), [scope]);
 
   // `justRead` marks a store that came straight from storage, so a read is
   // never written back: unreadable data stays untouched (and backed up) until
@@ -142,7 +162,26 @@ export function useSetlists(scope: SetlistScope = GUEST_SETLISTS, repository?: S
     create,
     duplicate,
     updateDetails: (id, details) => change(id, (setlist, now) => updateSetlistDetails(setlist, details, now)),
-    remove: (id) => setSetlists((current) => current.filter((setlist) => setlist.id !== id)),
+    remove: (id) => {
+      // Nothing is deleted that is not here. A note says "somebody deleted
+      // this one", which is a statement about a setlist that existed: an id
+      // that names nothing would leave a note that could later be read as an
+      // instruction to remove somebody else's copy of it.
+      if (!setlists.some((setlist) => setlist.id === id)) return false;
+      // The note goes down first. Deleting is the one change that destroys
+      // its own evidence: once the setlist is gone there is nothing left to
+      // say it was deliberate, and the copy in the cloud would come back on
+      // the next device. So if this cannot be written, nothing is deleted and
+      // the person is told — trying again is a smaller price than a setlist
+      // that reappears.
+      try {
+        deletions.mark(id, Date.now(), syncBases.load().get(id)?.cloudRevision);
+      } catch {
+        return false;
+      }
+      setSetlists((current) => current.filter((setlist) => setlist.id !== id));
+      return true;
+    },
     addSongs: (id, songs, moment) =>
       change(id, (setlist, now) => addSongsToSetlist(setlist, songs, { now, moment })),
     removeItem: (id, itemId) => change(id, (setlist, now) => removeSetlistItem(setlist, itemId, now)),

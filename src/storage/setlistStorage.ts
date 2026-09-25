@@ -199,7 +199,8 @@ export function serializeSetlists(setlists: Setlist[]): string {
   return JSON.stringify({ version: SETLIST_STORAGE_VERSION, setlists });
 }
 
-function getBrowserStorage(): KeyValueStorage | null {
+/** The browser's own storage, or null where it is blocked or absent. */
+export function getBrowserStorage(): KeyValueStorage | null {
   try {
     return typeof window !== 'undefined' ? window.localStorage : null;
   } catch {

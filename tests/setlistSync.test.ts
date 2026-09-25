@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import type { Setlist, SetlistItem } from '../src/types/setlist';
 import type { CloudSetlistRead } from '../src/storage/cloudSetlists';
+import type { SetlistDeletionMarker } from '../src/storage/setlistDeletions';
 import { GUEST_SETLISTS, userSetlists } from '../src/storage/setlistStorage';
 import {
   SETLIST_SYNC_VERSION,
@@ -620,6 +621,202 @@ describe('Todos los setlists a la vez', () => {
   });
 });
 
+// --- Deleted here, on purpose -----------------------------------------------------------------
+
+describe('Cuando se borró aquí a propósito', () => {
+  const local = setlistOf();
+  const marker = (baseRevision?: number): SetlistDeletionMarker => ({
+    setlistId: local.id,
+    deletedAt: NOW + 900_000,
+    ...(baseRevision === undefined ? {} : { baseRevision }),
+  });
+
+  it('la fila sigue siendo la que se borró: se borra allí también', () => {
+    eq(reconcileSetlist({ remote: remoteOf(local, 4), base: baseOf(local, 4), deletion: marker(4) }), {
+      kind: 'delete-remote',
+      setlistId: local.id,
+      expectedRevision: 4,
+    });
+    // La revisión que se manda es la que se conocía al borrar, no la que la
+    // fila tenga: eso es lo que lo convierte en borrar lo que alguien vio.
+    const plan = reconcileSetlist({ remote: remoteOf(local, 4), base: baseOf(local, 4), deletion: marker(4) });
+    eq(plan.kind === 'delete-remote' && plan.expectedRevision, 4);
+  });
+
+  it('pero si la fila cambió después, eso lo decide alguien', () => {
+    // Un dispositivo borra la revisión 4 sin conexión. Otro edita, y la fila
+    // va por la 5. El primero vuelve: no puede borrar una revisión que nadie
+    // aquí ha visto nunca.
+    eq(reconcileSetlist({ remote: remoteOf(local, 5), base: baseOf(local, 4), deletion: marker(4) }), {
+      kind: 'ask',
+      question: 'deleted-here-changed-there',
+      setlistId: local.id,
+    });
+    // Y da igual que el contenido de la fila sea idéntico al de la base: la
+    // revisión se movió por algo, y ese algo no se ha visto.
+    eq(reconcileSetlist({ remote: remoteOf(local, 5), base: baseOf(local, 5), deletion: marker(4) }).kind, 'ask');
+    const changed = renamed(local, 'Editado en otro sitio');
+    eq(reconcileSetlist({ remote: remoteOf(changed, 5), base: baseOf(local, 4), deletion: marker(4) }), {
+      kind: 'ask',
+      question: 'deleted-here-changed-there',
+      setlistId: local.id,
+    });
+  });
+
+  it('sin saber contra qué revisión se borró, no se borra nada', () => {
+    eq(reconcileSetlist({ remote: remoteOf(local, 4), deletion: marker() }), {
+      kind: 'ask',
+      question: 'deleted-here-unknown-revision',
+      setlistId: local.id,
+    });
+    // Ni siquiera existiendo una base: la decisión se tomó sin mirarla.
+    eq(reconcileSetlist({ remote: remoteOf(local, 4), base: baseOf(local, 4), deletion: marker() }), {
+      kind: 'ask',
+      question: 'deleted-here-unknown-revision',
+      setlistId: local.id,
+    });
+  });
+
+  it('la fila ya es una lápida: el borrado está hecho por los dos lados', () => {
+    // Se borró sabiendo la revisión 4, el último acuerdo era la 4, y la fila
+    // es una lápida en la 5: entre una cosa y la otra no pasó nada que este
+    // dispositivo no tuviera en cuenta.
+    eq(reconcileSetlist({ remote: deleted(local.id, 5), base: baseOf(local, 4), deletion: marker(4) }), {
+      kind: 'confirm-deletion',
+      setlistId: local.id,
+    });
+    // También cuando la borró otro dispositivo primero, y con la lápida mucho
+    // más adelante: el final es el que se pidió.
+    eq(reconcileSetlist({ remote: deleted(local.id, 9), base: baseOf(local, 4), deletion: marker(4) }).kind, 'confirm-deletion');
+  });
+
+  it('se borró sin línea base, y la nube ya dice borrado: confirmado', () => {
+    // El setlist se borró aquí antes de que hubiera ningún acuerdo, así que
+    // la decisión no tenía nada que pudiera quedarse anticuado. La nube dice
+    // borrado, que es el final que se pidió, y confirmar no borra nada: sólo
+    // deja de guardar una nota que ya no sirve. Los relojes no intervienen:
+    // deletedAt nunca se compara con ninguna hora de la nube.
+    eq(reconcileSetlist({ remote: deleted(local.id, 7), deletion: marker() }), {
+      kind: 'confirm-deletion',
+      setlistId: local.id,
+    });
+    // Pero si además hay un acuerdo que la nota no conocía, ya no está claro
+    // de qué es esa lápida: se conserva todo.
+    eq(reconcileSetlist({ remote: deleted(local.id, 7), base: baseOf(local, 6), deletion: marker() }), {
+      kind: 'ask',
+      question: 'deleted-here-changed-there',
+      setlistId: local.id,
+    });
+  });
+
+  it('si el dispositivo supo más que la nota, la lápida no se da por confirmada', () => {
+    // Se borró sabiendo la revisión 4, pero después este dispositivo acordó
+    // la 5: algo pasó allí que la decisión de borrar no tuvo en cuenta, y no
+    // hay forma de saber si esta lápida es ese algo o es el borrado llegando.
+    // Ante la duda, no se limpia nada.
+    eq(reconcileSetlist({ remote: deleted(local.id, 5), base: baseOf(local, 5), deletion: marker(4) }), {
+      kind: 'ask',
+      question: 'deleted-here-changed-there',
+      setlistId: local.id,
+    });
+    // Con la fila todavía activa, lo mismo: no se borra allí.
+    eq(reconcileSetlist({ remote: remoteOf(local, 5), base: baseOf(local, 5), deletion: marker(4) }), {
+      kind: 'ask',
+      question: 'deleted-here-changed-there',
+      setlistId: local.id,
+    });
+    // Y una lápida por debajo del último acuerdo sigue siendo la anomalía de
+    // siempre, que se detecta antes que nada de esto.
+    eq(reconcileSetlist({ remote: deleted(local.id, 5), base: baseOf(local, 6), deletion: marker(4) }), {
+      kind: 'ask',
+      question: 'revision-regressed',
+      setlistId: local.id,
+    });
+  });
+
+  it('una lápida por debajo de la base sigue siendo una anomalía', () => {
+    eq(reconcileSetlist({ remote: deleted(local.id, 3), base: baseOf(local, 5), deletion: marker(5) }), {
+      kind: 'ask',
+      question: 'revision-regressed',
+      setlistId: local.id,
+    });
+    // Y una fila activa por debajo, igual.
+    eq(reconcileSetlist({ remote: remoteOf(local, 3), base: baseOf(local, 5), deletion: marker(5) }).kind, 'ask');
+  });
+
+  it('sin fila: nunca se da por hecho un éxito que no ocurrió', () => {
+    // Nunca llegó a la nube: no hay nada que quitar y nada que esperar.
+    eq(reconcileSetlist({ deletion: marker() }), { kind: 'confirm-deletion', setlistId: local.id });
+    // Pero si había base, la fila tendría que estar, aunque fuera como lápida.
+    eq(reconcileSetlist({ base: baseOf(local, 4), deletion: marker(4) }), {
+      kind: 'ask',
+      question: 'gone-remotely',
+      setlistId: local.id,
+    });
+  });
+
+  it('marcado como borrado y aquí presente: nadie gana, diga lo que diga la nube', () => {
+    // Otra pestaña, una recreación a mano, un almacenamiento que no aceptó la
+    // lista más corta. Se comprueban todas las combinaciones, porque esta
+    // regla va por delante de cualquier rama que pudiera ejecutar algo.
+    const rows = [undefined, remoteOf(local, 4), remoteOf(renamed(local, 'Otro'), 9), deleted(local.id, 5), deleted(local.id, 2)];
+    for (const remote of rows) {
+      for (const base of [undefined, baseOf(local, 4), baseOf(local, 9)]) {
+        for (const deletion of [marker(), marker(4), marker(9)]) {
+          const plan = reconcileSetlist({ local, remote, base, deletion });
+          eq(plan, { kind: 'ask', question: 'inconsistent-local-deletion', setlistId: local.id },
+            `${remote?.state ?? 'sin fila'} / ${base ? `base ${base.cloudRevision}` : 'sin base'} / ${deletion.baseRevision ?? 'sin revisión'}`);
+        }
+      }
+    }
+    // Sólo una fila que este cliente no puede leer manda por encima, y esa
+    // tampoco ejecuta nada.
+    const newer: CloudSetlistRead = { state: 'newer', id: local.id, revision: 5, payloadVersion: 2 };
+    eq(reconcileSetlist({ local, remote: newer, base: baseOf(local, 4), deletion: marker(4) }).kind, 'blocked');
+  });
+
+  it('una anotación nunca resucita ni sube un setlist', () => {
+    const cases = [
+      { remote: remoteOf(local, 4), base: baseOf(local, 4), deletion: marker(4) },
+      { remote: remoteOf(local, 9), base: baseOf(local, 4), deletion: marker(4) },
+      { remote: remoteOf(local, 4), deletion: marker() },
+      { remote: deleted(local.id, 5), deletion: marker(4) },
+      { deletion: marker() },
+      { base: baseOf(local, 4), deletion: marker(4) },
+      { local, remote: remoteOf(local, 4), deletion: marker(4) },
+    ];
+    for (const input of cases) {
+      const plan = reconcileSetlist(input);
+      eq(['apply-remote', 'upload-candidate', 'upload-changes', 'adopt-baseline'].includes(plan.kind), false, plan.kind);
+    }
+  });
+
+  it('una fila que este cliente no puede tocar sigue mandando sobre todo', () => {
+    const newer: CloudSetlistRead = { state: 'newer', id: local.id, revision: 5, payloadVersion: 2 };
+    eq(reconcileSetlist({ remote: newer, base: baseOf(local, 4), deletion: marker(4) }), {
+      kind: 'blocked',
+      setlistId: local.id,
+      reason: 'newer',
+    });
+    eq(reconcileSetlist({ remote: { state: 'corrupt', id: local.id }, deletion: marker(4) }).kind, 'blocked');
+  });
+
+  it('la anotación de una cuenta no entra en la reconciliación de otra', () => {
+    // Los planes se hacen con lo que se les da: un marcador de otra cuenta no
+    // está en esta lista, porque vive bajo otra clave (ver setlistDeletions).
+    const plans = reconcileSetlists([], [remoteOf(local, 4)], new Map([[local.id, baseOf(local, 4)]]), [marker(4)]);
+    eq(plans.get(local.id)?.kind, 'delete-remote');
+    const sinMarcador = reconcileSetlists([], [remoteOf(local, 4)], new Map([[local.id, baseOf(local, 4)]]), []);
+    eq(sinMarcador.get(local.id)?.kind, 'ask', 'sin su marcador, es sólo un setlist que ya no está aquí');
+  });
+
+  it('un setlist borrado que no está en ningún otro sitio tiene su propio plan', () => {
+    const plans = reconcileSetlists([], [], new Map(), [marker()]);
+    eq([...plans.keys()], [local.id]);
+    eq(plans.get(local.id)?.kind, 'confirm-deletion');
+  });
+});
+
 // --- Where the baseline lives ---------------------------------------------------------------
 
 describe('Dónde se guarda lo que los dos acordaron', () => {
@@ -773,12 +970,21 @@ describe('Este paso sigue sin sincronizar nada', () => {
       }
     };
     walk('src');
-    const users = files.filter(
-      (file) =>
-        !['src/storage/setlistSync.ts', 'src/storage/cloudSetlists.ts'].includes(file) &&
-        /setlistSync|cloudSetlists/.test(readFileSync(file, 'utf8'))
+    const reads = (file: string) => readFileSync(file, 'utf8');
+    const others = files.filter((file) => !['src/storage/setlistSync.ts', 'src/storage/cloudSetlists.ts'].includes(file));
+
+    // La capa cloud sigue sin que nadie la llame.
+    eq(others.filter((file) => reads(file).includes('cloudSetlists')), [], 'nadie llama a la nube');
+
+    // De este módulo, la aplicación usa una cosa y sólo una: dónde se guarda
+    // lo que los dos lados acordaron, para anotar contra qué revisión se
+    // borró. El motor en sí no lo llama nadie todavía.
+    eq(others.filter((file) => reads(file).includes('setlistSync')), ['src/hooks/useSetlists.ts']);
+    eq(
+      others.filter((file) => /reconcileSetlists?\(/.test(reads(file))),
+      [],
+      'nadie pide todavía un plan, y menos aún lo ejecuta'
     );
-    eq(users, [], 'ni el motor ni la capa cloud los importa todavía nadie');
   });
 });
 

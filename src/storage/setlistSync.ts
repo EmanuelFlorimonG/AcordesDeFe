@@ -1,6 +1,7 @@
 import type { Setlist, SetlistItem, SetlistArrangement, ArrangementSection } from '../types/setlist';
 import { normalizeVoices } from '../utils/arrangement';
 import type { CloudSetlistRead } from './cloudSetlists';
+import type { SetlistDeletionMarker } from './setlistDeletions';
 import { setlistKeys, type KeyValueStorage, type SetlistScope } from './setlistStorage';
 
 /**
@@ -265,7 +266,17 @@ export type SetlistQuestion =
    * not caught up — and not a version of anything. Writing against it would
    * name a revision that has already been overtaken.
    */
-  | 'revision-regressed';
+  | 'revision-regressed'
+  /**
+   * Deleted here, and the row moved on afterwards. Somebody's edit is in
+   * there that nobody on this device has seen, and the deletion was decided
+   * without it.
+   */
+  | 'deleted-here-changed-there'
+  /** Deleted here, and this device never knew what the cloud had for it. */
+  | 'deleted-here-unknown-revision'
+  /** It is marked as deleted and it is also right here. One of the two is wrong. */
+  | 'inconsistent-local-deletion';
 
 /**
  * What to do about one setlist. Nothing here is carried out: every case that
@@ -293,6 +304,18 @@ export type SetlistSyncPlan =
   | { kind: 'delete-local'; setlistId: string; cloudRevision: number }
   /** The baseline points at something neither side has any more. */
   | { kind: 'forget-baseline'; setlistId: string }
+  /**
+   * Deleted here on purpose, and the row is still the one that was deleted.
+   * The revision is the one the deletion was decided with, never the one the
+   * row happens to be at now: that is what makes it a removal of the thing
+   * somebody saw and not of whatever is there.
+   */
+  | { kind: 'delete-remote'; setlistId: string; expectedRevision: number }
+  /**
+   * The deletion is done on both sides. Nothing left to send: the marker and
+   * the baseline can be forgotten, and the setlist stays gone.
+   */
+  | { kind: 'confirm-deletion'; setlistId: string }
   /** A row this build must not touch. */
   | { kind: 'blocked'; setlistId: string; reason: 'newer' | 'corrupt' }
   | { kind: 'ask'; question: SetlistQuestion; setlistId: string };
@@ -304,6 +327,11 @@ export interface SetlistSyncInput {
   remote?: CloudSetlistRead | null;
   /** What the two last agreed on, if anything does. */
   base?: SetlistSyncBase | null;
+  /**
+   * Somebody deleted it here on purpose. Handed in, never read from storage:
+   * this stays a function of its arguments.
+   */
+  deletion?: SetlistDeletionMarker | null;
 }
 
 const baselineOf = (setlistId: string, cloudRevision: number, fingerprint: string): SetlistSyncBase => ({
@@ -319,8 +347,8 @@ const baselineOf = (setlistId: string, cloudRevision: number, fingerprint: strin
  * three inputs always give the same plan, which is what makes the table of
  * cases in the tests worth anything.
  */
-export function reconcileSetlist({ local, remote, base }: SetlistSyncInput): SetlistSyncPlan {
-  const setlistId = local?.id ?? (remote && 'id' in remote ? remote.id : base?.setlistId) ?? '';
+export function reconcileSetlist({ local, remote, base, deletion }: SetlistSyncInput): SetlistSyncPlan {
+  const setlistId = local?.id ?? (remote && 'id' in remote ? remote.id : base?.setlistId ?? deletion?.setlistId) ?? '';
 
   // A row written by a client that knows more, or one that cannot be read at
   // all: not this build's to touch, whatever is on this device. Nothing is
@@ -328,12 +356,64 @@ export function reconcileSetlist({ local, remote, base }: SetlistSyncInput): Set
   if (remote?.state === 'newer') return { kind: 'blocked', setlistId, reason: 'newer' };
   if (remote?.state === 'corrupt') return { kind: 'blocked', setlistId, reason: 'corrupt' };
 
+  // It is marked as deleted and it is also sitting right here. Two statements
+  // that cannot both be true: something happened between the note and the
+  // removal — storage that would not take the shorter list, another tab, a
+  // hand-edited file. Neither statement gets to win, whatever the cloud says
+  // or does not say, so nothing is uploaded, nothing is removed there and
+  // nothing is removed here.
+  if (deletion && local) return { kind: 'ask', question: 'inconsistent-local-deletion', setlistId };
+
   // A revision only ever goes up. One that reads lower than the baseline is a
   // read from behind, not an older version to work from: nothing is applied
   // over what is here, nothing is written naming a revision that has already
   // been passed, and an old tombstone does not get to delete newer work.
   if (base && (remote?.state === 'setlist' || remote?.state === 'deleted') && remote.revision < base.cloudRevision) {
     return { kind: 'ask', question: 'revision-regressed', setlistId };
+  }
+
+  // --- Deleted here, on purpose --------------------------------------------------
+  if (deletion) {
+    // Somewhere between deciding to delete and now, this device agreed with
+    // the cloud on something the deletion did not know about: the baseline
+    // has moved past what the note recorded. Whatever is in the row now, and
+    // whatever the tombstone is, one of them was written for a reason nobody
+    // here has seen, and there is no telling which. Keep everything.
+    const learnedMore = Boolean(base) && (deletion.baseRevision === undefined || base!.cloudRevision > deletion.baseRevision);
+
+    if (remote?.state === 'deleted') {
+      // Gone on both sides, and nothing happened in between that this device
+      // did not account for: the tombstone is this deletion arriving, or
+      // somebody else's to the same end. Either way the end state is the one
+      // that was asked for, so the note and the baseline can be let go.
+      return learnedMore
+        ? { kind: 'ask', question: 'deleted-here-changed-there', setlistId }
+        : { kind: 'confirm-deletion', setlistId };
+    }
+
+    if (!remote) {
+      // No row, and none was ever agreed on: the setlist never reached the
+      // cloud, so there is nothing to remove and nothing to wait for.
+      if (!base) return { kind: 'confirm-deletion', setlistId };
+      // It had been shared and the row is not there at all. Not a success to
+      // claim: something removed it outright, which this app never does.
+      return { kind: 'ask', question: 'gone-remotely', setlistId };
+    }
+
+    // The row is still active. Deleting it means saying which revision is
+    // being deleted, and that can only be the one the decision was made with.
+    if (deletion.baseRevision === undefined) {
+      return { kind: 'ask', question: 'deleted-here-unknown-revision', setlistId };
+    }
+    if (learnedMore) return { kind: 'ask', question: 'deleted-here-changed-there', setlistId };
+    // Anything else in the row now was written after that decision, by
+    // somebody whose work nobody here has seen. Deleting revision 5 because
+    // revision 4 was deleted on a device that was offline is exactly the
+    // thing this whole design exists to prevent — and the content being
+    // identical does not change it, because the revision moved for a reason.
+    return remote.revision === deletion.baseRevision
+      ? { kind: 'delete-remote', setlistId, expectedRevision: deletion.baseRevision }
+      : { kind: 'ask', question: 'deleted-here-changed-there', setlistId };
   }
 
   // --- Deleted somewhere else --------------------------------------------------
@@ -424,15 +504,25 @@ export function reconcileSetlist({ local, remote, base }: SetlistSyncInput): Set
 export function reconcileSetlists(
   locals: Setlist[],
   remotes: CloudSetlistRead[],
-  bases: Map<string, SetlistSyncBase>
+  bases: Map<string, SetlistSyncBase>,
+  deletions: SetlistDeletionMarker[] = []
 ): Map<string, SetlistSyncPlan> {
   const localById = new Map(locals.map((setlist) => [setlist.id, setlist]));
   const remoteById = new Map(remotes.filter((read) => read.id !== null).map((read) => [read.id as string, read]));
-  const ids = new Set([...localById.keys(), ...remoteById.keys(), ...bases.keys()]);
+  const deletionById = new Map(deletions.map((marker) => [marker.setlistId, marker]));
+  const ids = new Set([...localById.keys(), ...remoteById.keys(), ...bases.keys(), ...deletionById.keys()]);
 
   const plans = new Map<string, SetlistSyncPlan>();
   for (const id of ids) {
-    plans.set(id, reconcileSetlist({ local: localById.get(id), remote: remoteById.get(id), base: bases.get(id) }));
+    plans.set(
+      id,
+      reconcileSetlist({
+        local: localById.get(id),
+        remote: remoteById.get(id),
+        base: bases.get(id),
+        deletion: deletionById.get(id),
+      })
+    );
   }
   return plans;
 }

@@ -1092,7 +1092,12 @@ export function App() {
         }}
         onDelete={() => {
           const name = openSetlist?.name;
-          setlists.remove(setlistId);
+          // A deletion that couldn't be written down didn't happen: the
+          // setlist is still here, and so is the screen showing it.
+          if (!setlists.remove(setlistId)) {
+            showToast('No se pudo eliminar el setlist. Inténtalo otra vez.');
+            return;
+          }
           events.clearSetlistEverywhere(setlistId);
           if (name) showToast(`Setlist «${name}» eliminado`);
           navigateTo('#/setlists');
