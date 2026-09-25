@@ -276,7 +276,14 @@ export type SetlistQuestion =
   /** Deleted here, and this device never knew what the cloud had for it. */
   | 'deleted-here-unknown-revision'
   /** It is marked as deleted and it is also right here. One of the two is wrong. */
-  | 'inconsistent-local-deletion';
+  | 'inconsistent-local-deletion'
+  /**
+   * The note says it was deleted at a moment that is not a moment. The store
+   * refuses to keep one of those, so this is a note built by hand or by a
+   * caller that should not have: it cannot be acted on, and no time is
+   * invented to make it work.
+   */
+  | 'deletion-unreadable';
 
 /**
  * What to do about one setlist. Nothing here is carried out: every case that
@@ -310,7 +317,18 @@ export type SetlistSyncPlan =
    * row happens to be at now: that is what makes it a removal of the thing
    * somebody saw and not of whatever is there.
    */
-  | { kind: 'delete-remote'; setlistId: string; expectedRevision: number }
+  | {
+      kind: 'delete-remote';
+      setlistId: string;
+      expectedRevision: number;
+      /**
+       * When the person asked for it, carried through so the tombstone says
+       * that and not when it happened to be sent. Somebody who deletes on a
+       * train and syncs an hour later meant it on the train. The server's own
+       * clock records the writing, separately, which is a different fact.
+       */
+      deletedAt: number;
+    }
   /**
    * The deletion is done on both sides. Nothing left to send: the marker and
    * the baseline can be forgotten, and the setlist stays gone.
@@ -405,6 +423,11 @@ export function reconcileSetlist({ local, remote, base, deletion }: SetlistSyncI
     if (deletion.baseRevision === undefined) {
       return { kind: 'ask', question: 'deleted-here-unknown-revision', setlistId };
     }
+    // The tombstone will carry when somebody asked for this, so that moment
+    // has to be one. A note this broken does not become a request.
+    if (!Number.isInteger(deletion.deletedAt) || deletion.deletedAt <= 0) {
+      return { kind: 'ask', question: 'deletion-unreadable', setlistId };
+    }
     if (learnedMore) return { kind: 'ask', question: 'deleted-here-changed-there', setlistId };
     // Anything else in the row now was written after that decision, by
     // somebody whose work nobody here has seen. Deleting revision 5 because
@@ -412,7 +435,7 @@ export function reconcileSetlist({ local, remote, base, deletion }: SetlistSyncI
     // thing this whole design exists to prevent — and the content being
     // identical does not change it, because the revision moved for a reason.
     return remote.revision === deletion.baseRevision
-      ? { kind: 'delete-remote', setlistId, expectedRevision: deletion.baseRevision }
+      ? { kind: 'delete-remote', setlistId, expectedRevision: deletion.baseRevision, deletedAt: deletion.deletedAt }
       : { kind: 'ask', question: 'deleted-here-changed-there', setlistId };
   }
 

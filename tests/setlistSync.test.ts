@@ -636,6 +636,8 @@ describe('Cuando se borró aquí a propósito', () => {
       kind: 'delete-remote',
       setlistId: local.id,
       expectedRevision: 4,
+      // Lo que llevaba la nota: cuándo lo pidió la persona, no cuándo se envía.
+      deletedAt: NOW + 900_000,
     });
     // La revisión que se manda es la que se conocía al borrar, no la que la
     // fila tenga: eso es lo que lo convierte en borrar lo que alguien vio.
@@ -661,6 +663,22 @@ describe('Cuando se borró aquí a propósito', () => {
       question: 'deleted-here-changed-there',
       setlistId: local.id,
     });
+  });
+
+  it('una nota con un momento imposible no se convierte en una petición', () => {
+    // El almacén no guarda una de estas, así que sólo puede venir de una nota
+    // construida a mano. No se repara con la hora de ahora: sin un momento
+    // que llevar a la lápida, no hay borrado que pedir.
+    for (const deletedAt of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+      const broken: SetlistDeletionMarker = { setlistId: local.id, deletedAt, baseRevision: 4 };
+      eq(reconcileSetlist({ remote: remoteOf(local, 4), base: baseOf(local, 4), deletion: broken }), {
+        kind: 'ask',
+        question: 'deletion-unreadable',
+        setlistId: local.id,
+      }, String(deletedAt));
+    }
+    // Con un momento de verdad, la misma entrada sí pide el borrado.
+    eq(reconcileSetlist({ remote: remoteOf(local, 4), base: baseOf(local, 4), deletion: marker(4) }).kind, 'delete-remote');
   });
 
   it('sin saber contra qué revisión se borró, no se borra nada', () => {
@@ -973,13 +991,20 @@ describe('Este paso sigue sin sincronizar nada', () => {
     const reads = (file: string) => readFileSync(file, 'utf8');
     const others = files.filter((file) => !['src/storage/setlistSync.ts', 'src/storage/cloudSetlists.ts'].includes(file));
 
-    // La capa cloud sigue sin que nadie la llame.
-    eq(others.filter((file) => reads(file).includes('cloudSetlists')), [], 'nadie llama a la nube');
+    // A la capa cloud la llama el executor, que es para lo que está. Nadie más.
+    eq(
+      others.filter((file) => reads(file).includes('cloudSetlists')),
+      ['src/storage/setlistSyncExecutor.ts'],
+      'sólo el executor habla con la nube'
+    );
 
     // De este módulo, la aplicación usa una cosa y sólo una: dónde se guarda
     // lo que los dos lados acordaron, para anotar contra qué revisión se
-    // borró. El motor en sí no lo llama nadie todavía.
-    eq(others.filter((file) => reads(file).includes('setlistSync')), ['src/hooks/useSetlists.ts']);
+    // borró. El executor toma los tipos de los planes, y nada más.
+    eq(others.filter((file) => reads(file).includes('setlistSync')), [
+      'src/hooks/useSetlists.ts',
+      'src/storage/setlistSyncExecutor.ts',
+    ]);
     eq(
       others.filter((file) => /reconcileSetlists?\(/.test(reads(file))),
       [],

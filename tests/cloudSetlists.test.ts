@@ -477,7 +477,13 @@ describe('Subir un setlist por primera vez', () => {
     eq(body.payload_version, 1);
     eq(body.revision, 1, 'la primera revisión, como la que pone la tabla');
     eq(body.id, 'setlist-1234');
-    eq(result, { status: 'saved', revision: 1, serverUpdatedAt: SERVER_UPDATED });
+    // Lo que contesta el servidor llega clasificado y contado, para que quien
+    // llame pueda comprobar que es la fila que esa operación debía producir.
+    eq(result.status, 'written');
+    if (result.status !== 'written') return assert.fail('debería haber escrito');
+    eq(result.rows, 1);
+    eq(result.read.state, 'setlist');
+    eq(result.read.state === 'setlist' && result.read.revision, 1, 'la primera revisión');
   });
 
   it('si ya estaba, es un conflicto y no un error a la cara', async () => {
@@ -512,7 +518,10 @@ describe('Guardar un cambio sobre lo que ya está', () => {
     eq('id' in body, false, 'el id identifica la fila, no se reescribe');
     eq('created_at' in body || 'updated_at' in body, false, 'los relojes del servidor son suyos');
     eq(body.client_updated_at, new Date(NOW + 60_000).toISOString(), 'el del dispositivo, ese sí');
-    eq(result, { status: 'saved', revision: 4, serverUpdatedAt: SERVER_UPDATED });
+    eq(result.status, 'written');
+    if (result.status !== 'written') return assert.fail('debería haber escrito');
+    eq(result.read.state === 'setlist' && result.read.revision, 4, 'la revisión que quedó');
+    eq(result.read.state === 'setlist' && result.read.serverUpdatedAt, SERVER_UPDATED);
   });
 
   it('si alguien escribió antes, es un conflicto: nadie pisa a nadie', async () => {
@@ -550,12 +559,34 @@ describe('Borrar un setlist de la nube', () => {
     eq(calls[0].init.method, 'PATCH', 'nunca DELETE: la fila tiene que quedarse para que el borrado llegue a los demás');
     eq(calls[0].url, `${URL_BASE}/rest/v1/setlists?id=eq.setlist-1234&revision=eq.3&payload_version=eq.1`);
     eq(bodyOf(calls[0]), { deleted_at: '2026-09-16T08:00:00.000Z', revision: 4 }, 'sólo la lápida y la revisión');
-    eq(result, { status: 'saved', revision: 4, serverUpdatedAt: SERVER_UPDATED });
+    eq(result.status, 'written');
+    if (result.status !== 'written') return assert.fail('debería haber escrito');
+    eq(result.read.state, 'deleted', 'y lo que vuelve es una lápida');
+    eq(result.read.state === 'deleted' && result.read.revision, 4);
   });
 
   it('con la revisión cambiada, conflicto', async () => {
     const { repo } = fakeCloud(() => ({ body: [] }));
     eq(await repo.remove('setlist-1234', 3), { status: 'conflict' });
+  });
+
+  it('cuántas filas contestó el servidor se conserva, no se esconde', async () => {
+    // Ninguna es un conflicto: eso es lo que significa que el filtro no
+    // alcanzó nada. Con una o con varias se informa del total, y es quien
+    // llama el que dice si eso podía ser el resultado de su operación: una
+    // primera fila correcta no debe colar una respuesta de tres.
+    const row = rowOf({ revision: 4 });
+    for (const [count, expected] of [
+      [0, 'conflict'],
+      [1, 'written'],
+      [2, 'written'],
+      [3, 'written'],
+    ] as const) {
+      const { repo } = fakeCloud(() => ({ body: Array.from({ length: count }, () => row) }));
+      const result = await repo.update(fullSetlist(), 3);
+      eq(result.status, expected, `${count} filas`);
+      if (result.status === 'written') eq(result.rows, count, `${count} filas contadas`);
+    }
   });
 
   it('no puede borrar una fila escrita por un cliente que sabe más', async () => {
@@ -636,16 +667,21 @@ describe('Este paso no sincroniza nada', () => {
       }
     };
     walk('src');
-    // El motor de reconciliación toma de aquí el tipo de una fila ya leída, y
-    // nada más: un `import type` desaparece al compilar y no llama a nadie.
+    // Dos módulos la nombran. El motor de reconciliación sólo toma el tipo de
+    // una fila ya leída (un `import type` desaparece al compilar). El executor
+    // sí la llama, que es su trabajo — pero nada de la aplicación lo llama a él.
     const users = files.filter(
       (file) => file !== 'src/storage/cloudSetlists.ts' && readFileSync(file, 'utf8').includes('cloudSetlists')
     );
-    eq(users, ['src/storage/setlistSync.ts'], 'la capa cloud existe y todavía no la llama nadie');
+    eq(users, ['src/storage/setlistSync.ts', 'src/storage/setlistSyncExecutor.ts']);
     eq(
       readFileSync('src/storage/setlistSync.ts', 'utf8').includes("import type { CloudSetlistRead } from './cloudSetlists'"),
       true,
-      'y lo que toma es sólo el tipo'
+      'el motor sólo toma el tipo'
     );
+    const callers = files.filter(
+      (file) => file !== 'src/storage/setlistSyncExecutor.ts' && readFileSync(file, 'utf8').includes('executeSetlistSyncPlan')
+    );
+    eq(callers, [], 'y al executor no lo llama todavía nadie');
   });
 });

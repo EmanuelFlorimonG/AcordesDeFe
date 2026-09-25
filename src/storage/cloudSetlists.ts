@@ -348,7 +348,13 @@ export class SetlistCloudAuthError extends Error {
  * that is synchronisation, and it is not written yet.
  */
 export type CloudWriteResult =
-  | { status: 'saved'; revision: number; serverUpdatedAt: string | null }
+  /**
+   * The server wrote and answered. Not the same as "this went well": the row
+   * that came back still has to be the right one, and saying so is the
+   * caller's job (see setlistSyncExecutor). What is reported here is what
+   * arrived — how many rows, and what the first one turned out to be.
+   */
+  | { status: 'written'; rows: number; read: CloudSetlistRead }
   /** Nothing matched: another device got there first, or the row is gone. */
   | { status: 'conflict' }
   /** This setlist cannot fit the table as it is. Nothing was sent. */
@@ -390,16 +396,15 @@ export function createCloudSetlistRepository(
     if (!(await accessToken())) throw new SetlistCloudAuthError();
   };
 
-  const saved = (rows: CloudSetlistRow[]): CloudWriteResult => {
+  const written = (rows: CloudSetlistRow[]): CloudWriteResult => {
     const row = rows[0];
+    // Nothing matched the filters: somebody wrote in between, or the row is
+    // not there, or it is not this person's. Which of those is not something
+    // an empty answer can say.
     if (!row) return { status: 'conflict' };
-    const revision = positiveInt(row.revision);
-    if (revision === null) return { status: 'conflict' };
-    return {
-      status: 'saved',
-      revision,
-      serverUpdatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
-    };
+    // The row is read exactly as a row from a list is read, so a write and a
+    // read agree on what a row means — including that it cannot be read.
+    return { status: 'written', rows: rows.length, read: cloudToSetlist(row) };
   };
 
   return {
@@ -422,7 +427,7 @@ export function createCloudSetlistRepository(
         // account is a different thing, asked for explicitly, and it is not
         // written yet.
         const rows = await client.insert<CloudSetlistRow>('setlists', setlistToCloud(setlist, 1));
-        return saved(rows);
+        return written(rows);
       } catch (error) {
         // It is already there, written by another device. A conflict, not a
         // failure, and deliberately not resolved here: what is up there may
@@ -448,7 +453,7 @@ export function createCloudSetlistRepository(
         { id, revision: expectedRevision, payload_version: SETLIST_PAYLOAD_VERSION },
         { ...changes, revision: expectedRevision + 1 }
       );
-      return saved(rows);
+      return written(rows);
     },
 
     async remove(id, expectedRevision, deletedAt = new Date()) {
@@ -466,7 +471,7 @@ export function createCloudSetlistRepository(
         { id, revision: expectedRevision, payload_version: SETLIST_PAYLOAD_VERSION },
         { deleted_at: deletedAt.toISOString(), revision: expectedRevision + 1 }
       );
-      return saved(rows);
+      return written(rows);
     },
   };
 }
