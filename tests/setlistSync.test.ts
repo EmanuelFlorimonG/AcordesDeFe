@@ -995,7 +995,7 @@ describe('Este paso sigue sin sincronizar nada', () => {
     eq(
       others.filter((file) => reads(file).includes('cloudSetlists')),
       [
-        'src/hooks/useSetlistCloudUpload.ts',
+        'src/hooks/useSetlistCloudSync.ts',
         'src/storage/setlistSyncExecutor.ts',
         'src/storage/setlistSyncPass.ts',
         'src/storage/setlistSyncPreflight.ts',
@@ -1008,7 +1008,7 @@ describe('Este paso sigue sin sincronizar nada', () => {
     // lo que los dos lados acordaron, para anotar contra qué revisión se
     // borró. El executor toma los tipos de los planes, y nada más.
     eq(others.filter((file) => reads(file).includes('setlistSync')), [
-      'src/hooks/useSetlistCloudUpload.ts',
+      'src/hooks/useSetlistCloudSync.ts',
       'src/hooks/useSetlists.ts',
       'src/storage/setlistSyncExecutor.ts',
       'src/storage/setlistSyncPass.ts',

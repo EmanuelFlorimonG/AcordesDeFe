@@ -42,7 +42,7 @@ import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
-import { useSetlistCloudUpload } from './hooks/useSetlistCloudUpload';
+import { useSetlistCloudSync } from './hooks/useSetlistCloudSync';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
 import { bindArrangement, withReviewNeeded } from './utils/arrangement';
@@ -235,8 +235,9 @@ export function App() {
   const signedInUserId = sessionState.state === 'signed-in' ? sessionState.session.userId : null;
   const setlistScope = useMemo(() => (signedInUserId ? userSetlists(signedInUserId) : GUEST_SETLISTS), [signedInUserId]);
   const setlists = useSetlists(setlistScope);
-  // Putting one setlist in the account, only ever because somebody asked.
-  const cloudUpload = useSetlistCloudUpload(setlistScope);
+  // Keeping one setlist in step with the account, only ever because
+  // somebody asked.
+  const cloudSync = useSetlistCloudSync(setlistScope);
   // The people of the ministry and the keys they usually sing in.
   const ministry = useMinistry();
   const ministryData = useMemo<MinistryData>(
@@ -747,6 +748,10 @@ export function App() {
   const mostUsedSongs = useMemo(() => getMostUsedSongs(catalogSongs, usage, lastOpenedAt), [catalogSongs, usage, lastOpenedAt]);
 
   const openSetlist = openSetlistId ? setlists.getSetlist(openSetlistId) : null;
+  // What, if anything, to offer for the setlist on screen: a first upload, a
+  // save of what changed since, or nothing at all.
+  const openSetlistCloudState = openSetlist ? cloudSync.stateOf(openSetlist) : 'guest';
+  const cloudOffer = openSetlistCloudState === 'new' || openSetlistCloudState === 'changed' ? openSetlistCloudState : null;
   /** The setlist being played live, when mass mode is open over it. */
   const massSetlist = massSetlistId ? setlists.getSetlist(massSetlistId) : null;
   const activeSetlist = setlistSongRoute ? setlists.getSetlist(setlistSongRoute.setlistId) : null;
@@ -1093,12 +1098,16 @@ export function App() {
             navigateTo(setlistHash(copy.id));
           }
         }}
-        onSaveToAccount={
-          openSetlist && cloudUpload.offers(setlistId)
+        onSyncToAccount={
+          openSetlist && cloudOffer !== null
             ? () => {
                 const setlist = openSetlist;
-                showToast(`Guardando «${setlist.name}» en tu cuenta…`);
-                void cloudUpload.upload(setlist.id, setlist.name).then((answer) => {
+                showToast(
+                  cloudOffer === 'new'
+                    ? `Guardando «${setlist.name}» en tu cuenta…`
+                    : `Guardando los cambios de «${setlist.name}»…`
+                );
+                void cloudSync.sync(setlist).then((answer) => {
                   // Null means one was already in flight: the first one will
                   // say how it went.
                   if (answer) showToast(answer.message);
@@ -1106,7 +1115,8 @@ export function App() {
               }
             : undefined
         }
-        savingToAccount={cloudUpload.busy === setlistId}
+        syncOffer={cloudOffer ?? 'new'}
+        syncingToAccount={cloudSync.busy === setlistId}
         onDelete={() => {
           const name = openSetlist?.name;
           // A deletion that couldn't be written down didn't happen: the

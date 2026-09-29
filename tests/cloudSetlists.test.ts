@@ -675,7 +675,7 @@ describe('Este paso no sincroniza nada', () => {
       (file) => file !== 'src/storage/cloudSetlists.ts' && readFileSync(file, 'utf8').includes('cloudSetlists')
     );
     eq(users, [
-      'src/hooks/useSetlistCloudUpload.ts',
+      'src/hooks/useSetlistCloudSync.ts',
       'src/storage/setlistSync.ts',
       'src/storage/setlistSyncExecutor.ts',
       'src/storage/setlistSyncPass.ts',
@@ -683,7 +683,7 @@ describe('Este paso no sincroniza nada', () => {
       'src/storage/setlistSyncSession.ts',
     ]);
     eq(
-      readFileSync('src/hooks/useSetlistCloudUpload.ts', 'utf8').includes(
+      readFileSync('src/hooks/useSetlistCloudSync.ts', 'utf8').includes(
         "import type { CloudSetlistProblem } from '../storage/cloudSetlists'"
       ),
       true,
@@ -709,10 +709,10 @@ describe('Este paso no sincroniza nada', () => {
       (file) =>
         file !== 'src/storage/setlistSyncSession.ts' && readFileSync(file, 'utf8').includes('runAuthenticatedSetlistSyncPass')
     );
-    eq(sessionCallers, ['src/hooks/useSetlistCloudUpload.ts'], 'un solo sitio desde el que se sincroniza');
+    eq(sessionCallers, ['src/hooks/useSetlistCloudSync.ts'], 'un solo sitio desde el que se sincroniza');
     // Y la pantalla llega al gancho, nunca a la nube por su cuenta.
     const app = readFileSync('src/App.tsx', 'utf8');
-    eq(app.includes('useSetlistCloudUpload'), true);
+    eq(app.includes('useSetlistCloudSync'), true);
     eq(app.includes('cloudSetlists'), false, 'App no habla con la nube');
     eq(app.includes('runAuthenticatedSetlistSyncPass'), false);
   });

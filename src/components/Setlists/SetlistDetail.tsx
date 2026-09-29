@@ -47,13 +47,15 @@ interface SetlistDetailProps {
   onDuplicate: (details: SetlistDetails) => void;
   onDelete: () => void;
   /**
-   * Puts this setlist in the person's account. Absent when there is nothing
-   * to offer: a visitor, or a setlist the cloud already knows about. Never
-   * happens on its own — somebody has to choose it.
+   * Puts what this device has for this setlist in the person's account.
+   * Absent when there is nothing to offer: a visitor, or a setlist that is
+   * already up to date. Never happens on its own — somebody has to choose it.
    */
-  onSaveToAccount?: () => void;
-  /** While it is going up, so the action cannot be started twice. */
-  savingToAccount?: boolean;
+  onSyncToAccount?: () => void;
+  /** Whether it has never been up there, or is up there and has changed since. */
+  syncOffer?: 'new' | 'changed';
+  /** While it is in the air, so the action cannot be started twice. */
+  syncingToAccount?: boolean;
   /** `moment` is set when the song was chosen from a part of the Mass */
   onAddSong: (song: Song, moment: string) => void;
   onRemoveItem: (itemId: string) => void;
@@ -92,8 +94,9 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   onUpdateDetails,
   onDuplicate,
   onDelete,
-  onSaveToAccount,
-  savingToAccount = false,
+  onSyncToAccount,
+  syncOffer = 'new',
+  syncingToAccount = false,
   onAddSong,
   onRemoveItem,
   onMoveItem,
@@ -176,17 +179,24 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
             items={[
               { label: 'Editar nombre y fecha', icon: Pencil, onSelect: () => setDialog({ kind: 'edit' }) },
               { label: 'Duplicar Setlist', icon: Copy, onSelect: () => setDialog({ kind: 'duplicate' }) },
-              // Only there when there is an account and this setlist is not in
-              // it yet. Pressing it is the whole of the decision: nothing goes
-              // up because somebody signed in.
-              ...(onSaveToAccount
+              // Only there when there is an account and this setlist is not up
+              // to date in it. Pressing it is the whole of the decision:
+              // nothing goes up because somebody signed in, or because they
+              // edited something.
+              ...(onSyncToAccount
                 ? [
                     {
-                      label: savingToAccount ? 'Guardando en tu cuenta…' : 'Guardar en mi cuenta',
-                      icon: savingToAccount ? Loader2 : CloudUpload,
-                      disabled: savingToAccount,
+                      label: syncingToAccount
+                        ? syncOffer === 'new'
+                          ? 'Guardando en tu cuenta…'
+                          : 'Guardando los cambios…'
+                        : syncOffer === 'new'
+                          ? 'Guardar en mi cuenta'
+                          : 'Guardar cambios en mi cuenta',
+                      icon: syncingToAccount ? Loader2 : CloudUpload,
+                      disabled: syncingToAccount,
                       separated: true,
-                      onSelect: onSaveToAccount,
+                      onSelect: onSyncToAccount,
                     },
                   ]
                 : []),
