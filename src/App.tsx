@@ -42,6 +42,7 @@ import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
+import { useSetlistCloudUpload } from './hooks/useSetlistCloudUpload';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
 import { bindArrangement, withReviewNeeded } from './utils/arrangement';
@@ -234,6 +235,8 @@ export function App() {
   const signedInUserId = sessionState.state === 'signed-in' ? sessionState.session.userId : null;
   const setlistScope = useMemo(() => (signedInUserId ? userSetlists(signedInUserId) : GUEST_SETLISTS), [signedInUserId]);
   const setlists = useSetlists(setlistScope);
+  // Putting one setlist in the account, only ever because somebody asked.
+  const cloudUpload = useSetlistCloudUpload(setlistScope);
   // The people of the ministry and the keys they usually sing in.
   const ministry = useMinistry();
   const ministryData = useMemo<MinistryData>(
@@ -1090,6 +1093,20 @@ export function App() {
             navigateTo(setlistHash(copy.id));
           }
         }}
+        onSaveToAccount={
+          openSetlist && cloudUpload.offers(setlistId)
+            ? () => {
+                const setlist = openSetlist;
+                showToast(`Guardando «${setlist.name}» en tu cuenta…`);
+                void cloudUpload.upload(setlist.id, setlist.name).then((answer) => {
+                  // Null means one was already in flight: the first one will
+                  // say how it went.
+                  if (answer) showToast(answer.message);
+                });
+              }
+            : undefined
+        }
+        savingToAccount={cloudUpload.busy === setlistId}
         onDelete={() => {
           const name = openSetlist?.name;
           // A deletion that couldn't be written down didn't happen: the

@@ -667,13 +667,15 @@ describe('Este paso no sincroniza nada', () => {
       }
     };
     walk('src');
-    // Dos módulos la nombran. El motor de reconciliación sólo toma el tipo de
-    // una fila ya leída (un `import type` desaparece al compilar). El executor
-    // sí la llama, que es su trabajo — pero nada de la aplicación lo llama a él.
+    // Quién la nombra: el motor de reconciliación sólo toma el tipo de una
+    // fila ya leída (un `import type` desaparece al compilar), el executor la
+    // llama porque ése es su trabajo, y el gancho de la pantalla toma de aquí
+    // los nombres de los límites de la tabla para poder explicarlos.
     const users = files.filter(
       (file) => file !== 'src/storage/cloudSetlists.ts' && readFileSync(file, 'utf8').includes('cloudSetlists')
     );
     eq(users, [
+      'src/hooks/useSetlistCloudUpload.ts',
       'src/storage/setlistSync.ts',
       'src/storage/setlistSyncExecutor.ts',
       'src/storage/setlistSyncPass.ts',
@@ -681,12 +683,20 @@ describe('Este paso no sincroniza nada', () => {
       'src/storage/setlistSyncSession.ts',
     ]);
     eq(
+      readFileSync('src/hooks/useSetlistCloudUpload.ts', 'utf8').includes(
+        "import type { CloudSetlistProblem } from '../storage/cloudSetlists'"
+      ),
+      true,
+      'y el gancho sólo toma el tipo'
+    );
+    eq(
       readFileSync('src/storage/setlistSync.ts', 'utf8').includes("import type { CloudSetlistRead } from './cloudSetlists'"),
       true,
       'el motor sólo toma el tipo'
     );
-    // Al executor lo llama la pasada, que es quien coordina. A la pasada no
-    // la llama nadie: la aplicación sigue sin sincronizar.
+    // Y la cadena, de abajo arriba: al executor lo llama la pasada, a la
+    // pasada el adaptador de sesión, y a ése un solo sitio — el gancho de
+    // pulsar «Guardar en mi cuenta». Ni una rama más.
     const callers = files.filter(
       (file) => file !== 'src/storage/setlistSyncExecutor.ts' && readFileSync(file, 'utf8').includes('executeSetlistSyncPlan')
     );
@@ -694,13 +704,16 @@ describe('Este paso no sincroniza nada', () => {
     const passCallers = files.filter(
       (file) => file !== 'src/storage/setlistSyncPass.ts' && readFileSync(file, 'utf8').includes('runSetlistSyncPass')
     );
-    // La pasada la llama el adaptador de sesión, que es su sitio. Y a ese no
-    // lo llama todavía ninguna pantalla.
     eq(passCallers, ['src/storage/setlistSyncSession.ts']);
     const sessionCallers = files.filter(
       (file) =>
         file !== 'src/storage/setlistSyncSession.ts' && readFileSync(file, 'utf8').includes('runAuthenticatedSetlistSyncPass')
     );
-    eq(sessionCallers, [], 'y al adaptador no lo llama nadie');
+    eq(sessionCallers, ['src/hooks/useSetlistCloudUpload.ts'], 'un solo sitio desde el que se sincroniza');
+    // Y la pantalla llega al gancho, nunca a la nube por su cuenta.
+    const app = readFileSync('src/App.tsx', 'utf8');
+    eq(app.includes('useSetlistCloudUpload'), true);
+    eq(app.includes('cloudSetlists'), false, 'App no habla con la nube');
+    eq(app.includes('runAuthenticatedSetlistSyncPass'), false);
   });
 });

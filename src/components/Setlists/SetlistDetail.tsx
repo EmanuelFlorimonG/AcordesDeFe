@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import {
   ArrowLeft,
   CalendarDays,
+  CloudUpload,
   Copy,
   ListOrdered,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Play,
@@ -44,6 +46,14 @@ interface SetlistDetailProps {
   onUpdateDetails: (details: SetlistDetails) => void;
   onDuplicate: (details: SetlistDetails) => void;
   onDelete: () => void;
+  /**
+   * Puts this setlist in the person's account. Absent when there is nothing
+   * to offer: a visitor, or a setlist the cloud already knows about. Never
+   * happens on its own — somebody has to choose it.
+   */
+  onSaveToAccount?: () => void;
+  /** While it is going up, so the action cannot be started twice. */
+  savingToAccount?: boolean;
   /** `moment` is set when the song was chosen from a part of the Mass */
   onAddSong: (song: Song, moment: string) => void;
   onRemoveItem: (itemId: string) => void;
@@ -82,6 +92,8 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   onUpdateDetails,
   onDuplicate,
   onDelete,
+  onSaveToAccount,
+  savingToAccount = false,
   onAddSong,
   onRemoveItem,
   onMoveItem,
@@ -164,6 +176,20 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
             items={[
               { label: 'Editar nombre y fecha', icon: Pencil, onSelect: () => setDialog({ kind: 'edit' }) },
               { label: 'Duplicar Setlist', icon: Copy, onSelect: () => setDialog({ kind: 'duplicate' }) },
+              // Only there when there is an account and this setlist is not in
+              // it yet. Pressing it is the whole of the decision: nothing goes
+              // up because somebody signed in.
+              ...(onSaveToAccount
+                ? [
+                    {
+                      label: savingToAccount ? 'Guardando en tu cuenta…' : 'Guardar en mi cuenta',
+                      icon: savingToAccount ? Loader2 : CloudUpload,
+                      disabled: savingToAccount,
+                      separated: true,
+                      onSelect: onSaveToAccount,
+                    },
+                  ]
+                : []),
               {
                 label: 'Eliminar Setlist',
                 icon: Trash2,
