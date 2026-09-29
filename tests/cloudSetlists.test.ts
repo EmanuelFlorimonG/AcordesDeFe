@@ -677,6 +677,7 @@ describe('Este paso no sincroniza nada', () => {
       'src/storage/setlistSync.ts',
       'src/storage/setlistSyncExecutor.ts',
       'src/storage/setlistSyncPass.ts',
+      'src/storage/setlistSyncPreflight.ts',
       'src/storage/setlistSyncSession.ts',
     ]);
     eq(

@@ -62,7 +62,7 @@ export interface SetlistSyncSessionDependencies {
  * session of its own. An expired token makes requests fail, which is the
  * safe answer; it never falls back to the public.
  */
-function cloudForToken(accessToken: string): CloudSetlistRepository | null {
+export function cloudForToken(accessToken: string): CloudSetlistRepository | null {
   const status = getSupabaseStatus();
   if (status.state !== 'configured') return null;
   const frozen = async () => accessToken;
