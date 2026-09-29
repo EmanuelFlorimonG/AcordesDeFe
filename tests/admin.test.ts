@@ -662,6 +662,70 @@ describe('Sesión editorial en el cancionero', () => {
     eq(await resolveAccess(null, async () => 'admin'), { state: 'signed-out' });
   });
 
+  it('la identidad y el token salen de una sola lectura de la sesion', async () => {
+    // Preguntar quien hay y luego preguntar el token son dos preguntas, y una
+    // sesion puede terminar entre ambas: la respuesta seria el nombre de una
+    // persona con el token de otra. Lo que actua en nombre de alguien durante
+    // varias peticiones necesita que el par haya sido cierto a la vez.
+    let reads = 0;
+    let stored: unknown = { user: FAKE_USER('ana@example.com'), access_token: 'jwt-de-ana' };
+    const js = {
+      auth: {
+        async getSession() {
+          reads += 1;
+          // Cada lectura devuelve otra sesion: si la captura hiciera dos
+          // llamadas, mezclaria a Ana con el token de Bruno.
+          const answer = { data: { session: stored }, error: null };
+          stored = { user: FAKE_USER('bruno@example.com'), access_token: 'jwt-de-bruno' };
+          return answer;
+        },
+        onAuthStateChange() {
+          return { data: { subscription: { unsubscribe: () => {} } } };
+        },
+      },
+    } as unknown as SupabaseJsClient;
+
+    const capture = await createSupabaseAuth(js).authenticated();
+    eq(reads, 1, 'una sola lectura');
+    eq(capture?.session.email, 'ana@example.com');
+    eq(capture?.accessToken, 'jwt-de-ana', 'el token de esa misma respuesta');
+
+    // Y lo capturado no cambia porque la sesion viva cambie despues.
+    const antes = { ...capture };
+    await createSupabaseAuth(js).authenticated();
+    eq({ ...capture }, antes, 'la captura de Ana sigue siendo la de Ana');
+  });
+
+  it('sin sesion, sin usuario, sin id o sin token no hay captura', async () => {
+    const withSession = (session: unknown, error: unknown = null) =>
+      ({
+        auth: {
+          async getSession() {
+            return { data: { session }, error };
+          },
+          onAuthStateChange() {
+            return { data: { subscription: { unsubscribe: () => {} } } };
+          },
+        },
+      }) as unknown as SupabaseJsClient;
+
+    const user = FAKE_USER('ana@example.com');
+    for (const [session, why] of [
+      [null, 'sin sesion'],
+      [{ user: null, access_token: 'jwt' }, 'sin usuario'],
+      [{ user: { ...user, id: '' }, access_token: 'jwt' }, 'sin id'],
+      [{ user: { ...user, id: '   ' }, access_token: 'jwt' }, 'id en blanco'],
+      [{ user, access_token: null }, 'sin token'],
+      [{ user, access_token: '' }, 'token vacio'],
+      [{ user, access_token: '   ' }, 'token en blanco'],
+      [{ user }, 'token ausente'],
+    ] as const) {
+      eq(await createSupabaseAuth(withSession(session)).authenticated(), null, why);
+    }
+    // Y un error del proveedor tampoco produce media captura.
+    eq(await createSupabaseAuth(withSession({ user, access_token: 'jwt' }, new Error('nope'))).authenticated(), null);
+  });
+
   it('un solo cliente de Supabase Auth en todo el proyecto', () => {
     // Dos clientes con la misma clave de almacenamiento se pelean por el mismo
     // refresh token y terminan cerrando sesiones al azar. Debe haber uno.

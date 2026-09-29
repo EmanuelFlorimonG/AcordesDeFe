@@ -673,7 +673,12 @@ describe('Este paso no sincroniza nada', () => {
     const users = files.filter(
       (file) => file !== 'src/storage/cloudSetlists.ts' && readFileSync(file, 'utf8').includes('cloudSetlists')
     );
-    eq(users, ['src/storage/setlistSync.ts', 'src/storage/setlistSyncExecutor.ts', 'src/storage/setlistSyncPass.ts']);
+    eq(users, [
+      'src/storage/setlistSync.ts',
+      'src/storage/setlistSyncExecutor.ts',
+      'src/storage/setlistSyncPass.ts',
+      'src/storage/setlistSyncSession.ts',
+    ]);
     eq(
       readFileSync('src/storage/setlistSync.ts', 'utf8').includes("import type { CloudSetlistRead } from './cloudSetlists'"),
       true,
@@ -688,6 +693,13 @@ describe('Este paso no sincroniza nada', () => {
     const passCallers = files.filter(
       (file) => file !== 'src/storage/setlistSyncPass.ts' && readFileSync(file, 'utf8').includes('runSetlistSyncPass')
     );
-    eq(passCallers, [], 'y a la pasada no la llama todavía nadie');
+    // La pasada la llama el adaptador de sesión, que es su sitio. Y a ese no
+    // lo llama todavía ninguna pantalla.
+    eq(passCallers, ['src/storage/setlistSyncSession.ts']);
+    const sessionCallers = files.filter(
+      (file) =>
+        file !== 'src/storage/setlistSyncSession.ts' && readFileSync(file, 'utf8').includes('runAuthenticatedSetlistSyncPass')
+    );
+    eq(sessionCallers, [], 'y al adaptador no lo llama nadie');
   });
 });

@@ -143,6 +143,18 @@ export function createSupabaseAuth(js: SupabaseJsClient): AppAuth {
       const { data } = await js.auth.getSession();
       return data.session?.access_token ?? null;
     },
+    async authenticated() {
+      // One question, one answer: the identity and the token are read out of
+      // the same session object, so they cannot belong to different people.
+      const { data, error } = await js.auth.getSession();
+      if (error) return null;
+      const session = toSession(data.session);
+      const accessToken = data.session?.access_token?.trim();
+      // An id that is only whitespace names nobody, and would land setlists
+      // in a storage key that is not anybody's (see setlistKeys).
+      if (!session || !session.userId.trim() || !accessToken) return null;
+      return { session, accessToken };
+    },
   };
 }
 

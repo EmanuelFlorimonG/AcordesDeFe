@@ -64,6 +64,33 @@ export interface AppAuth {
   subscribe(listener: (session: AppSession | null) => void): () => void;
   /** For the data requests: the current access token, or null when signed out */
   accessToken(): Promise<string | null>;
+  /**
+   * Who is signed in *and* the token of that same session, read once.
+   *
+   * Asking for the identity and then for the token is two questions, and a
+   * session can end between them: the answer could be one person's name with
+   * another person's token. Anything that acts on somebody's behalf over
+   * several requests — synchronising their setlists, say — needs the pair to
+   * have been true at one moment, and this is the only thing that can say so,
+   * because it is the only thing holding the session object both come from.
+   *
+   * Null when there is no session, no user, no id worth the name, or no
+   * token. There is no half-answer: an identity without a token cannot act,
+   * and a token without an identity is nobody.
+   */
+  authenticated(): Promise<AuthenticatedSession | null>;
+}
+
+/**
+ * An identity and the token that proves it, from one reading of the session.
+ *
+ * Holding these two together is the whole point: whoever receives one of
+ * these knows the pair was true at the same instant, which no amount of
+ * checking afterwards could establish.
+ */
+export interface AuthenticatedSession {
+  session: AppSession;
+  accessToken: string;
 }
 
 /** What Supabase asks for by default. Nothing more is invented here. */

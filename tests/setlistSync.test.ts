@@ -994,8 +994,8 @@ describe('Este paso sigue sin sincronizar nada', () => {
     // A la capa cloud la llama el executor, que es para lo que está. Nadie más.
     eq(
       others.filter((file) => reads(file).includes('cloudSetlists')),
-      ['src/storage/setlistSyncExecutor.ts', 'src/storage/setlistSyncPass.ts'],
-      'sólo el executor y la pasada que lo coordina'
+      ['src/storage/setlistSyncExecutor.ts', 'src/storage/setlistSyncPass.ts', 'src/storage/setlistSyncSession.ts'],
+      'sólo el executor, la pasada que lo coordina y el adaptador que la arranca'
     );
 
     // De este módulo, la aplicación usa una cosa y sólo una: dónde se guarda
@@ -1005,11 +1005,12 @@ describe('Este paso sigue sin sincronizar nada', () => {
       'src/hooks/useSetlists.ts',
       'src/storage/setlistSyncExecutor.ts',
       'src/storage/setlistSyncPass.ts',
+      'src/storage/setlistSyncSession.ts',
     ]);
     eq(
       others.filter((file) => /reconcileSetlists?\(/.test(reads(file))),
       ['src/storage/setlistSyncPass.ts'],
-      'sólo la pasada pide planes, y a la pasada no la llama nadie'
+      'sólo la pasada pide planes'
     );
   });
 });
