@@ -4,7 +4,7 @@ import type { Setlist } from '../types/setlist';
 import type { CloudSetlistProblem } from '../storage/cloudSetlists';
 import { getBrowserStorage, scopeId, type SetlistScope } from '../storage/setlistStorage';
 import { createSetlistSyncStore, portableFingerprint } from '../storage/setlistSync';
-import type { SetlistSyncOutcome } from '../storage/setlistSyncPass';
+import type { SetlistSyncOutcome, SetlistSyncPassReport } from '../storage/setlistSyncPass';
 
 /**
  * Keeping one setlist and its copy in the account in step, because somebody
@@ -33,6 +33,20 @@ export type SetlistCloudState =
   | 'synced';
 
 export interface SetlistCloudSync {
+  /**
+   * Whether there is an account to synchronise with at all. False for a
+   * visitor, whose setlists stay exactly where they are.
+   */
+  available: boolean;
+  /** A pass over everything is in the air. */
+  busyAll: boolean;
+  /**
+   * Brings down whatever this account has that this device does not, sends up
+   * what changed here, and says what happened. Nothing new is created: a
+   * setlist this device has and the cloud has never seen still waits to be
+   * asked for, one at a time.
+   */
+  syncAll: () => Promise<{ ok: boolean; message: string } | null>;
   /**
    * Where this setlist stands. Answered from what is already on the device —
    * a stored baseline and the setlist itself — so drawing a menu asks nothing
@@ -117,6 +131,112 @@ export function describeSync(
   }
 }
 
+/** A pass that ran, or the reason there was none. */
+type PassAttempt = { ran: true; report: SetlistSyncPassReport } | { ran: false; message: string };
+
+/** How many setlists each kind of thing happened to, for one sentence about all of them. */
+export interface SyncTally {
+  /** Came down from the account: setlists this device did not have, or had older. */
+  recovered: number;
+  /** Went up: changes made here. */
+  saved: number;
+  /** Changed on both sides, or deleted on one and edited on the other. Nothing was touched. */
+  conflicts: number;
+  /** Here but never put in the account. Each one waits to be asked for. */
+  pending: number;
+  /** Written by a newer version of the app, or unreadable. */
+  blocked: number;
+  /** Something went wrong with one of them. */
+  failed: number;
+}
+
+export function tally(outcomes: Iterable<SetlistSyncOutcome>): SyncTally {
+  const counts: SyncTally = { recovered: 0, saved: 0, conflicts: 0, pending: 0, blocked: 0, failed: 0 };
+  for (const outcome of outcomes) {
+    switch (outcome.kind) {
+      case 'applied-local':
+        // Only a setlist arriving or being removed is worth counting; writing
+        // down an agreement is housekeeping nobody asked about.
+        if (outcome.plan.kind === 'apply-remote' || outcome.plan.kind === 'delete-local') counts.recovered += 1;
+        break;
+      case 'cloud-success':
+        counts.saved += 1;
+        break;
+      case 'ask':
+      case 'cloud-conflict':
+        counts.conflicts += 1;
+        break;
+      case 'pending-user-action':
+        counts.pending += 1;
+        break;
+      case 'blocked':
+        counts.blocked += 1;
+        break;
+      case 'cloud-rejected':
+      case 'cloud-request-error':
+      case 'cloud-auth-error':
+      case 'invalid-plan':
+      case 'invalid-response':
+      case 'local-error':
+        counts.failed += 1;
+        break;
+      case 'noop':
+      case 'skipped-stale':
+        break;
+    }
+  }
+  return counts;
+}
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+/**
+ * One sentence about a whole pass.
+ *
+ * What somebody wants to know first is whether anything needs them: a setlist
+ * that changed in two places is the only thing here they have to do something
+ * about, so it is said first even when other things went well.
+ */
+export function describePass(counts: SyncTally): { ok: boolean; message: string } {
+  const parts: string[] = [];
+  if (counts.recovered) parts.push(plural(counts.recovered, 'Setlist recuperado', 'Setlists recuperados'));
+  if (counts.saved) parts.push(plural(counts.saved, 'cambio guardado', 'cambios guardados'));
+
+  if (counts.conflicts) {
+    const also = parts.length ? `${parts.join(' y ')}. ` : '';
+    return {
+      ok: false,
+      message:
+        `${also}${plural(counts.conflicts, 'Setlist cambió', 'Setlists cambiaron')} aquí y en otro dispositivo: ` +
+        'no se ha guardado nada de ésos para no perder ninguna de las dos versiones.',
+    };
+  }
+  if (counts.failed) {
+    const also = parts.length ? `${parts.join(' y ')}. ` : '';
+    return { ok: false, message: `${also}Algo no se pudo guardar. Inténtalo otra vez.` };
+  }
+  if (counts.blocked) {
+    const also = parts.length ? `${parts.join(' y ')}. ` : '';
+    return {
+      ok: false,
+      message: `${also}Hay Setlists guardados desde una versión más reciente de la aplicación. Actualízala para verlos.`,
+    };
+  }
+
+  if (!parts.length) {
+    return {
+      ok: true,
+      message: counts.pending
+        ? `Todo al día. ${plural(counts.pending, 'Setlist sigue', 'Setlists siguen')} sin guardar en tu cuenta.`
+        : 'Tus Setlists están al día',
+    };
+  }
+  const tail = counts.pending
+    ? `. ${plural(counts.pending, 'Setlist sigue', 'Setlists siguen')} sin guardar en tu cuenta`
+    : '';
+  return { ok: true, message: `${parts.join(' y ')}${tail}` };
+}
+
 /**
  * `scope` is whose setlists these are, the same one the list is read with, so
  * what is offered can never be about a different account than the one on
@@ -126,6 +246,7 @@ export function describeSync(
 export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
   const { services } = useAuthServices();
   const [busy, setBusy] = useState<string | null>(null);
+  const [busyAll, setBusyAll] = useState(false);
   // Counted up after something reached the cloud, so the menu stops offering
   // what is now up to date.
   const [passes, setPasses] = useState(0);
@@ -159,37 +280,66 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
     [userId, services, agreed]
   );
 
+  /**
+   * One pass for this account, or a sentence saying why there was none. The
+   * capture is made here so both actions get the same guarantee: an identity
+   * and a token read together, and nothing asked again afterwards.
+   */
+  const runPass = useCallback(
+    async (authorisedUploads: string[]): Promise<PassAttempt> => {
+      const stopped = (message: string): PassAttempt => ({ ran: false, message });
+      if (!services || !userId) return stopped(SESSION_LOST);
+      const capture = await services.auth.authenticated();
+      if (!capture || capture.session.userId.trim() !== userId) return stopped(SESSION_LOST);
+
+      // Downloaded the first time somebody asks for this, and never for a
+      // visitor: the whole of the synchronising machinery is weight that most
+      // people never need, like supabase-js itself (see useSession).
+      const { runAuthenticatedSetlistSyncPass } = await import('../storage/setlistSyncSession');
+      const result = await runAuthenticatedSetlistSyncPass(capture, {}, { authorisedUploads });
+      if (result.status !== 'ran') return stopped(SESSION_LOST);
+      if (result.report.status === 'remote-auth-error') return stopped(SESSION_LOST);
+      if (result.report.status === 'remote-read-error') return stopped(NO_CONNECTION);
+      return { ran: true, report: result.report };
+    },
+    [services, userId]
+  );
+
+  const syncAll = useCallback(async () => {
+    if (busy || busyAll) return null;
+    setBusyAll(true);
+    try {
+      // Nothing is named, so nothing new is created: bringing down and keeping
+      // in step need no permission, but a first upload always does.
+      const outcome = await runPass([]);
+      if (!outcome.ran) return { ok: false, message: outcome.message };
+      setPasses((count) => count + 1);
+      return describePass(tally(outcome.report.outcomes.values()));
+    } catch {
+      return { ok: false, message: NO_CONNECTION };
+    } finally {
+      setBusyAll(false);
+    }
+  }, [busy, busyAll, runPass]);
+
   const sync = useCallback(
     async (setlist: Setlist) => {
       // One at a time: a second press while the first is in the air does
       // nothing rather than sending the same setlist twice.
-      if (busy) return null;
-      if (!services || !userId) return { ok: false, message: SESSION_LOST };
+      if (busy || busyAll) return null;
       const intent = agreed.has(setlist.id) ? 'changed' : 'new';
 
       setBusy(setlist.id);
       try {
-        // The identity and the token, read together, so the pass belongs to
-        // one session (see AppAuth.authenticated).
-        const capture = await services.auth.authenticated();
-        if (!capture || capture.session.userId.trim() !== userId) return { ok: false, message: SESSION_LOST };
-
-        // Downloaded the first time somebody asks for this, and never for a
-        // visitor: the whole of the synchronising machinery is weight that
-        // most people never need, like supabase-js itself (see useSession).
-        const { runAuthenticatedSetlistSyncPass } = await import('../storage/setlistSyncSession');
         // Naming it authorises a first upload of this one and nothing else; a
         // setlist that is already up there needs no permission to be kept in
         // step, and the engine works that out for itself.
-        const result = await runAuthenticatedSetlistSyncPass(capture, {}, { authorisedUploads: [setlist.id] });
-        if (result.status !== 'ran') return { ok: false, message: SESSION_LOST };
-        if (result.report.status === 'remote-auth-error') return { ok: false, message: SESSION_LOST };
-        if (result.report.status === 'remote-read-error') return { ok: false, message: NO_CONNECTION };
-
+        const outcome = await runPass([setlist.id]);
+        if (!outcome.ran) return { ok: false, message: outcome.message };
         // A pass settles every setlist, so what this one learned is worth
         // keeping whatever it says about the one that was clicked.
         setPasses((count) => count + 1);
-        return describeSync(result.report.outcomes.get(setlist.id), setlist.name, intent);
+        return describeSync(outcome.report.outcomes.get(setlist.id), setlist.name, intent);
       } catch {
         // Nothing reached the cloud, or nothing came back from it.
         return { ok: false, message: NO_CONNECTION };
@@ -197,8 +347,8 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
         setBusy(null);
       }
     },
-    [busy, services, userId, agreed]
+    [busy, busyAll, runPass, agreed]
   );
 
-  return { stateOf, busy, sync };
+  return { available: Boolean(userId) && Boolean(services), stateOf, busy, busyAll, sync, syncAll };
 }

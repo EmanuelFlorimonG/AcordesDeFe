@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { SetlistSyncOutcome } from '../src/storage/setlistSyncPass';
 import type { SetlistSyncPlan } from '../src/storage/setlistSync';
 import type { SetlistSyncExecutionResult } from '../src/storage/setlistSyncExecutor';
-import { describeSync } from '../src/hooks/useSetlistCloudSync';
+import { describePass, describeSync, tally } from '../src/hooks/useSetlistCloudSync';
 
 /**
  * What somebody is told after asking to keep a setlist in step with their
@@ -135,6 +135,92 @@ describe('Lo que se le dice a quien pide guardar en su cuenta', () => {
   });
 });
 
+describe('Lo que se dice de una sincronizacion entera', () => {
+  const plans = {
+    bajado: { kind: 'apply-remote', setlist: { id: 'a' }, base: {} } as unknown as SetlistSyncPlan,
+    borrado: { kind: 'delete-local', setlistId: 'a', cloudRevision: 2 } as SetlistSyncPlan,
+    acuerdo: { kind: 'adopt-baseline', base: {} } as unknown as SetlistSyncPlan,
+    olvido: { kind: 'forget-baseline', setlistId: 'a' } as SetlistSyncPlan,
+  };
+  const applied = (plan: SetlistSyncPlan): SetlistSyncOutcome => ({ kind: 'applied-local', plan });
+
+  it('cuenta lo que le importa a una persona, no las tareas internas', () => {
+    const counts = tally([
+      applied(plans.bajado),
+      applied(plans.bajado),
+      applied(plans.acuerdo),
+      applied(plans.olvido),
+      { kind: 'cloud-success', plan, result: result('success'), local: 'written' },
+      { kind: 'ask', plan },
+      { kind: 'cloud-conflict', plan },
+      { kind: 'pending-user-action', plan },
+      { kind: 'blocked', plan },
+      { kind: 'cloud-request-error', plan, error: new Error('x') },
+      { kind: 'noop', plan },
+      { kind: 'skipped-stale', plan, what: 'base' },
+    ]);
+    // Apuntar un acuerdo u olvidar una referencia no es nada que contar.
+    eq(counts, { recovered: 2, saved: 1, conflicts: 2, pending: 1, blocked: 1, failed: 1 });
+    eq(tally([applied(plans.borrado)]).recovered, 1, 'un borrado que llega tambien se nota');
+  });
+
+  it('recuperar setlists se dice en singular y en plural', () => {
+    eq(describePass(tally([applied(plans.bajado)])), { ok: true, message: '1 Setlist recuperado' });
+    eq(describePass(tally([applied(plans.bajado), applied(plans.bajado), applied(plans.bajado)])), {
+      ok: true,
+      message: '3 Setlists recuperados',
+    });
+  });
+
+  it('cuando no hay nada que hacer, lo dice sin ruido', () => {
+    eq(describePass(tally([{ kind: 'noop', plan }])), { ok: true, message: 'Tus Setlists están al día' });
+    eq(describePass(tally([])), { ok: true, message: 'Tus Setlists están al día' });
+  });
+
+  it('y recuerda los que siguen sin guardar, sin insistir', () => {
+    eq(describePass(tally([{ kind: 'pending-user-action', plan }, { kind: 'noop', plan }])), {
+      ok: true,
+      message: 'Todo al día. 1 Setlist sigue sin guardar en tu cuenta.',
+    });
+    const conAmbos = describePass(tally([applied(plans.bajado), { kind: 'pending-user-action', plan }]));
+    eq(conAmbos, { ok: true, message: '1 Setlist recuperado. 1 Setlist sigue sin guardar en tu cuenta' });
+  });
+
+  it('un conflicto manda sobre las buenas noticias, porque necesita a alguien', () => {
+    const answer = describePass(tally([applied(plans.bajado), { kind: 'ask', plan }]));
+    eq(answer.ok, false);
+    eq(
+      answer.message,
+      '1 Setlist recuperado. 1 Setlist cambió aquí y en otro dispositivo: no se ha guardado nada de ésos para no perder ninguna de las dos versiones.'
+    );
+    // Y en plural.
+    eq(describePass(tally([{ kind: 'ask', plan }, { kind: 'cloud-conflict', plan }])).message.startsWith('2 Setlists cambiaron'), true);
+  });
+
+  it('un fallo y una fila incompatible tambien se dicen', () => {
+    eq(describePass(tally([{ kind: 'cloud-request-error', plan, error: new Error('x') }])).ok, false);
+    const bloqueado = describePass(tally([{ kind: 'blocked', plan }]));
+    eq(bloqueado.ok, false);
+    eq(bloqueado.message.includes('versión más reciente'), true);
+  });
+
+  it('nunca se le ensena a nadie como funciona esto por dentro', () => {
+    const todas: SetlistSyncOutcome[][] = [
+      [applied(plans.bajado), { kind: 'ask', plan }],
+      [{ kind: 'blocked', plan }],
+      [{ kind: 'cloud-success', plan, result: result('success'), local: 'failed' }],
+      [{ kind: 'pending-user-action', plan }],
+      [{ kind: 'local-error', plan, error: new Error('Bearer abc') }],
+    ];
+    for (const outcomes of todas) {
+      const { message } = describePass(tally(outcomes));
+      for (const interno of ['revision', 'fingerprint', 'huella', 'token', 'Bearer', 'owner_id', 'apply-remote', 'upload', 'noop', 'ask']) {
+        eq(message.toLowerCase().includes(interno.toLowerCase()), false, `${interno}: ${message}`);
+      }
+    }
+  });
+});
+
 describe('Guardar en la cuenta es siempre una decisión de alguien', () => {
   const hook = readFileSync('src/hooks/useSetlistCloudSync.ts', 'utf8').replace(/\r\n/g, '\n');
   const code = hook.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
@@ -150,12 +236,12 @@ describe('Guardar en la cuenta es siempre una decisión de alguien', () => {
   });
 
   it('se nombra exactamente el setlist que se pidió, y ninguno más', () => {
-    eq(code.includes('authorisedUploads: [setlist.id]'), true);
+    eq(code.includes('runPass([setlist.id])'), true);
     eq(/authorisedUploads:\s*\[[^\]]*,/.test(code), false, 'nunca una lista de varios');
   });
 
   it('una segunda pulsación mientras sincroniza no hace nada', () => {
-    eq(code.includes('if (busy) return null;'), true);
+    eq(code.includes('if (busy || busyAll) return null;'), true);
     eq(detail.includes('disabled: syncingToAccount'), true, 'y el menú la deshabilita');
     eq(detail.includes("'Guardando los cambios…'"), true, 'diciendo que está en marcha');
   });

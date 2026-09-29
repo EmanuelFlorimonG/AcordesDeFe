@@ -1074,6 +1074,19 @@ export function App() {
           recoveredFromUnreadableData={setlists.recoveredFromUnreadableData}
           onOpen={(setlistId) => navigateTo(setlistHash(setlistId))}
           onCreate={handleCreateSetlist}
+          onSyncAll={
+            cloudSync.available
+              ? () => {
+                  showToast('Sincronizando tus Setlists…');
+                  void cloudSync.syncAll().then((answer) => {
+                    // Null means one was already in flight: that one will say
+                    // how it went.
+                    if (answer) showToast(answer.message);
+                  });
+                }
+              : undefined
+          }
+          syncingAll={cloudSync.busyAll}
         />
       );
     }

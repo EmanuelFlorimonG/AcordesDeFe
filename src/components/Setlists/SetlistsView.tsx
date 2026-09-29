@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CalendarDays, ChevronRight, ListOrdered, Plus, TriangleAlert } from 'lucide-react';
+import { CalendarDays, ChevronRight, ListOrdered, Plus, RefreshCw, TriangleAlert } from 'lucide-react';
 import type { Setlist, SetlistDetails } from '../../types/setlist';
 import {
   formatDurationSummary,
@@ -9,7 +9,7 @@ import {
   toLocalIsoDate,
 } from '../../utils/setlists';
 import { SetlistFormDialog } from './SetlistFormDialog';
-import { primaryButton, sectionHeading } from './ui';
+import { primaryButton, secondaryButton, sectionHeading } from './ui';
 
 interface SetlistsViewProps {
   setlists: Setlist[];
@@ -18,6 +18,13 @@ interface SetlistsViewProps {
   recoveredFromUnreadableData: boolean;
   onOpen: (setlistId: string) => void;
   onCreate: (details: SetlistDetails) => void;
+  /**
+   * Brings down what the account has and sends up what changed here. Absent
+   * for a visitor, who has no account and whose setlists stay where they are.
+   */
+  onSyncAll?: () => void;
+  /** While a pass is in the air, so it cannot be started twice. */
+  syncingAll?: boolean;
 }
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -124,6 +131,8 @@ export const SetlistsView: React.FC<SetlistsViewProps> = ({
   recoveredFromUnreadableData,
   onOpen,
   onCreate,
+  onSyncAll,
+  syncingAll = false,
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
@@ -144,12 +153,20 @@ export const SetlistsView: React.FC<SetlistsViewProps> = ({
             El orden, el tono y las notas de cada celebración.
           </p>
         </div>
-        {setlists.length > 0 && (
-          <button type="button" onClick={() => setIsCreating(true)} className={primaryButton}>
-            <Plus className="w-4 h-4" />
-            Nuevo Setlist
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {onSyncAll && setlists.length > 0 && (
+            <button type="button" onClick={onSyncAll} disabled={syncingAll} className={secondaryButton}>
+              <RefreshCw className={`w-4 h-4${syncingAll ? ' animate-spin' : ''}`} />
+              {syncingAll ? 'Sincronizando…' : 'Sincronizar'}
+            </button>
+          )}
+          {setlists.length > 0 && (
+            <button type="button" onClick={() => setIsCreating(true)} className={primaryButton}>
+              <Plus className="w-4 h-4" />
+              Nuevo Setlist
+            </button>
+          )}
+        </div>
       </div>
 
       {recoveredFromUnreadableData && !isNoticeDismissed && (
@@ -186,10 +203,23 @@ export const SetlistsView: React.FC<SetlistsViewProps> = ({
             con el tono, la cejilla y las notas de ese día. El cancionero no cambia.
           </p>
           <EmptyPreview />
-          <button type="button" onClick={() => setIsCreating(true)} className={`${primaryButton} mt-6`}>
-            <Plus className="w-4 h-4" />
-            Crear el primer Setlist
-          </button>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <button type="button" onClick={() => setIsCreating(true)} className={primaryButton}>
+              <Plus className="w-4 h-4" />
+              Crear el primer Setlist
+            </button>
+            {onSyncAll && (
+              <button type="button" onClick={onSyncAll} disabled={syncingAll} className={secondaryButton}>
+                <RefreshCw className={`w-4 h-4${syncingAll ? ' animate-spin' : ''}`} />
+                {syncingAll ? 'Buscando…' : 'Traer los de mi cuenta'}
+              </button>
+            )}
+          </div>
+          {onSyncAll && (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              Si ya guardaste Setlists en tu cuenta desde otro dispositivo, puedes traerlos aquí.
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-7">
