@@ -673,15 +673,21 @@ describe('Este paso no sincroniza nada', () => {
     const users = files.filter(
       (file) => file !== 'src/storage/cloudSetlists.ts' && readFileSync(file, 'utf8').includes('cloudSetlists')
     );
-    eq(users, ['src/storage/setlistSync.ts', 'src/storage/setlistSyncExecutor.ts']);
+    eq(users, ['src/storage/setlistSync.ts', 'src/storage/setlistSyncExecutor.ts', 'src/storage/setlistSyncPass.ts']);
     eq(
       readFileSync('src/storage/setlistSync.ts', 'utf8').includes("import type { CloudSetlistRead } from './cloudSetlists'"),
       true,
       'el motor sólo toma el tipo'
     );
+    // Al executor lo llama la pasada, que es quien coordina. A la pasada no
+    // la llama nadie: la aplicación sigue sin sincronizar.
     const callers = files.filter(
       (file) => file !== 'src/storage/setlistSyncExecutor.ts' && readFileSync(file, 'utf8').includes('executeSetlistSyncPlan')
     );
-    eq(callers, [], 'y al executor no lo llama todavía nadie');
+    eq(callers, ['src/storage/setlistSyncPass.ts']);
+    const passCallers = files.filter(
+      (file) => file !== 'src/storage/setlistSyncPass.ts' && readFileSync(file, 'utf8').includes('runSetlistSyncPass')
+    );
+    eq(passCallers, [], 'y a la pasada no la llama todavía nadie');
   });
 });

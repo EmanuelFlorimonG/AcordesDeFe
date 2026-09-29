@@ -250,7 +250,7 @@ const instant = (value: unknown): number | null => {
  * No match, no assignment. An empty list is the honest answer, and the person
  * assigns again; a wrong name is somebody walking up at the wrong moment.
  */
-function withLocalMembers(item: CloudSetlistItem, local: SetlistItem | undefined): SetlistItem {
+function itemWithLocalMembers(item: CloudSetlistItem, local: SetlistItem | undefined): SetlistItem {
   if (!item.arrangement) return item as SetlistItem;
   const localSections = new Map((local?.arrangement?.sections ?? []).map((section) => [section.id, section]));
   return {
@@ -264,6 +264,24 @@ function withLocalMembers(item: CloudSetlistItem, local: SetlistItem | undefined
         return { ...section, assignedMemberIds };
       }),
     },
+  };
+}
+
+/**
+ * A setlist from the cloud, wearing what this device knows about people.
+ *
+ * Everything portable comes from `remote`; the team taking part and whoever
+ * sings each block come from `local`, because version 1 does not carry them
+ * and the cloud has no members to point at. Called once when a row is read,
+ * and again if the row is about to be written to disk after somebody changed
+ * those people in the meantime — the same rule both times.
+ */
+export function withLocalMembership(remote: Setlist, local: Setlist | null | undefined): Setlist {
+  const localItems = new Map((local?.items ?? []).map((item) => [item.id, item]));
+  return {
+    ...remote,
+    participantIds: local?.participantIds ? [...local.participantIds] : [],
+    items: remote.items.map((item) => itemWithLocalMembers(item as CloudSetlistItem, localItems.get(item.id))),
   };
 }
 
@@ -315,17 +333,12 @@ export function cloudToSetlist(row: CloudSetlistRow, localExisting?: Setlist | n
   });
   if (!setlist || setlist.id !== id) return { state: 'corrupt', id };
 
-  const localItems = new Map((localExisting?.items ?? []).map((item) => [item.id, item]));
   return {
     state: 'setlist',
     id,
-    setlist: {
-      ...setlist,
-      // Never from the cloud, which does not know the ministry: only what this
-      // device already had for this setlist.
-      participantIds: localExisting?.participantIds ? [...localExisting.participantIds] : [],
-      items: setlist.items.map((item) => withLocalMembers(item as CloudSetlistItem, localItems.get(item.id))),
-    },
+    // Never from the cloud, which does not know the ministry: the people come
+    // from what this device already had for this setlist.
+    setlist: withLocalMembership(setlist, localExisting),
     revision,
     serverUpdatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
   };
