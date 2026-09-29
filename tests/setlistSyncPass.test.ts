@@ -1144,6 +1144,171 @@ describe('Cuando el dispositivo no acepta la escritura', () => {
   });
 });
 
+// --- Putting a new setlist in the cloud, when somebody asks -----------------------------------
+
+describe('Subir un setlist que la nube no tenia', () => {
+  const local = setlistOf();
+
+  it('no se sube porque una pasada corra: hay que nombrarlo', async () => {
+    const after = await pass({ local: [local], cloud: fakeCloud({ rows: [] }) });
+    eq(after.kind(), 'pending-user-action');
+    eq(after.calls.map((call) => call.op), ['list'], 'ni un create');
+    eq(after.bases, [], 'ni una base');
+  });
+
+  it('nombrar otro setlist no sube este', async () => {
+    const setlists = memorySetlists([local]);
+    const bases = memoryBases();
+    const cloud = fakeCloud({ rows: [] });
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      authorisedUploads: ['otro-setlist-cualquiera'],
+    });
+
+    eq(report.outcomes.get(ID)?.kind, 'pending-user-action');
+    eq(cloud.calls.map((call) => call.op), ['list']);
+    eq([...bases.load().values()], []);
+  });
+
+  it('nombrado, se crea una vez y se apunta lo que el servidor guardo', async () => {
+    const setlists = memorySetlists([local]);
+    const bases = memoryBases();
+    const confirmado = renamed(local, 'Lo que el servidor guardo');
+    const cloud = fakeCloud({ rows: [], create: written(activeRow(confirmado, 1)) });
+
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      authorisedUploads: [ID],
+    });
+
+    const outcome = report.outcomes.get(ID);
+    eq(outcome?.kind, 'cloud-success');
+    eq(outcome && 'local' in outcome && outcome.local, 'written');
+    eq(cloud.calls.map((call) => call.op), ['list', 'create'], 'una sola creacion');
+    eq(cloud.calls[1].args, [local], 'con el setlist tal cual');
+    // La base sale de la fila confirmada, no de la copia enviada.
+    eq([...bases.load().values()], [
+      { setlistId: ID, cloudRevision: 1, fingerprint: portableFingerprint(confirmado) },
+    ]);
+    eq(setlists.current(), [local], 'y el setlist local no se toca');
+  });
+
+  it('si alguien lo edita mientras se sube, lo editado se queda aqui', async () => {
+    const setlists = memorySetlists([local]);
+    const bases = memoryBases();
+    const editado = renamed(local, 'Editado mientras subia');
+    const cloud = fakeCloud({
+      rows: [],
+      create: written(activeRow(local, 1)),
+      during: () => setlists.save([editado]),
+    });
+
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      authorisedUploads: [ID],
+    });
+
+    eq(report.outcomes.get(ID)?.kind, 'cloud-success');
+    eq(setlists.current(), [editado], 'no se reemplaza por lo que se subio');
+    // La base dice lo que la nube tiene, asi que la proxima pasada vera un
+    // cambio pendiente de subir en vez de dar lo editado por sincronizado.
+    eq([...bases.load().values()], [{ setlistId: ID, cloudRevision: 1, fingerprint: portableFingerprint(local) }]);
+  });
+
+  it('si ya estaba alli, es un conflicto y no se apunta nada', async () => {
+    const setlists = memorySetlists([local]);
+    const bases = memoryBases();
+    const cloud = fakeCloud({ rows: [], create: { status: 'conflict' } });
+
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      authorisedUploads: [ID],
+    });
+
+    eq(report.outcomes.get(ID)?.kind, 'cloud-conflict');
+    eq([...bases.load().values()], [], 'ninguna base');
+    eq(cloud.calls.length, 2, 'y sin reintentos');
+  });
+
+  it('una respuesta que un create no pudo producir no es un exito', async () => {
+    for (const [answer, reason] of [
+      [written(activeRow(local, 2)), 'wrong-revision'],
+      [written(activeRow(local, 1), 2), 'row-count'],
+      [written(tombstoneRow(1)), 'deleted'],
+    ] as const) {
+      const bases = memoryBases();
+      const report = await runSetlistSyncPass({
+        setlists: memorySetlists([local]),
+        bases,
+        deletions: memoryDeletions(),
+        cloud: fakeCloud({ rows: [], create: answer }).cloud,
+        authorisedUploads: [ID],
+      });
+      eq(report.outcomes.get(ID)?.kind, 'invalid-response', reason);
+      eq([...bases.load().values()], [], `sin base (${reason})`);
+    }
+  });
+
+  it('si la base no se puede guardar, la fila existe igual y se dice', async () => {
+    const setlists = memorySetlists([local]);
+    const bases = memoryBases();
+    const cloud = fakeCloud({
+      rows: [],
+      create: written(activeRow(local, 1)),
+      during: () => bases.breakWrites(quotaExceeded()),
+    });
+
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      authorisedUploads: [ID],
+    });
+
+    const outcome = report.outcomes.get(ID);
+    eq(outcome?.kind, 'cloud-success', 'la fila se creo de verdad');
+    eq(outcome && 'local' in outcome && outcome.local, 'failed');
+    eq([...bases.load().values()], []);
+  });
+
+  it('nombrar un setlist no cambia lo que se hace con los demas', async () => {
+    // Autorizar una subida no autoriza nada mas: el resto de la pasada decide
+    // exactamente igual que antes.
+    const nuevo = setlistOf({ id: 'setlist-nuevo' });
+    const enPaz = setlistOf({ id: 'setlist-en-paz' });
+    const otroNuevo = setlistOf({ id: 'setlist-otro-nuevo' });
+    const setlists = memorySetlists([nuevo, enPaz, otroNuevo]);
+    const bases = memoryBases([baseOf(enPaz, 4)]);
+    const cloud = fakeCloud({ rows: [activeRow(enPaz, 4)], create: written(activeRow(nuevo, 1)) });
+
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      authorisedUploads: ['setlist-nuevo'],
+    });
+
+    eq(report.outcomes.get('setlist-nuevo')?.kind, 'cloud-success');
+    eq(report.outcomes.get('setlist-en-paz')?.kind, 'noop');
+    eq(report.outcomes.get('setlist-otro-nuevo')?.kind, 'pending-user-action', 'el que no se nombro, sigue esperando');
+    eq(cloud.calls.filter((call) => call.op === 'create').length, 1, 'una sola creacion');
+  });
+});
+
 // --- What a pass never does ----------------------------------------------------------------------------
 
 describe('Lo que una pasada nunca hace', () => {

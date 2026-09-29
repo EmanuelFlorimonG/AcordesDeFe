@@ -41,6 +41,16 @@ export type AuthenticatedSyncResult =
   /** This build has no Supabase. There is nothing to synchronise with. */
   | { status: 'unconfigured'; userId: string };
 
+/** What one pass is allowed to do beyond reading and reconciling. */
+export interface SetlistSyncAuthorisation {
+  /**
+   * Setlists this person has explicitly asked to put in the cloud, by id.
+   * Absent or empty means a pass creates nothing new — signing in never
+   * imports anything by itself.
+   */
+  authorisedUploads?: Iterable<string>;
+}
+
 export interface SetlistSyncSessionDependencies {
   /** Where this device keeps things. The browser's own, unless a test says otherwise. */
   storage?: KeyValueStorage | null;
@@ -83,7 +93,8 @@ export function cloudForToken(accessToken: string): CloudSetlistRepository | nul
  */
 export async function runAuthenticatedSetlistSyncPass(
   who: AuthenticatedSession,
-  deps: SetlistSyncSessionDependencies = {}
+  deps: SetlistSyncSessionDependencies = {},
+  allowed: SetlistSyncAuthorisation = {}
 ): Promise<AuthenticatedSyncResult> {
   // The capture already answered all of this — an AuthenticatedSession only
   // exists when there was a session, an id and a token, all from one reading
@@ -107,6 +118,7 @@ export async function runAuthenticatedSetlistSyncPass(
     bases: createSetlistSyncStore(storage, scope),
     deletions: createSetlistDeletionRepository(storage, scope),
     cloud,
+    authorisedUploads: allowed.authorisedUploads,
   });
 
   return { status: 'ran', userId, report };

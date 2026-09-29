@@ -142,6 +142,17 @@ export interface SetlistSyncPassInput {
   bases: SetlistSyncStore;
   deletions: SetlistDeletionRepository;
   cloud: CloudSetlistRepository;
+  /**
+   * The setlists somebody has explicitly asked to put in the cloud, by id.
+   *
+   * A setlist the cloud has never seen is not uploaded because a pass ran: it
+   * might have been made inside this account, or it might be what somebody
+   * had as a visitor before signing in, and nothing on the device tells the
+   * two apart. So the decision is data, passed in, and it names the setlists
+   * one at a time. Leaving this out — which is the default — means a pass
+   * uploads nothing new at all.
+   */
+  authorisedUploads?: Iterable<string>;
 }
 
 /**
@@ -262,11 +273,12 @@ export async function runSetlistSyncPass(input: SetlistSyncPassInput): Promise<S
   const plans = reconcileSetlists(localSetlists, remote, snapshot.bases, [...snapshot.deletions.values()]);
   const writes = localWrites(input, snapshot);
 
+  const authorised = new Set(input.authorisedUploads ?? []);
   const order = [...plans.keys()].sort();
   const outcomes = new Map<string, SetlistSyncOutcome>();
   for (const id of order) {
     const plan = plans.get(id);
-    if (plan) outcomes.set(id, await settle(id, plan, input, snapshot, writes));
+    if (plan) outcomes.set(id, await settle(id, plan, input, snapshot, writes, authorised));
   }
   return { status: 'completed', outcomes, order };
 }
@@ -278,7 +290,8 @@ async function settle(
   plan: SetlistSyncPlan,
   input: SetlistSyncPassInput,
   snapshot: Snapshot,
-  writes: LocalWrites
+  writes: LocalWrites,
+  authorised: Set<string>
 ): Promise<SetlistSyncOutcome> {
   const stale = (what: StaleReason): SetlistSyncOutcome => ({ kind: 'skipped-stale', plan, what });
 
@@ -294,9 +307,25 @@ async function settle(
     // account, or it might be what somebody had as a visitor before signing
     // in — nothing on the device tells the two apart. Uploading everything
     // the moment somebody signs in is not a decision a pass gets to make, so
-    // this is reported and left alone.
+    // it waits until somebody names this one.
     case 'upload-candidate':
-      return { kind: 'pending-user-action', plan };
+      if (!authorised.has(id)) return { kind: 'pending-user-action', plan };
+      return afterCloud(plan, input, (result) => {
+        if (result.kind !== 'success') return null;
+        // The row now exists, and what it holds is what the server says it
+        // holds. The baseline records that, so the next pass sees the two
+        // sides agreeing instead of offering to upload it again. The local
+        // setlist is not touched: somebody may have edited it while this was
+        // in the air, and that edit is theirs.
+        if (!writes.baseUnchanged(id)) return { kind: 'cloud-success', plan, result, local: 'skipped-stale', staleWhat: 'base' };
+        const stored = result.read.state === 'setlist' ? result.read.setlist : plan.setlist;
+        try {
+          writes.putBase({ setlistId: id, cloudRevision: result.revision, fingerprint: portableFingerprint(stored) });
+        } catch {
+          return { kind: 'cloud-success', plan, result, local: 'failed' };
+        }
+        return { kind: 'cloud-success', plan, result, local: 'written' };
+      });
 
     case 'upload-changes':
       return afterCloud(plan, input, (result) => {

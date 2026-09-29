@@ -77,7 +77,9 @@ interface CloudCall {
 }
 
 /** A cloud that answers what the test says and remembers what it was asked. */
-function fakeCloud(options: { rows?: CloudSetlistRead[]; listThrows?: unknown; during?: () => void } = {}) {
+function fakeCloud(
+  options: { rows?: CloudSetlistRead[]; listThrows?: unknown; during?: () => void; create?: CloudWriteResult } = {}
+) {
   const calls: CloudCall[] = [];
   const cloud: CloudSetlistRepository = {
     async list(local) {
@@ -88,7 +90,10 @@ function fakeCloud(options: { rows?: CloudSetlistRead[]; listThrows?: unknown; d
     },
     async create(setlist) {
       calls.push({ op: 'create', args: [setlist] });
-      throw new Error('una pasada no crea nada por su cuenta');
+      // Sin una respuesta preparada, crear es un error: significa que nadie
+      // autorizo esta subida.
+      if (!options.create) throw new Error('una pasada no crea nada sin que alguien lo pida');
+      return options.create;
     },
     async update(setlist, expectedRevision) {
       calls.push({ op: 'update', args: [setlist, expectedRevision] });
@@ -385,6 +390,77 @@ describe('Si la sesión cambia mientras la pasada está en marcha', () => {
     const outcome = result.report.outcomes.get('setlist-ana');
     eq(outcome?.kind, 'local-error');
     eq(outcome && 'error' in outcome && (outcome.error as DOMException).name, 'QuotaExceededError');
+  });
+});
+
+// --- Uploading, only when somebody asks ---------------------------------------------------------
+
+describe('Subir un setlist requiere pedirlo', () => {
+  const suyo = setlistOf('setlist-ana');
+
+  it('sin nombrarlo, la pasada no crea nada', async () => {
+    const storage = browser();
+    createLocalSetlistRepository(storage, userSetlists(ANA)).save([suyo]);
+    const cloud = watchingCloud({ rows: [] });
+
+    const result = await runAuthenticatedSetlistSyncPass(
+      { session: sessionOf(ANA), accessToken: 'token-de-ana' },
+      { storage, cloudFor: cloud.cloudFor }
+    );
+
+    if (result.status !== 'ran') return assert.fail('deberia haber corrido');
+    eq(result.report.outcomes.get('setlist-ana')?.kind, 'pending-user-action');
+    eq(cloud.calls.map((call) => call.op), ['list']);
+  });
+
+  it('nombrandolo, se crea en la nube de esa cuenta y se apunta la base', async () => {
+    const storage = browser();
+    createLocalSetlistRepository(storage, userSetlists(ANA)).save([suyo]);
+    createLocalSetlistRepository(storage, userSetlists(BRUNO)).save([setlistOf('setlist-bruno')]);
+    const antesDeBruno = storage.data.get(`genesaret_setlists:u:${BRUNO}`);
+    const cloud = watchingCloud({
+      rows: [],
+      create: { status: 'written', rows: 1, read: activeRow(suyo, 1) },
+    });
+
+    const result = await runAuthenticatedSetlistSyncPass(
+      { session: sessionOf(ANA), accessToken: 'token-de-ana' },
+      { storage, cloudFor: cloud.cloudFor },
+      { authorisedUploads: ['setlist-ana'] }
+    );
+
+    if (result.status !== 'ran') return assert.fail('deberia haber corrido');
+    const outcome = result.report.outcomes.get('setlist-ana');
+    eq(outcome?.kind, 'cloud-success');
+    eq(outcome && 'local' in outcome && outcome.local, 'written');
+    eq(cloud.calls.map((call) => call.op), ['list', 'create']);
+    eq(cloud.tokens, ['token-de-ana'], 'con el token de esa sesion');
+    eq(
+      [...createSetlistSyncStore(storage, userSetlists(ANA)).load().values()],
+      [{ setlistId: 'setlist-ana', cloudRevision: 1, fingerprint: portableFingerprint(suyo) }]
+    );
+    // Y nada de Bruno se movio.
+    eq(createSetlistSyncStore(storage, userSetlists(BRUNO)).load().size, 0);
+    eq(storage.data.get(`genesaret_setlists:u:${BRUNO}`), antesDeBruno);
+  });
+
+  it('nombrar el setlist de otra cuenta no sube nada', async () => {
+    const storage = browser();
+    createLocalSetlistRepository(storage, userSetlists(ANA)).save([suyo]);
+    createLocalSetlistRepository(storage, userSetlists(BRUNO)).save([setlistOf('setlist-bruno')]);
+    const cloud = watchingCloud({ rows: [] });
+
+    const result = await runAuthenticatedSetlistSyncPass(
+      { session: sessionOf(ANA), accessToken: 'token-de-ana' },
+      { storage, cloudFor: cloud.cloudFor },
+      { authorisedUploads: ['setlist-bruno'] }
+    );
+
+    if (result.status !== 'ran') return assert.fail('deberia haber corrido');
+    // El de Bruno no esta en la pasada de Ana, asi que nombrarlo no hace nada.
+    eq(result.report.outcomes.has('setlist-bruno'), false);
+    eq(result.report.outcomes.get('setlist-ana')?.kind, 'pending-user-action');
+    eq(cloud.calls.map((call) => call.op), ['list'], 'ninguna creacion');
   });
 });
 

@@ -184,7 +184,9 @@ describe('Qué planes llegan a pedir algo', () => {
   it('un plan que no es de nube no compila contra el executor', () => {
     // La frontera se comprueba en el fuente, porque en TypeScript no se puede
     // escribir la llamada que no compila.
-    const source = readFileSync('src/storage/setlistSyncExecutor.ts', 'utf8');
+    // Los saltos de línea se normalizan: un checkout con CRLF no cambia lo
+    // que el código dice.
+    const source = readFileSync('src/storage/setlistSyncExecutor.ts', 'utf8').replace(/\r\n/g, '\n');
     eq(
       source.includes("Extract<\n  SetlistSyncPlan,\n  { kind: 'upload-candidate' | 'upload-changes' | 'delete-remote' }\n>"),
       true,
