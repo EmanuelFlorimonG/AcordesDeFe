@@ -73,6 +73,11 @@ export type SetlistSyncPreflightReport =
       /** The ids in the order a pass would walk them. */
       order: string[];
       effects: PlannedEffects;
+      /**
+       * The rows as they were read, so what the cloud holds can be shown
+       * beside what this device holds when somebody has to choose.
+       */
+      rows: CloudSetlistRead[];
     };
 
 /**
@@ -168,5 +173,14 @@ export async function runSetlistSyncPreflight(
 
   const plans = reconcileSetlists(setlists, rows, bases, deletions);
   const order = [...plans.keys()].sort();
-  return { status: 'ready', userId, local, remote: countRemote(rows), plans, order, effects: effectsOf(plans, order) };
+  return {
+    status: 'ready',
+    userId,
+    local,
+    remote: countRemote(rows),
+    plans,
+    order,
+    effects: effectsOf(plans, order),
+    rows,
+  };
 }

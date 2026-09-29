@@ -17,6 +17,14 @@ import { lazy } from 'react';
 export const SetlistsView = lazy(() =>
   import('../components/Setlists/SetlistsView').then((module) => ({ default: module.SetlistsView }))
 );
+/**
+ * Two versions of one setlist to choose between. Downloaded only when
+ * somebody actually has that problem, which is almost nobody.
+ */
+export const SetlistConflictDialog = lazy(() =>
+  import('../components/Setlists/SetlistConflictDialog').then((module) => ({ default: module.SetlistConflictDialog }))
+);
+
 export const SetlistDetail = lazy(() =>
   import('../components/Setlists/SetlistDetail').then((module) => ({ default: module.SetlistDetail }))
 );

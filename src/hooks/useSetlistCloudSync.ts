@@ -32,6 +32,32 @@ export type SetlistCloudState =
   /** It is up there and says the same thing. Nothing to offer. */
   | 'synced';
 
+/**
+ * Two versions of one setlist as they were a moment ago, for somebody to
+ * choose between.
+ *
+ * `seenRevision` is which copy of the account's version this is. It is never
+ * shown to anybody: it goes back with the decision, so that a choice made
+ * about these two versions is only ever carried out against the version it
+ * was made about. If the account's copy changes while the dialog is open, the
+ * decision does not apply to it and the conflict is reported again.
+ */
+export interface SetlistVersions {
+  mine: Setlist;
+  theirs: Setlist;
+  seenRevision: number;
+}
+
+/** What came of looking at the account's version of a setlist. */
+export type SetlistVersionsLookup =
+  | ({ kind: 'conflict' } & SetlistVersions)
+  /** No longer two versions: somebody settled it, here or elsewhere. */
+  | { kind: 'settled' }
+  | { kind: 'error'; message: string };
+
+/** Which version somebody chose to keep. */
+export type SetlistKeep = 'local' | 'remote';
+
 export interface SetlistCloudSync {
   /**
    * Whether there is an account to synchronise with at all. False for a
@@ -60,6 +86,30 @@ export interface SetlistCloudSync {
    * flight does nothing rather than sending the same thing twice.
    */
   sync: (setlist: Setlist) => Promise<{ ok: boolean; message: string } | null>;
+  /**
+   * True when the last pass found this setlist changed here *and* in the
+   * account. Nothing was written either way, and nothing will be until
+   * somebody chooses.
+   */
+  conflicted: (setlist: Setlist) => boolean;
+  /**
+   * Reads the account's version so the two can be shown side by side. Reads
+   * only: looking at a conflict never resolves it, and never writes anywhere.
+   */
+  inspect: (setlist: Setlist) => Promise<SetlistVersionsLookup>;
+  /**
+   * Carries out what somebody chose, against the version they were shown.
+   *
+   * Keeping this one sends it over the account's copy, and keeping the
+   * account's one replaces what is here — in both cases only if the account's
+   * copy is still the `seenRevision` they compared. If it moved, nothing is
+   * written and the conflict is reported again.
+   */
+  resolve: (
+    setlist: Setlist,
+    keep: SetlistKeep,
+    seenRevision: number
+  ) => Promise<{ ok: boolean; message: string } | null>;
 }
 
 const LIMITS: Record<CloudSetlistProblem, string> = {
@@ -79,6 +129,11 @@ const TOO_NEW = 'Este Setlist se guardó desde una versión más reciente de la 
 /** Somebody else changed it too. Nothing was overwritten, and that is the point. */
 const changedElsewhere = (name: string) =>
   `«${name}» también cambió en otro dispositivo. No se ha guardado nada para no perder ninguna de las dos versiones.`;
+
+/** It moved again while somebody was deciding. Still nothing overwritten. */
+const MOVED_AGAIN =
+  'La versión de tu cuenta ha vuelto a cambiar mientras decidías. No se ha guardado nada: vuelve a compararlas.';
+const NO_LONGER = 'Ya no hay dos versiones distintas de este Setlist.';
 
 /**
  * What to tell the person, from what the pass reported.
@@ -128,6 +183,51 @@ export function describeSync(
       // skipped-stale, local-error: none is what this action asked for, and
       // none is a success to report as one.
       return { ok: false, message: UNEXPECTED };
+  }
+}
+
+/**
+ * What to tell the person after they chose.
+ *
+ * The two choices fail differently and have to read differently: keeping this
+ * version is a write that the account's copy can refuse, and keeping the
+ * account's version is not a write at all. Either way, the one thing somebody
+ * must never be told is that something was saved when it was not.
+ */
+export function describeResolution(
+  outcome: SetlistSyncOutcome | undefined,
+  name: string,
+  keep: SetlistKeep
+): { ok: boolean; message: string } {
+  if (keep === 'remote') {
+    switch (outcome?.kind) {
+      case 'applied-local':
+        return { ok: true, message: `«${name}» es ahora la versión de tu cuenta` };
+      case 'noop':
+        return { ok: true, message: NO_LONGER };
+      case 'ask':
+        // The row moved while the dialog was open, so what they compared is
+        // not what is there. Nothing was touched on either side.
+        return { ok: false, message: MOVED_AGAIN };
+      case 'local-error':
+        return { ok: false, message: 'No se pudo guardar en este dispositivo. Inténtalo otra vez.' };
+      default:
+        return describeSync(outcome, name, 'changed');
+    }
+  }
+  switch (outcome?.kind) {
+    case 'cloud-success':
+      return { ok: true, message: `«${name}» de este dispositivo es ahora la versión de tu cuenta` };
+    case 'ask':
+      return { ok: false, message: MOVED_AGAIN };
+    case 'cloud-conflict':
+      // The revision matched when the pass read it and no longer did when the
+      // request landed. Same answer: compare them again.
+      return { ok: false, message: MOVED_AGAIN };
+    case 'noop':
+      return { ok: true, message: NO_LONGER };
+    default:
+      return describeSync(outcome, name, 'changed');
   }
 }
 
@@ -247,6 +347,10 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
   const { services } = useAuthServices();
   const [busy, setBusy] = useState<string | null>(null);
   const [busyAll, setBusyAll] = useState(false);
+  // The setlists the last pass found changed on both sides. Remembered so the
+  // menu can offer to settle one, and cleared the moment a pass says
+  // otherwise — it is never a verdict, only what was true a moment ago.
+  const [conflicts, setConflicts] = useState<ReadonlySet<string>>(() => new Set());
   // Counted up after something reached the cloud, so the menu stops offering
   // what is now up to date.
   const [passes, setPasses] = useState(0);
@@ -286,7 +390,10 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
    * and a token read together, and nothing asked again afterwards.
    */
   const runPass = useCallback(
-    async (authorisedUploads: string[]): Promise<PassAttempt> => {
+    async (
+      authorisedUploads: string[],
+      resolutions?: Array<readonly [string, { keep: SetlistKeep; seenRevision: number }]>
+    ): Promise<PassAttempt> => {
       const stopped = (message: string): PassAttempt => ({ ran: false, message });
       if (!services || !userId) return stopped(SESSION_LOST);
       const capture = await services.auth.authenticated();
@@ -296,10 +403,19 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
       // visitor: the whole of the synchronising machinery is weight that most
       // people never need, like supabase-js itself (see useSession).
       const { runAuthenticatedSetlistSyncPass } = await import('../storage/setlistSyncSession');
-      const result = await runAuthenticatedSetlistSyncPass(capture, {}, { authorisedUploads });
+      const result = await runAuthenticatedSetlistSyncPass(capture, {}, { authorisedUploads, resolutions });
       if (result.status !== 'ran') return stopped(SESSION_LOST);
       if (result.report.status === 'remote-auth-error') return stopped(SESSION_LOST);
       if (result.report.status === 'remote-read-error') return stopped(NO_CONNECTION);
+      // What still needs a person, as of this pass. Written down whole, so a
+      // setlist that was settled stops being offered as a conflict.
+      setConflicts(
+        new Set(
+          [...result.report.outcomes]
+            .filter(([, outcome]) => outcome.kind === 'ask' || outcome.kind === 'cloud-conflict')
+            .map(([id]) => id)
+        )
+      );
       return { ran: true, report: result.report };
     },
     [services, userId]
@@ -350,5 +466,73 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
     [busy, busyAll, runPass, agreed]
   );
 
-  return { available: Boolean(userId) && Boolean(services), stateOf, busy, busyAll, sync, syncAll };
+  const conflicted = useCallback((setlist: Setlist) => conflicts.has(setlist.id), [conflicts]);
+
+  /**
+   * Reads the account's version of one setlist, for showing beside this one.
+   *
+   * It asks the preflight, which is the read-only half of the same machinery:
+   * the plans come from the same engine a pass would ask, so what is called a
+   * conflict here is exactly what a pass would refuse to settle on its own.
+   * Nothing is written by looking.
+   */
+  const inspect = useCallback(
+    async (setlist: Setlist): Promise<SetlistVersionsLookup> => {
+      if (!services || !userId) return { kind: 'error', message: SESSION_LOST };
+      try {
+        const capture = await services.auth.authenticated();
+        if (!capture || capture.session.userId.trim() !== userId) {
+          return { kind: 'error', message: SESSION_LOST };
+        }
+        const { runSetlistSyncPreflight } = await import('../storage/setlistSyncPreflight');
+        const report = await runSetlistSyncPreflight(capture);
+        if (report.status === 'remote-read-error') return { kind: 'error', message: NO_CONNECTION };
+        if (report.status !== 'ready') return { kind: 'error', message: SESSION_LOST };
+
+        const plan = report.plans.get(setlist.id);
+        // Only "both changed" is a choice between two versions. Anything else
+        // the engine wants a person for — a deletion crossing an edit, a row
+        // this build cannot read — is not something two buttons can answer.
+        if (plan?.kind !== 'ask' || plan.question !== 'both-changed') return { kind: 'settled' };
+        const row = report.rows.find((read) => read.id === setlist.id);
+        if (row?.state !== 'setlist') return { kind: 'settled' };
+        return { kind: 'conflict', mine: setlist, theirs: row.setlist, seenRevision: row.revision };
+      } catch {
+        return { kind: 'error', message: NO_CONNECTION };
+      }
+    },
+    [services, userId]
+  );
+
+  const resolve = useCallback(
+    async (setlist: Setlist, keep: SetlistKeep, seenRevision: number) => {
+      if (busy || busyAll) return null;
+      setBusy(setlist.id);
+      try {
+        // The decision names the version it was made about. Nothing else is
+        // authorised: no upload of anything new, no other conflict settled.
+        const outcome = await runPass([], [[setlist.id, { keep, seenRevision }]]);
+        if (!outcome.ran) return { ok: false, message: outcome.message };
+        setPasses((count) => count + 1);
+        return describeResolution(outcome.report.outcomes.get(setlist.id), setlist.name, keep);
+      } catch {
+        return { ok: false, message: NO_CONNECTION };
+      } finally {
+        setBusy(null);
+      }
+    },
+    [busy, busyAll, runPass]
+  );
+
+  return {
+    available: Boolean(userId) && Boolean(services),
+    stateOf,
+    busy,
+    busyAll,
+    sync,
+    syncAll,
+    conflicted,
+    inspect,
+    resolve,
+  };
 }

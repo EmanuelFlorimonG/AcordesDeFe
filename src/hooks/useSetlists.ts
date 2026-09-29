@@ -60,6 +60,13 @@ export interface SetlistsStore {
   addParticipants: (id: string, memberIds: string[]) => void;
   /** A member was deleted: out of every team and every arrangement */
   removeMemberEverywhere: (memberId: string) => void;
+  /**
+   * Reads the stored setlists again, because something outside this hook
+   * wrote them — a synchronising pass bringing a setlist down from the
+   * account, or replacing one with the account's version. Nothing is saved by
+   * reading, so data this hook could not parse stays exactly as it is.
+   */
+  reload: () => void;
 }
 
 /**
@@ -99,6 +106,9 @@ export function useSetlists(
   // nothing of the previous one is ever painted.
   if (store.scope !== scopeName) setStore(read());
   const setlists = useMemo(() => (store.scope === scopeName ? store.setlists : NONE), [store, scopeName]);
+
+  /** Something outside wrote these; read them again and save nothing back. */
+  const reload = useCallback(() => setStore(read()), [read]);
 
   const setSetlists = useCallback(
     (update: (current: Setlist[]) => Setlist[]) =>
@@ -208,5 +218,6 @@ export function useSetlists(
         });
         return changed ? next : current;
       }),
+    reload,
   };
 }

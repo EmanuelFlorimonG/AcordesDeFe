@@ -153,6 +153,25 @@ export interface SetlistSyncPassInput {
    * uploads nothing new at all.
    */
   authorisedUploads?: Iterable<string>;
+  /**
+   * Setlists that changed in two places and that somebody has now looked at
+   * and decided about, each naming the revision they were shown.
+   *
+   * The revision is the whole safety of it. A decision is about two versions
+   * somebody actually compared, so if the row moved again while they were
+   * deciding, the decision is about something that no longer exists and is
+   * not carried out — the conflict is reported again, with what is there now.
+   * Nothing is ever resolved because a pass ran.
+   */
+  resolutions?: Iterable<readonly [string, SetlistConflictResolution]>;
+}
+
+/** What somebody chose about a setlist that changed in two places. */
+export interface SetlistConflictResolution {
+  /** `local` sends what is here over the row; `remote` takes what the row says. */
+  keep: 'local' | 'remote';
+  /** The revision of the row they were shown when they chose. */
+  seenRevision: number;
 }
 
 /**
@@ -274,16 +293,26 @@ export async function runSetlistSyncPass(input: SetlistSyncPassInput): Promise<S
   const writes = localWrites(input, snapshot);
 
   const authorised = new Set(input.authorisedUploads ?? []);
+  const resolutions = new Map(input.resolutions ?? []);
+  // What each row says right now, for a decision that named what it saw.
+  const rowsById = new Map(remote.filter((read) => read.id !== null).map((read) => [read.id as string, read]));
   const order = [...plans.keys()].sort();
   const outcomes = new Map<string, SetlistSyncOutcome>();
   for (const id of order) {
     const plan = plans.get(id);
-    if (plan) outcomes.set(id, await settle(id, plan, input, snapshot, writes, authorised));
+    if (plan) outcomes.set(id, await settle(id, plan, input, snapshot, writes, { authorised, resolutions, rowsById }));
   }
   return { status: 'completed', outcomes, order };
 }
 
 type LocalWrites = ReturnType<typeof localWrites>;
+
+/** What one pass was told it may do beyond reading and reconciling. */
+interface Decisions {
+  authorised: Set<string>;
+  resolutions: Map<string, SetlistConflictResolution>;
+  rowsById: Map<string, CloudSetlistRead>;
+}
 
 async function settle(
   id: string,
@@ -291,15 +320,16 @@ async function settle(
   input: SetlistSyncPassInput,
   snapshot: Snapshot,
   writes: LocalWrites,
-  authorised: Set<string>
+  decisions: Decisions
 ): Promise<SetlistSyncOutcome> {
+  const { authorised } = decisions;
   const stale = (what: StaleReason): SetlistSyncOutcome => ({ kind: 'skipped-stale', plan, what });
 
   switch (plan.kind) {
     case 'noop':
       return { kind: 'noop', plan };
     case 'ask':
-      return { kind: 'ask', plan };
+      return settleAsk(id, plan, input, writes, decisions);
     case 'blocked':
       return { kind: 'blocked', plan };
 
@@ -477,6 +507,67 @@ async function settle(
       }
       return { kind: 'applied-local', plan };
   }
+}
+
+/**
+ * A question, unless somebody has already answered it.
+ *
+ * An answer only counts for the row it was given about. If the row moved
+ * while they were deciding, what they compared is not what is there, so the
+ * answer is dropped and the question asked again — that is the whole reason
+ * a resolution carries a revision.
+ */
+async function settleAsk(
+  id: string,
+  plan: Extract<SetlistSyncPlan, { kind: 'ask' }>,
+  input: SetlistSyncPassInput,
+  writes: LocalWrites,
+  decisions: Decisions
+): Promise<SetlistSyncOutcome> {
+  const choice = decisions.resolutions.get(id);
+  const row = decisions.rowsById.get(id);
+  // Only a setlist that changed on both sides can be settled this way. A
+  // deletion crossing an edit, or anything else that needs a person, is not
+  // something two buttons can answer.
+  if (!choice || plan.question !== 'both-changed' || row?.state !== 'setlist') return { kind: 'ask', plan };
+  if (row.revision !== choice.seenRevision) return { kind: 'ask', plan };
+
+  const mine = writes.current(id);
+  if (!mine) return { kind: 'ask', plan };
+
+  if (choice.keep === 'remote') {
+    // What the row holds wins, wearing the people this device knows about.
+    // Nothing is sent: the cloud already says this.
+    try {
+      writes.putSetlist(withLocalMembership(row.setlist, mine));
+      writes.putBase({
+        setlistId: id,
+        cloudRevision: row.revision,
+        fingerprint: portableFingerprint(row.setlist),
+      });
+    } catch (error) {
+      return { kind: 'local-error', plan, error };
+    }
+    return { kind: 'applied-local', plan };
+  }
+
+  // What this device holds wins — written over the row they were shown, and
+  // only if it is still that row. Optimistic concurrency is not skipped: the
+  // revision in the request is the one they compared against.
+  const upload: SetlistSyncPlan = { kind: 'upload-changes', setlist: mine, expectedRevision: row.revision };
+  return afterCloud(upload, input, (result) => {
+    if (result.kind !== 'success') return null;
+    if (!writes.baseUnchanged(id)) {
+      return { kind: 'cloud-success', plan: upload, result, local: 'skipped-stale', staleWhat: 'base' };
+    }
+    const stored = result.read.state === 'setlist' ? result.read.setlist : mine;
+    try {
+      writes.putBase({ setlistId: id, cloudRevision: result.revision, fingerprint: portableFingerprint(stored) });
+    } catch {
+      return { kind: 'cloud-success', plan: upload, result, local: 'failed' };
+    }
+    return { kind: 'cloud-success', plan: upload, result, local: 'written' };
+  });
 }
 
 /**

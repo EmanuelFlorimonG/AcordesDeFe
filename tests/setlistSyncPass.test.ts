@@ -1311,6 +1311,244 @@ describe('Subir un setlist que la nube no tenia', () => {
 
 // --- What a pass never does ----------------------------------------------------------------------------
 
+// --- Resolver un conflicto, cuando alguien ya ha elegido -----------------------------------------
+
+describe('Un conflicto que alguien ya ha decidido', () => {
+  // El conflicto real: cambio aquí, cambio allí, y la base recuerda el momento
+  // en que los dos decían lo mismo.
+  const acordado = setlistOf();
+  const aqui = renamed(acordado, 'Version de este dispositivo');
+  const alla = renamed(acordado, 'Version del otro dispositivo');
+  const base = baseOf(acordado, 2);
+
+  /** El mundo del conflicto, con la decisión que se le pasa (o ninguna). */
+  const conflicto = async (options: {
+    keep?: 'local' | 'remote';
+    seenRevision?: number;
+    revision?: number;
+    update?: CloudWriteResult | (() => never);
+    local?: Setlist;
+    during?: () => void;
+  } = {}) => {
+    const setlists = memorySetlists([options.local ?? aqui]);
+    const bases = memoryBases([base]);
+    const cloud = fakeCloud({
+      rows: [activeRow(alla, options.revision ?? 3)],
+      update: options.update,
+      during: options.during,
+    });
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      resolutions:
+        options.keep === undefined
+          ? undefined
+          : [[ID, { keep: options.keep, seenRevision: options.seenRevision ?? 3 }]],
+    });
+    return {
+      outcome: report.outcomes.get(ID),
+      calls: cloud.calls,
+      setlists: setlists.current(),
+      bases: [...bases.load().values()],
+    };
+  };
+
+  it('sin decisión sigue siendo una pregunta, y no se toca nada', async () => {
+    const after = await conflicto();
+    eq(after.outcome?.kind, 'ask');
+    eq(after.outcome?.plan.kind === 'ask' && after.outcome.plan.question, 'both-changed');
+    eq(after.calls.map((call) => call.op), ['list'], 'ni una escritura');
+    eq(after.setlists, [aqui], 'lo de aquí sigue aquí');
+    eq(after.bases, [base], 'y la base no se mueve');
+  });
+
+  // --- "Usar la versión de mi cuenta" ---------------------------------------
+
+  it('quedarse con la de la cuenta reemplaza lo local y no escribe en la nube', async () => {
+    const after = await conflicto({ keep: 'remote' });
+    eq(after.outcome?.kind, 'applied-local');
+    eq(after.calls.map((call) => call.op), ['list'], 'nada sube: la nube ya dice esto');
+    eq(after.setlists.length, 1);
+    eq(after.setlists[0].name, 'Version del otro dispositivo');
+    // Y la base pasa a decir que los dos lados están de acuerdo en esa
+    // revisión, con la huella de lo que la nube guarda.
+    eq(after.bases, [{ setlistId: ID, cloudRevision: 3, fingerprint: portableFingerprint(alla) }]);
+  });
+
+  it('y conserva a las personas de este dispositivo, que no viajan', async () => {
+    // Aquí canta Marta; la versión de la cuenta no sabe nada de personas.
+    const conMarta = withPeople(aqui, ['miembro-marta']);
+    const after = await conflicto({ keep: 'remote', local: conMarta });
+
+    eq(after.outcome?.kind, 'applied-local');
+    eq(after.setlists[0].name, 'Version del otro dispositivo', 'el contenido es el de la cuenta');
+    eq(after.setlists[0].participantIds, ['miembro-marta'], 'y el equipo es el de aquí');
+    eq(
+      after.setlists[0].items[0].arrangement?.sections[0].assignedMemberIds,
+      ['miembro-marta'],
+      'quien canta cada bloque también'
+    );
+    // La huella de la base se calcula sobre lo portable, así que tener otras
+    // personas no la convierte en "con cambios" acto seguido.
+    eq(after.bases[0].fingerprint, portableFingerprint(after.setlists[0]));
+  });
+
+  // --- "Conservar esta versión" --------------------------------------------
+
+  it('conservar la de aquí la manda a la nube contra la revisión que se comparó', async () => {
+    const after = await conflicto({ keep: 'local', update: written(activeRow(aqui, 4)) });
+
+    eq(after.outcome?.kind, 'cloud-success');
+    eq(after.outcome && 'local' in after.outcome && after.outcome.local, 'written');
+    eq(after.calls.map((call) => call.op), ['list', 'update'], 'una sola escritura');
+    // Lo que va es el setlist de aquí, y la revisión esperada es exactamente
+    // la que la persona vio: nunca "la que sea".
+    eq(after.calls[1].args, [aqui, 3]);
+    eq(after.setlists, [aqui], 'lo local no se toca');
+    eq(after.bases, [{ setlistId: ID, cloudRevision: 4, fingerprint: portableFingerprint(aqui) }]);
+  });
+
+  it('si la fila se movió mientras alguien decidía, no se sobrescribe nada', async () => {
+    // La decisión se tomó viendo la revisión 3; la nube ya va por la 5.
+    const after = await conflicto({ keep: 'local', seenRevision: 3, revision: 5 });
+
+    eq(after.outcome?.kind, 'ask', 'vuelve a ser una pregunta');
+    eq(after.calls.map((call) => call.op), ['list'], 'y no se envía nada');
+    eq(after.setlists, [aqui]);
+    eq(after.bases, [base]);
+  });
+
+  it('tampoco al revés: una decisión vieja no trae una versión que ya cambió', async () => {
+    const after = await conflicto({ keep: 'remote', seenRevision: 3, revision: 4 });
+    eq(after.outcome?.kind, 'ask');
+    eq(after.setlists, [aqui], 'lo de aquí sigue intacto');
+    eq(after.bases, [base]);
+  });
+
+  it('y si la fila se mueve entre la lectura y la petición, la nube lo rechaza', async () => {
+    // Las revisiones cuadraban al leer; la escritura llega tarde. El filtro de
+    // concurrencia hace su trabajo y no se escribe nada.
+    const after = await conflicto({ keep: 'local', update: { status: 'conflict' } });
+    eq(after.outcome?.kind, 'cloud-conflict');
+    eq(after.setlists, [aqui]);
+    eq(after.bases, [base], 'la base se queda donde estaba');
+  });
+
+  it('un cambio local mientras la subida está en el aire no se pierde', async () => {
+    // Alguien sigue escribiendo mientras se manda la versión que eligió. La
+    // fila queda con lo que se envió, y lo nuevo se queda aquí para la
+    // siguiente pasada: nunca se borra.
+    const setlists = memorySetlists([aqui]);
+    const bases = memoryBases([base]);
+    const mientras = renamed(aqui, 'Y ademas esto');
+    const cloud = fakeCloud({
+      rows: [activeRow(alla, 3)],
+      update: written(activeRow(aqui, 4)),
+      during: () => setlists.saveOrThrow([mientras]),
+    });
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      resolutions: [[ID, { keep: 'local', seenRevision: 3 }]],
+    });
+
+    eq(report.outcomes.get(ID)?.kind, 'cloud-success');
+    eq(setlists.current(), [mientras], 'lo que se escribió después sigue aquí');
+    eq([...bases.load().values()][0].cloudRevision, 4, 'y la base apunta a la fila nueva');
+  });
+
+  it('un dispositivo que no acepta la escritura no cree que la aceptó', async () => {
+    const setlists = memorySetlists([aqui]);
+    setlists.breakWrites(quotaExceeded());
+    const bases = memoryBases([base]);
+    const cloud = fakeCloud({ rows: [activeRow(alla, 3)] });
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      resolutions: [[ID, { keep: 'remote', seenRevision: 3 }]],
+    });
+
+    eq(report.outcomes.get(ID)?.kind, 'local-error');
+    eq(setlists.current(), [aqui], 'sigue lo de antes');
+    eq([...bases.load().values()], [base], 'y la base no dice que se aplicó nada');
+    eq(cloud.calls.map((call) => call.op), ['list'], 'sin tocar la nube');
+  });
+
+  // --- Lo que dos botones no pueden contestar -------------------------------
+
+  it('una decisión sólo vale para el setlist que nombra', async () => {
+    const setlists = memorySetlists([aqui]);
+    const bases = memoryBases([base]);
+    const cloud = fakeCloud({ rows: [activeRow(alla, 3)] });
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      resolutions: [['otro-setlist-cualquiera', { keep: 'remote', seenRevision: 3 }]],
+    });
+
+    eq(report.outcomes.get(ID)?.kind, 'ask');
+    eq(setlists.current(), [aqui]);
+    eq([...bases.load().values()], [base]);
+  });
+
+  it('un borrado que se cruza con una edición no se resuelve con dos botones', async () => {
+    // Borrado allí, editado aquí: la pregunta no es "cuál de las dos
+    // versiones", y una decisión sobre dos versiones no la contesta.
+    const setlists = memorySetlists([aqui]);
+    const bases = memoryBases([base]);
+    const cloud = fakeCloud({ rows: [tombstoneRow(3)] });
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      resolutions: [[ID, { keep: 'remote', seenRevision: 3 }]],
+    });
+
+    const outcome = report.outcomes.get(ID);
+    eq(outcome?.kind, 'ask');
+    eq(outcome?.plan.kind === 'ask' && outcome.plan.question, 'deleted-elsewhere-edited-here');
+    eq(setlists.current(), [aqui], 'no se borra nada');
+    eq([...bases.load().values()], [base]);
+  });
+
+  it('una fila de una versión más nueva sigue bloqueada, decida quien decida', async () => {
+    const setlists = memorySetlists([aqui]);
+    const bases = memoryBases([base]);
+    const cloud = fakeCloud({ rows: [{ state: 'newer', id: ID, revision: 3, payloadVersion: 99 }] });
+    const report = await runSetlistSyncPass({
+      setlists,
+      bases,
+      deletions: memoryDeletions(),
+      cloud: cloud.cloud,
+      resolutions: [[ID, { keep: 'remote', seenRevision: 3 }]],
+    });
+
+    eq(report.outcomes.get(ID)?.kind, 'blocked');
+    eq(setlists.current(), [aqui]);
+    eq(cloud.calls.map((call) => call.op), ['list']);
+  });
+
+  it('nada se resuelve por el simple hecho de pasar una pasada', async () => {
+    // La prueba de que no hay last-write-wins escondido: el mismo mundo, sin
+    // decisión, tantas veces como se quiera, no avanza nunca.
+    for (let vez = 0; vez < 3; vez += 1) {
+      const after = await conflicto();
+      eq(after.outcome?.kind, 'ask');
+      eq(after.setlists, [aqui]);
+      eq(after.bases, [base]);
+    }
+  });
+});
+
 describe('Lo que una pasada nunca hace', () => {
   const source = readFileSync('src/storage/setlistSyncPass.ts', 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');

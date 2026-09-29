@@ -4,7 +4,11 @@ import { createCloudSetlistRepository, type CloudSetlistRepository } from './clo
 import { createSetlistDeletionRepository } from './setlistDeletions';
 import { createLocalSetlistRepository, getBrowserStorage, userSetlists, type KeyValueStorage } from './setlistStorage';
 import { createSetlistSyncStore } from './setlistSync';
-import { runSetlistSyncPass, type SetlistSyncPassReport } from './setlistSyncPass';
+import {
+  runSetlistSyncPass,
+  type SetlistConflictResolution,
+  type SetlistSyncPassReport,
+} from './setlistSyncPass';
 
 /**
  * One pass, for one signed-in person.
@@ -49,6 +53,11 @@ export interface SetlistSyncAuthorisation {
    * imports anything by itself.
    */
   authorisedUploads?: Iterable<string>;
+  /**
+   * Conflicts somebody has looked at and decided about, each naming the
+   * revision they were shown (see SetlistSyncPassInput.resolutions).
+   */
+  resolutions?: Iterable<readonly [string, SetlistConflictResolution]>;
 }
 
 export interface SetlistSyncSessionDependencies {
@@ -119,6 +128,7 @@ export async function runAuthenticatedSetlistSyncPass(
     deletions: createSetlistDeletionRepository(storage, scope),
     cloud,
     authorisedUploads: allowed.authorisedUploads,
+    resolutions: allowed.resolutions,
   });
 
   return { status: 'ran', userId, report };

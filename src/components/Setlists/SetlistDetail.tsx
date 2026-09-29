@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  AlertTriangle,
   ArrowLeft,
   CalendarDays,
   CloudUpload,
@@ -52,8 +53,12 @@ interface SetlistDetailProps {
    * already up to date. Never happens on its own — somebody has to choose it.
    */
   onSyncToAccount?: () => void;
-  /** Whether it has never been up there, or is up there and has changed since. */
-  syncOffer?: 'new' | 'changed';
+  /**
+   * Whether it has never been up there, is up there and has changed since, or
+   * changed in both places and needs somebody to choose between the two
+   * versions.
+   */
+  syncOffer?: 'new' | 'changed' | 'conflict';
   /** While it is in the air, so the action cannot be started twice. */
   syncingToAccount?: boolean;
   /** `moment` is set when the song was chosen from a part of the Mass */
@@ -190,10 +195,16 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
                         ? syncOffer === 'new'
                           ? 'Guardando en tu cuenta…'
                           : 'Guardando los cambios…'
-                        : syncOffer === 'new'
-                          ? 'Guardar en mi cuenta'
-                          : 'Guardar cambios en mi cuenta',
-                      icon: syncingToAccount ? Loader2 : CloudUpload,
+                        : syncOffer === 'conflict'
+                          ? 'Elegir entre dos versiones'
+                          : syncOffer === 'new'
+                            ? 'Guardar en mi cuenta'
+                            : 'Guardar cambios en mi cuenta',
+                      icon: syncingToAccount
+                        ? Loader2
+                        : syncOffer === 'conflict'
+                          ? AlertTriangle
+                          : CloudUpload,
                       disabled: syncingToAccount,
                       separated: true,
                       onSelect: onSyncToAccount,

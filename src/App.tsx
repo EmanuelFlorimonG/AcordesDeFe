@@ -23,6 +23,7 @@ import {
   PlaylistsView,
   PrivacyPolicy,
   ProposalEditScreen,
+  SetlistConflictDialog,
   SetlistDetail,
   SetlistsView,
   SongEditProposalScreen,
@@ -42,7 +43,7 @@ import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
-import { useSetlistCloudSync } from './hooks/useSetlistCloudSync';
+import { useSetlistCloudSync, type SetlistVersions } from './hooks/useSetlistCloudSync';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
 import { bindArrangement, withReviewNeeded } from './utils/arrangement';
@@ -747,11 +748,61 @@ export function App() {
   );
   const mostUsedSongs = useMemo(() => getMostUsedSongs(catalogSongs, usage, lastOpenedAt), [catalogSongs, usage, lastOpenedAt]);
 
+  /**
+   * The two versions of one setlist, while somebody looks at them.
+   *
+   * `versions` is what was read, and `null` while it is being read. It is
+   * remembered rather than looked up again on every render, because it is a
+   * photograph of a moment: the choice made from it is carried out against
+   * exactly the version it shows, and never against whatever is up there by
+   * the time the button is pressed.
+   */
+  const [conflict, setConflict] = useState<{ setlistId: string; versions: SetlistVersions | null } | null>(null);
+
+  const openConflict = (setlist: Setlist) => {
+    setConflict({ setlistId: setlist.id, versions: null });
+    void cloudSync.inspect(setlist).then((found) => {
+      if (found.kind === 'conflict') {
+        setConflict({ setlistId: setlist.id, versions: found });
+        return;
+      }
+      // Nothing to choose between any more, or nothing could be read. Either
+      // way the dialog closes rather than showing a comparison of one thing.
+      setConflict(null);
+      showToast(
+        found.kind === 'settled'
+          ? 'Ya no hay dos versiones distintas de este Setlist.'
+          : found.message
+      );
+    });
+  };
+
+  const resolveConflict = (setlist: Setlist, versions: SetlistVersions, keep: 'local' | 'remote') => {
+    void cloudSync.resolve(setlist, keep, versions.seenRevision).then((answer) => {
+      // Null means something was already in flight; that one reports itself.
+      if (!answer) return;
+      setConflict(null);
+      // Keeping the account's version rewrites what is stored here, so the
+      // screen has to read it again to stop showing the version that lost.
+      setlists.reload();
+      showToast(answer.message);
+    });
+  };
+
   const openSetlist = openSetlistId ? setlists.getSetlist(openSetlistId) : null;
   // What, if anything, to offer for the setlist on screen: a first upload, a
   // save of what changed since, or nothing at all.
   const openSetlistCloudState = openSetlist ? cloudSync.stateOf(openSetlist) : 'guest';
-  const cloudOffer = openSetlistCloudState === 'new' || openSetlistCloudState === 'changed' ? openSetlistCloudState : null;
+  // A setlist the last pass found changed in both places is not offered a
+  // save: saving it would be the one thing that must not happen on its own.
+  // It is offered a choice instead.
+  const openSetlistConflicted = Boolean(openSetlist && cloudSync.conflicted(openSetlist));
+  const cloudOffer = openSetlistConflicted
+    ? 'conflict'
+    : openSetlistCloudState === 'new' || openSetlistCloudState === 'changed'
+      ? openSetlistCloudState
+      : null;
+  const conflictSetlist = conflict ? setlists.getSetlist(conflict.setlistId) : null;
   /** The setlist being played live, when mass mode is open over it. */
   const massSetlist = massSetlistId ? setlists.getSetlist(massSetlistId) : null;
   const activeSetlist = setlistSongRoute ? setlists.getSetlist(setlistSongRoute.setlistId) : null;
@@ -1079,6 +1130,10 @@ export function App() {
               ? () => {
                   showToast('Sincronizando tus Setlists…');
                   void cloudSync.syncAll().then((answer) => {
+                    // A pass writes setlists straight to storage, so what is
+                    // on screen has to be read again or it would still show
+                    // what was there before.
+                    setlists.reload();
                     // Null means one was already in flight: that one will say
                     // how it went.
                     if (answer) showToast(answer.message);
@@ -1115,12 +1170,19 @@ export function App() {
           openSetlist && cloudOffer !== null
             ? () => {
                 const setlist = openSetlist;
+                if (cloudOffer === 'conflict') {
+                  openConflict(setlist);
+                  return;
+                }
                 showToast(
                   cloudOffer === 'new'
                     ? `Guardando «${setlist.name}» en tu cuenta…`
                     : `Guardando los cambios de «${setlist.name}»…`
                 );
                 void cloudSync.sync(setlist).then((answer) => {
+                  // A pass settles every setlist, so one of the others may
+                  // have arrived from the account while this one went up.
+                  setlists.reload();
                   // Null means one was already in flight: the first one will
                   // say how it went.
                   if (answer) showToast(answer.message);
@@ -1637,6 +1699,21 @@ export function App() {
             onSongOpened={(songId) => recordOpenedRef.current(songId)}
             isDarkMode={isDarkMode}
             onToggleDarkMode={() => setIsDarkMode((value) => !value)}
+          />
+        </Suspense>
+      )}
+
+      {conflictSetlist && conflict?.versions && (
+        <Suspense fallback={null}>
+          <SetlistConflictDialog
+            mine={conflict.versions.mine}
+            theirs={conflict.versions.theirs}
+            songsById={songsById}
+            busy={cloudSync.busy === conflictSetlist.id}
+            onResolve={(keep) => {
+              if (conflict.versions) resolveConflict(conflictSetlist, conflict.versions, keep);
+            }}
+            onClose={() => setConflict(null)}
           />
         </Suspense>
       )}
