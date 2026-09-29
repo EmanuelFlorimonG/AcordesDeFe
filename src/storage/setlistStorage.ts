@@ -84,7 +84,23 @@ export interface SetlistRepository {
   /** The storage key this repository writes, so a change elsewhere can be told apart; null when it keeps nothing */
   readonly key?: string | null;
   load(): SetlistLoadResult;
+  /**
+   * Stores them, and says nothing if it cannot.
+   *
+   * This is what the screens use. Somebody with full or blocked storage
+   * should still be able to build a setlist and play from it — it stays in
+   * memory for the visit, and an editor that threw in the middle of a change
+   * would help nobody.
+   */
   save(setlists: Setlist[]): void;
+  /**
+   * The same, for a caller that has to know. **Throws when the write did not
+   * land.** Synchronising has to tell "this is now on disk" from "this is
+   * only in this tab", because it writes down elsewhere what it believes was
+   * stored; believing wrongly is how a device ends up certain of something
+   * that is not there.
+   */
+  saveOrThrow(setlists: Setlist[]): void;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -220,9 +236,10 @@ export function createLocalSetlistRepository(
       return null;
     }
   };
+  const put = (key: string, value: string) => storage?.setItem(key, value);
   const write = (key: string, value: string) => {
     try {
-      storage?.setItem(key, value);
+      put(key, value);
     } catch {
       // quota exceeded or storage blocked: the setlists stay in memory for this visit
     }
@@ -241,6 +258,12 @@ export function createLocalSetlistRepository(
     save(setlists) {
       if (!keys) return;
       write(keys.data, serializeSetlists(setlists));
+    },
+    saveOrThrow(setlists) {
+      // An identity with nowhere to write has nothing to fail at: it never
+      // claimed to keep anything (see setlistKeys).
+      if (!keys) return;
+      put(keys.data, serializeSetlists(setlists));
     },
   };
 }

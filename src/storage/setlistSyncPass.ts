@@ -183,28 +183,32 @@ function localWrites(input: SetlistSyncPassInput, snapshot: Snapshot) {
       return sameMarker(input.deletions.get(id) ?? undefined, snapshot.deletions.get(id));
     },
 
-    /** Puts a setlist in place, keeping every other one exactly as it is now. */
+    /**
+     * Puts a setlist in place, keeping every other one exactly as it is now.
+     * Throws when the device would not take it: a pass that writes down what
+     * it believes was stored cannot be allowed to believe wrongly.
+     */
     putSetlist(setlist: Setlist): void {
       const now = input.setlists.load().setlists;
       const index = now.findIndex((entry) => entry.id === setlist.id);
       const next = index === -1 ? [...now, setlist] : now.map((entry, at) => (at === index ? setlist : entry));
-      input.setlists.save(next);
+      input.setlists.saveOrThrow(next);
     },
 
     dropSetlist(id: string): void {
-      input.setlists.save(input.setlists.load().setlists.filter((setlist) => setlist.id !== id));
+      input.setlists.saveOrThrow(input.setlists.load().setlists.filter((setlist) => setlist.id !== id));
     },
 
     putBase(base: SetlistSyncBase): void {
       const bases = input.bases.load();
       bases.set(base.setlistId, base);
-      input.bases.save(bases);
+      input.bases.saveOrThrow(bases);
     },
 
     dropBase(id: string): void {
       const bases = input.bases.load();
       bases.delete(id);
-      input.bases.save(bases);
+      input.bases.saveOrThrow(bases);
     },
 
     dropMarker(id: string): void {
@@ -305,7 +309,15 @@ async function settle(
         // produced. The local setlist is never touched here.
         if (!writes.baseUnchanged(id)) return { kind: 'cloud-success', plan, result, local: 'skipped-stale', staleWhat: 'base' };
         const stored = result.read.state === 'setlist' ? result.read.setlist : plan.setlist;
-        writes.putBase({ setlistId: id, cloudRevision: result.revision, fingerprint: portableFingerprint(stored) });
+        // The row moved whatever happens next. If the device will not keep a
+        // note of it, that is said out loud rather than assumed: the next
+        // pass finds a baseline still pointing at the old revision, reads the
+        // row, and sees that both sides say the same thing.
+        try {
+          writes.putBase({ setlistId: id, cloudRevision: result.revision, fingerprint: portableFingerprint(stored) });
+        } catch {
+          return { kind: 'cloud-success', plan, result, local: 'failed' };
+        }
         return { kind: 'cloud-success', plan, result, local: 'written' };
       });
 
@@ -332,8 +344,15 @@ async function settle(
         // tombstone again and reaches the same end. Without it, and with a
         // baseline left behind, it would see a setlist that simply is not
         // here any more and have to ask a person about it.
+        // The baseline goes first, and the note only if that worked. Either
+        // failure leaves the note where it is, which is what makes the next
+        // pass see the tombstone again and reach the same end.
         try {
           writes.dropBase(id);
+        } catch {
+          return { kind: 'cloud-success', plan, result, local: 'failed' };
+        }
+        try {
           writes.dropMarker(id);
         } catch {
           return { kind: 'cloud-success', plan, result, local: 'failed' };
@@ -345,7 +364,11 @@ async function settle(
     case 'adopt-baseline':
       if (!writes.baseUnchanged(id)) return stale('base');
       if (!writes.localUnchanged(id)) return stale('local');
-      writes.putBase(plan.base);
+      try {
+        writes.putBase(plan.base);
+      } catch (error) {
+        return { kind: 'local-error', plan, error };
+      }
       return { kind: 'applied-local', plan };
 
     case 'apply-remote': {
@@ -355,8 +378,22 @@ async function settle(
       // that put them there when the row was read.
       if (!writes.localUnchanged(id)) return stale('local');
       if (!writes.baseUnchanged(id)) return stale('base');
-      writes.putSetlist(withLocalMembership(plan.setlist, writes.current(id)));
-      writes.putBase(plan.base);
+      // The setlist first, the baseline second. A baseline is a claim that
+      // this device holds what the cloud holds, so it must not be written
+      // before the content it describes is actually here. The other way round
+      // is harmless and self-correcting: the content is here, the baseline
+      // still names the old revision, and the next pass finds both sides
+      // saying the same thing and simply writes the note again.
+      try {
+        writes.putSetlist(withLocalMembership(plan.setlist, writes.current(id)));
+      } catch (error) {
+        return { kind: 'local-error', plan, error };
+      }
+      try {
+        writes.putBase(plan.base);
+      } catch (error) {
+        return { kind: 'local-error', plan, error };
+      }
       return { kind: 'applied-local', plan };
     }
 
@@ -365,8 +402,19 @@ async function settle(
       // is reason enough to leave it for the next pass.
       if (!writes.localIdentical(id)) return stale('local');
       if (!writes.baseUnchanged(id)) return stale('base');
-      writes.dropSetlist(id);
-      writes.dropBase(id);
+      // The setlist goes first: while it is still here, the baseline that
+      // describes it has to stay too, or the next pass would find a setlist
+      // with nothing recorded about it and have to ask a person.
+      try {
+        writes.dropSetlist(id);
+      } catch (error) {
+        return { kind: 'local-error', plan, error };
+      }
+      try {
+        writes.dropBase(id);
+      } catch (error) {
+        return { kind: 'local-error', plan, error };
+      }
       return { kind: 'applied-local', plan };
 
     case 'confirm-deletion':
@@ -381,6 +429,10 @@ async function settle(
       // gone.
       try {
         writes.dropBase(id);
+      } catch (error) {
+        return { kind: 'local-error', plan, error };
+      }
+      try {
         writes.dropMarker(id);
       } catch (error) {
         return { kind: 'local-error', plan, error };
@@ -389,7 +441,11 @@ async function settle(
 
     case 'forget-baseline':
       if (!writes.baseUnchanged(id)) return stale('base');
-      writes.dropBase(id);
+      try {
+        writes.dropBase(id);
+      } catch (error) {
+        return { kind: 'local-error', plan, error };
+      }
       return { kind: 'applied-local', plan };
   }
 }

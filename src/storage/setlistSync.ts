@@ -165,7 +165,15 @@ export interface SetlistSyncStore {
   /** The key this store writes, or null when this identity keeps nothing. */
   readonly key: string | null;
   load(): Map<string, SetlistSyncBase>;
+  /** Stores them, and says nothing if it cannot: a lost baseline is a question, never a loss. */
   save(bases: Map<string, SetlistSyncBase>): void;
+  /**
+   * The same, for a caller that has to know. **Throws when the write did not
+   * land.** A baseline is a claim about what the cloud holds; a pass that
+   * thought it wrote one and did not would go on believing the two sides
+   * agree.
+   */
+  saveOrThrow(bases: Map<string, SetlistSyncBase>): void;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -197,6 +205,8 @@ function readBase(value: unknown): SetlistSyncBase | null {
  */
 export function createSetlistSyncStore(storage: KeyValueStorage | null, scope: SetlistScope): SetlistSyncStore {
   const key = syncKey(scope);
+  const serialize = (bases: Map<string, SetlistSyncBase>) =>
+    JSON.stringify({ version: SETLIST_SYNC_VERSION, bases: [...bases.values()] });
 
   return {
     key,
@@ -230,10 +240,14 @@ export function createSetlistSyncStore(storage: KeyValueStorage | null, scope: S
     save(bases) {
       if (!key) return;
       try {
-        storage?.setItem(key, JSON.stringify({ version: SETLIST_SYNC_VERSION, bases: [...bases.values()] }));
+        storage?.setItem(key, serialize(bases));
       } catch {
         // quota or blocked storage: the baselines are rebuilt next time
       }
+    },
+    saveOrThrow(bases) {
+      if (!key) return;
+      storage?.setItem(key, serialize(bases));
     },
   };
 }

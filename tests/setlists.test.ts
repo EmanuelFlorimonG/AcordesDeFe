@@ -36,6 +36,7 @@ import {
   userSetlists,
   parseStoredSetlists,
 } from '../src/storage/setlistStorage';
+import { createSetlistSyncStore } from '../src/storage/setlistSync';
 import {
   SONG_DURATIONS_KEY,
   createSongDurationStore,
@@ -668,6 +669,61 @@ describe('Cada cuenta guarda sus setlists aparte', () => {
     guestRepo(storage).save([named('De invitado')]);
     eq([...storage.data.keys()].sort(), before, 'las mismas claves que antes');
     eq(userRepo(storage, JUAN).load().setlists.map((s) => s.name), ['A'], 'y con lo mismo dentro');
+  });
+
+  it('dos formas de guardar: una que aguanta y otra que avisa', () => {
+    // Las pantallas usan la tolerante: alguien con el almacenamiento lleno o
+    // bloqueado tiene que poder seguir armando un setlist y tocarlo. La
+    // sincronizacion usa la que avisa, porque apunta en otro sitio lo que
+    // cree que quedo guardado, y creerlo mal es como un dispositivo acaba
+    // seguro de algo que no esta.
+    const quota = new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    const full = {
+      getItem: () => null,
+      setItem: () => {
+        throw quota;
+      },
+    };
+    const juan = userSetlists('6f1c2a4e-8b3d-4c5e-9f70-1a2b3c4d5e6f');
+    const setlist = createSetlist({ name: 'Misa Domingo' }, { now: NOW, createId: () => 'setlist-1234' });
+
+    const repo = createLocalSetlistRepository(full, juan);
+    repo.save([setlist]); // la tolerante no rompe nada
+    checks++;
+    assert.throws(() => repo.saveOrThrow([setlist]), (error: unknown) => error === quota);
+    checks++;
+
+    const bases = createSetlistSyncStore(full, juan);
+    const base = { setlistId: 'setlist-1234', cloudRevision: 4, fingerprint: 'ceba3ecb3aca702e' };
+    bases.save(new Map([[base.setlistId, base]]));
+    checks++;
+    assert.throws(() => bases.saveOrThrow(new Map([[base.setlistId, base]])), (error: unknown) => error === quota);
+    checks++;
+
+    // Un error cualquiera viaja igual: no se mira su texto en ninguna parte.
+    const boom = new Error('bloqueado');
+    const blocked = {
+      getItem: () => null,
+      setItem: () => {
+        throw boom;
+      },
+    };
+    assert.throws(() => createLocalSetlistRepository(blocked, juan).saveOrThrow([setlist]), (error: unknown) => error === boom);
+    checks++;
+
+    // Y cuando el almacenamiento funciona, las dos guardan lo mismo.
+    const storage = browser();
+    createLocalSetlistRepository(storage, juan).saveOrThrow([setlist]);
+    eq(createLocalSetlistRepository(storage, juan).load().setlists.map((entry) => entry.id), ['setlist-1234']);
+    createSetlistSyncStore(storage, juan).saveOrThrow(new Map([[base.setlistId, base]]));
+    eq([...createSetlistSyncStore(storage, juan).load().values()], [base]);
+
+    // Una identidad sin sitio donde escribir no falla: nunca prometio nada.
+    const nowhere = createLocalSetlistRepository(full, userSetlists('   '));
+    nowhere.saveOrThrow([setlist]);
+    checks++;
+    createSetlistSyncStore(full, GUEST_SETLISTS).saveOrThrow(new Map([[base.setlistId, base]]));
+    checks++;
   });
 
   it('cada repositorio sabe qué clave es la suya, para no confundir avisos de otras pestañas', () => {

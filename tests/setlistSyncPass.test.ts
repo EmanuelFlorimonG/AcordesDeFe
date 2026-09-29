@@ -116,42 +116,75 @@ const tombstoneRow = (revision: number, id = ID): CloudSetlistRead => ({
 
 // --- In-memory stores -----------------------------------------------------------------------
 
-function memorySetlists(initial: Setlist[] = []): SetlistRepository & { current(): Setlist[] } {
+/** Storage that is full, which is the realistic way writing fails. */
+const quotaExceeded = () => new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+
+interface Breakable {
+  /** From this call on, every strict write throws. `null` lets them through again. */
+  breakWrites(error: unknown | null): void;
+}
+
+function memorySetlists(initial: Setlist[] = []): SetlistRepository & { current(): Setlist[] } & Breakable {
   let stored = [...initial];
+  let broken: unknown | null = null;
   return {
     key: 'memoria',
     load: () => ({ setlists: [...stored], recoveredFromUnreadableData: false }),
+    // The tolerant path the screens use: a device that will not keep them
+    // still shows them for this visit.
     save: (setlists) => {
+      if (broken === null) stored = [...setlists];
+    },
+    saveOrThrow: (setlists) => {
+      if (broken !== null) throw broken;
       stored = [...setlists];
     },
     current: () => stored,
+    breakWrites: (error) => {
+      broken = error;
+    },
   };
 }
 
-function memoryBases(initial: SetlistSyncBase[] = []): SetlistSyncStore {
+function memoryBases(initial: SetlistSyncBase[] = []): SetlistSyncStore & Breakable {
   let stored = new Map(initial.map((base) => [base.setlistId, base]));
+  let broken: unknown | null = null;
   return {
     key: 'memoria',
     load: () => new Map(stored),
     save: (bases) => {
+      if (broken === null) stored = new Map(bases);
+    },
+    saveOrThrow: (bases) => {
+      if (broken !== null) throw broken;
       stored = new Map(bases);
+    },
+    breakWrites: (error) => {
+      broken = error;
     },
   };
 }
 
-function memoryDeletions(initial: SetlistDeletionMarker[] = []): SetlistDeletionRepository {
+function memoryDeletions(initial: SetlistDeletionMarker[] = []): SetlistDeletionRepository & Breakable {
   let stored = [...initial];
+  let broken: unknown | null = null;
   return {
     key: 'memoria',
     list: () => [...stored],
     get: (id) => stored.find((marker) => marker.setlistId === id) ?? null,
     mark: (setlistId, deletedAt, baseRevision) => {
+      if (broken !== null) throw broken;
       const marker = { setlistId, deletedAt, ...(baseRevision === undefined ? {} : { baseRevision }) };
       stored = [...stored.filter((entry) => entry.setlistId !== setlistId), marker];
       return marker;
     },
+    // This one has always said when it could not write (see setlistDeletions).
     clear: (id) => {
+      if (broken !== null) throw broken;
       stored = stored.filter((marker) => marker.setlistId !== id);
+    },
+    breakWrites: (error) => {
+      broken = error;
     },
   };
 }
@@ -912,6 +945,202 @@ describe('Despues de un fallo en la nube no se toca nada', () => {
       eq([...bases.load().values()], [baseOf(base, 4)], kind);
       eq(deletions.list(), [canary], kind);
     }
+  });
+});
+
+// --- When the device will not keep it ------------------------------------------------------------
+
+describe('Cuando el dispositivo no acepta la escritura', () => {
+  const local = setlistOf();
+  const there = renamed(local, 'Editado en otro dispositivo');
+  const mine = renamed(local, 'Lo que escribi yo');
+
+  /** A world whose stores can be told to refuse every strict write. */
+  const world = (options: {
+    local?: Setlist[];
+    bases?: SetlistSyncBase[];
+    deletions?: SetlistDeletionMarker[];
+  } = {}) => ({
+    setlists: memorySetlists(options.local ?? []),
+    bases: memoryBases(options.bases ?? []),
+    deletions: memoryDeletions(options.deletions ?? []),
+  });
+
+  it('subir funciono pero la base no se pudo guardar: la nube avanzo igual', async () => {
+    const stores = world({ local: [mine], bases: [baseOf(local, 4)] });
+    const cloud = fakeCloud({
+      rows: [activeRow(local, 4)],
+      update: written(activeRow(mine, 5)),
+      during: () => stores.bases.breakWrites(quotaExceeded()),
+    });
+
+    const report = await runSetlistSyncPass({ ...stores, cloud: cloud.cloud });
+
+    const outcome = report.outcomes.get(ID);
+    eq(outcome?.kind, 'cloud-success', 'la fila se escribio de verdad');
+    eq(outcome && 'local' in outcome && outcome.local, 'failed', 'y no se finge que quedo anotado');
+    eq([...stores.bases.load().values()], [baseOf(local, 4)], 'la base sigue donde estaba');
+    eq(stores.setlists.current(), [mine], 'y el setlist tampoco se toca');
+  });
+
+  it('bajar: si no se puede guardar el setlist, la base no avanza', async () => {
+    const stores = world({ local: [local], bases: [baseOf(local, 4)] });
+    stores.setlists.breakWrites(quotaExceeded());
+    const cloud = fakeCloud({ rows: [activeRow(there, 5)] });
+
+    const report = await runSetlistSyncPass({ ...stores, cloud: cloud.cloud });
+
+    const outcome = report.outcomes.get(ID);
+    eq(outcome?.kind, 'local-error');
+    eq(outcome && 'error' in outcome && (outcome.error as DOMException).name, 'QuotaExceededError');
+    eq(stores.setlists.current(), [local], 'el contenido no cambio');
+    eq(
+      [...stores.bases.load().values()],
+      [baseOf(local, 4)],
+      'y la base no dice que este dispositivo tiene lo que no tiene'
+    );
+  });
+
+  it('bajar: si el setlist se guarda y falla la base, el contenido esta y la pasada siguiente converge', async () => {
+    const stores = world({ local: [local], bases: [baseOf(local, 4)] });
+    const cloud = fakeCloud({ rows: [activeRow(there, 5)] });
+    // El almacen de bases falla justo despues de guardar el setlist.
+    const original = stores.setlists.saveOrThrow;
+    stores.setlists.saveOrThrow = (setlists) => {
+      original(setlists);
+      stores.bases.breakWrites(quotaExceeded());
+    };
+
+    const report = await runSetlistSyncPass({ ...stores, cloud: cloud.cloud });
+
+    eq(report.outcomes.get(ID)?.kind, 'local-error');
+    eq(stores.setlists.current()[0].name, 'Editado en otro dispositivo', 'el contenido si llego');
+    eq([...stores.bases.load().values()], [baseOf(local, 4)], 'la base se quedo atras');
+
+    // Y la siguiente pasada, con el almacen ya sano, converge sola: los dos
+    // lados dicen lo mismo, asi que solo hay que apuntarlo.
+    stores.bases.breakWrites(null);
+    const second = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [activeRow(there, 5)] }).cloud });
+    eq(second.outcomes.get(ID)?.kind, 'applied-local');
+    eq([...stores.bases.load().values()], [{ setlistId: ID, cloudRevision: 5, fingerprint: portableFingerprint(there) }]);
+  });
+
+  it('apuntar un acuerdo que no se puede guardar no es un acuerdo', async () => {
+    const stores = world({ local: [local] });
+    stores.bases.breakWrites(quotaExceeded());
+    const report = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [activeRow(local, 4)] }).cloud });
+
+    eq(report.outcomes.get(ID)?.kind, 'local-error');
+    eq([...stores.bases.load().values()], [], 'ninguna base');
+  });
+
+  it('borrar aqui: si no se puede persistir, la base se queda', async () => {
+    const stores = world({ local: [local], bases: [baseOf(local, 4)] });
+    stores.setlists.breakWrites(quotaExceeded());
+    const report = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [tombstoneRow(5)] }).cloud });
+
+    eq(report.outcomes.get(ID)?.kind, 'local-error');
+    eq(stores.setlists.current(), [local], 'el setlist sigue aqui');
+    eq([...stores.bases.load().values()], [baseOf(local, 4)], 'y lo que se sabe de el, tambien');
+  });
+
+  it('borrar aqui: si el setlist se va y falla la base, se reporta y no se finge', async () => {
+    const stores = world({ local: [local], bases: [baseOf(local, 4)] });
+    const original = stores.setlists.saveOrThrow;
+    stores.setlists.saveOrThrow = (setlists) => {
+      original(setlists);
+      stores.bases.breakWrites(quotaExceeded());
+    };
+
+    const report = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [tombstoneRow(5)] }).cloud });
+
+    eq(report.outcomes.get(ID)?.kind, 'local-error');
+    eq(stores.setlists.current(), [], 'el setlist si se fue');
+    eq([...stores.bases.load().values()], [baseOf(local, 4)], 'la base quedo suelta, y se sabe');
+  });
+
+  it('confirmar un borrado: si falla la base, la anotacion no se limpia', async () => {
+    const stores = world({ bases: [baseOf(local, 4)], deletions: [markerOf(4)] });
+    stores.bases.breakWrites(quotaExceeded());
+    const report = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [tombstoneRow(5)] }).cloud });
+
+    eq(report.outcomes.get(ID)?.kind, 'local-error');
+    eq(stores.deletions.list(), [markerOf(4)], 'la evidencia de la intencion se conserva');
+    eq([...stores.bases.load().values()], [baseOf(local, 4)]);
+  });
+
+  it('confirmar un borrado: si la base se va y falla la anotacion, la proxima pasada converge', async () => {
+    const stores = world({ bases: [baseOf(local, 4)], deletions: [markerOf(4)] });
+    stores.deletions.breakWrites(quotaExceeded());
+    const report = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [tombstoneRow(5)] }).cloud });
+
+    eq(report.outcomes.get(ID)?.kind, 'local-error');
+    eq([...stores.bases.load().values()], [], 'la base si se fue');
+    eq(stores.deletions.list(), [markerOf(4)], 'y la anotacion se queda');
+
+    stores.deletions.breakWrites(null);
+    const second = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [tombstoneRow(5)] }).cloud });
+    eq(second.outcomes.get(ID)?.kind, 'applied-local');
+    eq(stores.deletions.list(), [], 'y a la segunda se limpia');
+  });
+
+  it('borrado en la nube confirmado: si falla la limpieza, la lapida sigue siendo un hecho', async () => {
+    for (const breaking of ['bases', 'deletions'] as const) {
+      const stores = world({ bases: [baseOf(local, 4)], deletions: [markerOf(4)] });
+      const cloud = fakeCloud({
+        rows: [activeRow(local, 4)],
+        remove: written(tombstoneRow(5)),
+        during: () => stores[breaking].breakWrites(quotaExceeded()),
+      });
+
+      const report = await runSetlistSyncPass({ ...stores, cloud: cloud.cloud });
+
+      const outcome = report.outcomes.get(ID);
+      eq(outcome?.kind, 'cloud-success', breaking);
+      eq(outcome && 'local' in outcome && outcome.local, 'failed', breaking);
+      eq(stores.deletions.list(), [markerOf(4)], `la anotacion se conserva (${breaking})`);
+    }
+  });
+
+  it('olvidar una base que no se puede olvidar', async () => {
+    const stores = world({ bases: [baseOf(local, 4)] });
+    stores.bases.breakWrites(quotaExceeded());
+    const report = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [] }).cloud });
+
+    eq(report.outcomes.get(ID)?.kind, 'local-error');
+    eq([...stores.bases.load().values()], [baseOf(local, 4)], 'sigue ahi, y se sabe');
+  });
+
+  it('un error genérico se conserva igual que uno de cuota', async () => {
+    const boom = new Error('el almacenamiento esta bloqueado');
+    const stores = world({ local: [local] });
+    stores.bases.breakWrites(boom);
+    const report = await runSetlistSyncPass({ ...stores, cloud: fakeCloud({ rows: [activeRow(local, 4)] }).cloud });
+
+    const outcome = report.outcomes.get(ID);
+    eq(outcome?.kind, 'local-error');
+    eq(outcome && 'error' in outcome && outcome.error, boom, 'el error original, entero');
+  });
+
+  it('un fallo local en uno no detiene a los demas', async () => {
+    const a = setlistOf({ id: 'setlist-aaa' });
+    const b = setlistOf({ id: 'setlist-bbb', name: 'El otro' });
+    const bThere = renamed(b, 'Cambiado alli');
+    const setlists = memorySetlists([a, b]);
+    const bases = memoryBases([baseOf(b, 4)]);
+    // Las bases fallan: A no puede apuntar su acuerdo…
+    bases.breakWrites(quotaExceeded());
+    const cloud = fakeCloud({ rows: [activeRow(a, 4), activeRow(bThere, 5)] });
+
+    const report = await runSetlistSyncPass({ setlists, bases, deletions: memoryDeletions(), cloud: cloud.cloud });
+
+    eq(report.order, ['setlist-aaa', 'setlist-bbb']);
+    eq(report.outcomes.get('setlist-aaa')?.kind, 'local-error');
+    // …y B tampoco, pero se intento y se reporto por separado: la pasada no
+    // se detuvo en el primero.
+    eq(report.outcomes.get('setlist-bbb')?.kind, 'local-error');
+    eq(report.outcomes.size, 2, 'los dos ids llegaron a decidirse');
+    eq(setlists.current().find((entry) => entry.id === 'setlist-bbb')?.name, 'Cambiado alli', 'y B si recibio su contenido');
   });
 });
 
