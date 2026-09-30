@@ -26,6 +26,9 @@ export const setlistSongHash = (setlistId: string, itemId: string) =>
 
 export const setlistHash = (setlistId: string) => `#/setlist/${encodeURIComponent(setlistId)}`;
 
+/** La hoja de un Setlist para imprimir o guardar como PDF. */
+export const setlistPrintHash = (setlistId: string) => `#/setlist/${encodeURIComponent(setlistId)}/pdf`;
+
 /** The setlist being played live, in mass mode. */
 export const setlistMassHash = (setlistId: string) =>
   `#/setlist/${encodeURIComponent(setlistId)}/misa`;

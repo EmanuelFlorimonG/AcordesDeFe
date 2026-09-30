@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CloudUpload,
   Copy,
+  FileText,
   ListOrdered,
   Loader2,
   MoreHorizontal,
@@ -68,6 +69,12 @@ interface SetlistDetailProps {
    * subido nunca no tiene nada que enseñar.
    */
   onShare?: () => void;
+  /**
+   * Abre la hoja para imprimir o guardar como PDF. Hoy sólo existe la del
+   * músico —letra con acordes, tono, cejilla y arreglo—; la de quien canta
+   * llegará después, sobre el mismo documento.
+   */
+  onExportPdf?: () => void;
   /** `moment` is set when the song was chosen from a part of the Mass */
   onAddSong: (song: Song, moment: string) => void;
   onRemoveItem: (itemId: string) => void;
@@ -110,6 +117,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   syncOffer = 'new',
   syncingToAccount = false,
   onShare,
+  onExportPdf,
   onAddSong,
   onRemoveItem,
   onMoveItem,
@@ -226,6 +234,16 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
                       icon: Share2,
                       separated: !onSyncToAccount,
                       onSelect: onShare,
+                    },
+                  ]
+                : []),
+              ...(onExportPdf
+                ? [
+                    {
+                      label: 'Exportar PDF para músicos',
+                      icon: FileText,
+                      separated: !onShare && !onSyncToAccount,
+                      onSelect: onExportPdf,
                     },
                   ]
                 : []),

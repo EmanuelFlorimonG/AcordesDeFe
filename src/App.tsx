@@ -25,6 +25,7 @@ import {
   ProposalEditScreen,
   SetlistConflictDialog,
   SetlistDetail,
+  SetlistPrintScreen,
   ShareSetlistDialog,
   SharedSetlistScreen,
   SetlistsView,
@@ -52,7 +53,7 @@ import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } fro
 import { bindArrangement, withReviewNeeded } from './utils/arrangement';
 import { parseSongSections } from './utils/chordParser';
 import { songVersionOf } from './catalog/songRepository';
-import { setlistHash, setlistMassHash, setlistSongHash } from './components/Setlists/ui';
+import { setlistHash, setlistMassHash, setlistPrintHash, setlistSongHash } from './components/Setlists/ui';
 import { readShareToken } from './storage/setlistShares';
 import { useMinistry } from './hooks/useMinistry';
 import { MinistryContext, type MinistryData } from './hooks/ministryContext';
@@ -119,7 +120,9 @@ type AppPage =
   /** Setting a new password, after the link from the recovery mail */
   | 'newPassword'
   /** A setlist somebody shared: #/shared/setlist/<token>, open to anyone */
-  | 'sharedSetlist';
+  | 'sharedSetlist'
+  /** La hoja de un Setlist para imprimir: #/setlist/<id>/pdf */
+  | 'setlistPrint';
 
 /** The public editor: #/canciones/nueva */
 const NEW_SONG_ROUTE = '#/canciones/nueva';
@@ -134,6 +137,8 @@ const SETLIST_SONG_ROUTE = /^#\/setlist\/([^/]+)\/song\/([^/]+)$/;
 const SETLIST_MASS_ROUTE = /^#\/setlist\/([^/]+)\/misa$/;
 /** A setlist shared by link: #/shared/setlist/<token>. No account needed. */
 const SHARED_SETLIST_ROUTE = /^#\/shared\/setlist\/([^/]+)$/;
+/** La hoja para imprimir de un setlist: #/setlist/<id>/pdf */
+const SETLIST_PRINT_ROUTE = /^#\/setlist\/([^/]+)\/pdf$/;
 /** Routes that show the songbook's home, where search and filters live. */
 const isSongbookRoute = (hash: string) =>
   hash === '' ||
@@ -521,6 +526,13 @@ export function App() {
         setPage('app');
         setSection('setlists');
         setOpenSetlistId(null);
+        return;
+      }
+      const printMatch = hash.match(SETLIST_PRINT_ROUTE);
+      if (printMatch) {
+        setPage('setlistPrint');
+        setSection('setlists');
+        setOpenSetlistId(printMatch[1]);
         return;
       }
       if (hash.startsWith('#/setlist/')) {
@@ -1241,6 +1253,7 @@ export function App() {
               }
             : undefined
         }
+        onExportPdf={() => navigateTo(setlistPrintHash(setlistId))}
         syncOffer={cloudOffer ?? 'new'}
         onShare={
           // Sólo cuando ya está en la cuenta: un enlace enseña lo que hay en
@@ -1446,6 +1459,14 @@ export function App() {
     switch (page) {
       case 'newPassword':
         return <NewPasswordScreen onDone={handleBackToDashboard} />;
+      case 'setlistPrint':
+        return (
+          <SetlistPrintScreen
+            setlist={openSetlist}
+            songsById={songsById}
+            onBack={() => navigateTo(openSetlistId ? setlistHash(openSetlistId) : '#/setlists')}
+          />
+        );
       case 'sharedSetlist':
         // Sin token no hay nada que abrir, y se dice igual que si el enlace
         // se hubiera desactivado: para quien mira es lo mismo.

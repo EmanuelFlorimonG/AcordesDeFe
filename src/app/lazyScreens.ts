@@ -35,6 +35,11 @@ export const SharedSetlistScreen = lazy(() =>
   import('../components/Setlists/SharedSetlistScreen').then((module) => ({ default: module.SharedSetlistScreen }))
 );
 
+/** La hoja del músico, para imprimir o guardar como PDF. */
+export const SetlistPrintScreen = lazy(() =>
+  import('../components/Setlists/SetlistPrintScreen').then((module) => ({ default: module.SetlistPrintScreen }))
+);
+
 export const SetlistDetail = lazy(() =>
   import('../components/Setlists/SetlistDetail').then((module) => ({ default: module.SetlistDetail }))
 );

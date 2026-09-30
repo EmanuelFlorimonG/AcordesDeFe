@@ -68,6 +68,13 @@
   }
 }
 
+/* El papel: A4 con márgenes de carpeta. Se imprimen Setlists y canciones,
+   que se leen desde un atril, así que el margen es generoso a propósito. */
+@page {
+  size: A4;
+  margin: 14mm;
+}
+
 /* Monospace styling for chord alignment */
 .font-chord {
   font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
