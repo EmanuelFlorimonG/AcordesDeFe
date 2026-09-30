@@ -302,6 +302,18 @@ export function App() {
   const [setlistSongRoute, setSetlistSongRoute] = useState<{ setlistId: string; itemId: string } | null>(null);
   /** El token del enlace compartido que se está abriendo, o null si no lo es. */
   const [sharedToken, setSharedToken] = useState<string | null>(null);
+  /**
+   * The two versions of one setlist, while somebody looks at them.
+   *
+   * `versions` is what was read, and `null` while it is being read. It is
+   * remembered rather than looked up again on every render, because it is a
+   * photograph of a moment: the choice made from it is carried out against
+   * exactly the version it shows, and never against whatever is up there by
+   * the time the button is pressed.
+   */
+  const [conflict, setConflict] = useState<{ setlistId: string; versions: SetlistVersions | null } | null>(null);
+  /** El Setlist cuya ventana de compartir está abierta, o null. */
+  const [sharingId, setSharingId] = useState<string | null>(null);
   /** Set while a setlist is being played live, in mass mode. */
   const [massSetlistId, setMassSetlistId] = useState<string | null>(null);
 
@@ -368,6 +380,10 @@ export function App() {
       if ((!hash.startsWith('#/song/') || parseSuggestEditHash(hash) !== null) && !setlistSongMatch) setIsRehearsing(false);
       setSetlistSongRoute(null);
       setMassSetlistId(null);
+      // Las ventanas de un Setlist son de la pantalla que se deja atrás: irse
+      // a otra ruta las cierra, en vez de dejarlas flotando sobre la nueva.
+      setSharingId(null);
+      setConflict(null);
       setOpenEventRoute(null);
       if (!SETLIST_MASS_ROUTE.test(hash)) setMassOrigin(null);
       if (!EVENT_ROUTE.test(hash)) setClosingKey(null);
@@ -772,18 +788,6 @@ export function App() {
   );
   const mostUsedSongs = useMemo(() => getMostUsedSongs(catalogSongs, usage, lastOpenedAt), [catalogSongs, usage, lastOpenedAt]);
 
-  /**
-   * The two versions of one setlist, while somebody looks at them.
-   *
-   * `versions` is what was read, and `null` while it is being read. It is
-   * remembered rather than looked up again on every render, because it is a
-   * photograph of a moment: the choice made from it is carried out against
-   * exactly the version it shows, and never against whatever is up there by
-   * the time the button is pressed.
-   */
-  const [conflict, setConflict] = useState<{ setlistId: string; versions: SetlistVersions | null } | null>(null);
-  /** El Setlist cuya ventana de compartir está abierta, o null. */
-  const [sharingId, setSharingId] = useState<string | null>(null);
 
   const openConflict = (setlist: Setlist) => {
     setConflict({ setlistId: setlist.id, versions: null });
