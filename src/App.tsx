@@ -45,6 +45,7 @@ import { GUEST_SETLISTS, userSetlists } from './storage/setlistStorage';
 import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import type { PrintAudience } from './components/Setlists/SetlistPrintScreen';
 import { useSetlists } from './hooks/useSetlists';
 import { useGuestSetlistImport } from './hooks/useGuestSetlistImport';
 import { useSetlistCloudSync, type SetlistVersions } from './hooks/useSetlistCloudSync';
@@ -138,7 +139,7 @@ const SETLIST_MASS_ROUTE = /^#\/setlist\/([^/]+)\/misa$/;
 /** A setlist shared by link: #/shared/setlist/<token>. No account needed. */
 const SHARED_SETLIST_ROUTE = /^#\/shared\/setlist\/([^/]+)$/;
 /** La hoja para imprimir de un setlist: #/setlist/<id>/pdf */
-const SETLIST_PRINT_ROUTE = /^#\/setlist\/([^/]+)\/pdf$/;
+const SETLIST_PRINT_ROUTE = /^#\/setlist\/([^/]+)\/pdf(\/letra)?$/;
 /** Routes that show the songbook's home, where search and filters live. */
 const isSongbookRoute = (hash: string) =>
   hash === '' ||
@@ -307,6 +308,8 @@ export function App() {
   const [setlistSongRoute, setSetlistSongRoute] = useState<{ setlistId: string; itemId: string } | null>(null);
   /** El token del enlace compartido que se está abriendo, o null si no lo es. */
   const [sharedToken, setSharedToken] = useState<string | null>(null);
+  /** Para quién es la hoja que se está imprimiendo. */
+  const [printAudience, setPrintAudience] = useState<PrintAudience>('musicians');
   /**
    * The two versions of one setlist, while somebody looks at them.
    *
@@ -533,6 +536,7 @@ export function App() {
         setPage('setlistPrint');
         setSection('setlists');
         setOpenSetlistId(printMatch[1]);
+        setPrintAudience(printMatch[2] ? 'singers' : 'musicians');
         return;
       }
       if (hash.startsWith('#/setlist/')) {
@@ -1253,7 +1257,7 @@ export function App() {
               }
             : undefined
         }
-        onExportPdf={() => navigateTo(setlistPrintHash(setlistId))}
+        onExportPdf={(audience) => navigateTo(setlistPrintHash(setlistId, audience))}
         syncOffer={cloudOffer ?? 'new'}
         onShare={
           // Sólo cuando ya está en la cuenta: un enlace enseña lo que hay en
@@ -1464,6 +1468,7 @@ export function App() {
           <SetlistPrintScreen
             setlist={openSetlist}
             songsById={songsById}
+            audience={printAudience}
             onBack={() => navigateTo(openSetlistId ? setlistHash(openSetlistId) : '#/setlists')}
           />
         );

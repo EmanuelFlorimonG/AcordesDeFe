@@ -7,6 +7,7 @@ import type { Setlist, SetlistItem } from '../src/types/setlist';
 import type { Song } from '../src/types/song';
 import { MINISTRY_NAME, buildSetlistDocument, latinKeyName } from '../src/utils/setlistExport';
 import { SetlistPrintSheet } from '../src/components/Setlists/SetlistPrintSheet';
+import { SetlistSingersSheet } from '../src/components/Setlists/SetlistSingersSheet';
 
 /**
  * Un Setlist puesto en papel para los músicos.
@@ -475,6 +476,121 @@ describe('La maqueta del cancionero', () => {
   });
 });
 
+// --- La hoja de quien canta -------------------------------------------------
+
+describe('La hoja de quien canta', () => {
+  const sing = (setlist = setlistOf()) =>
+    renderToStaticMarkup(createElement(SetlistSingersSheet, { sheet: build(setlist) }));
+
+  it('es el mismo documento: encabezado, momento, canción con su tono', () => {
+    const html = sing();
+    eq(html.includes(MINISTRY_NAME.toLocaleUpperCase('es')), true);
+    eq(html.includes('COMUNIÓN:'), true);
+    eq(html.includes('Pescador de Hombres (Re)'), true, 'el tono, en las notas de siempre');
+    eq(html.includes('columns-2'), true, 'y las dos columnas');
+  });
+
+  it('lleva la letra entera', () => {
+    const html = sing();
+    eq(html.includes('Señor, me has mirado a los ojos,'), true);
+    eq(html.includes('sonriendo has dicho mi nombre.'), true);
+  });
+
+  it('no lleva ni un acorde', () => {
+    const html = sing(setlistOf({ items: [item({ transposeSteps: 2, capoFret: 3 })] }));
+    // La canción de prueba se toca con D, A y G; ninguno puede asomar.
+    for (const chord of ['>D<', '>A<', '>G<', '>E<', '>B<', 'font-mono']) {
+      eq(html.includes(chord), false, chord);
+    }
+  });
+
+  it('ni nada que sólo le importe a quien toca', () => {
+    const html = sing(
+      setlistOf({
+        items: [
+          item({
+            transposeSteps: 2,
+            capoFret: 3,
+            notes: 'Entrar sólo con guitarra',
+            transitionToNext: { type: 'instrumental', instruction: 'Dejar sonar' },
+          }),
+          item({ id: 'otro' }),
+        ],
+      })
+    );
+    for (const forbidden of [
+      'Capo',
+      'formas de',
+      'escrita en',
+      'BPM',
+      '4/4',
+      'Entrar sólo con guitarra',
+      'Al terminar',
+      'Dejar sonar',
+    ]) {
+      eq(html.includes(forbidden), false, forbidden);
+    }
+  });
+
+  it('conserva quién canta cada parte, y cuántas veces', () => {
+    const conVoces = setlistOf({
+      items: [
+        item({
+          arrangement: {
+            songVersion: 1,
+            sections: [
+              {
+                id: 'b1',
+                sourceSectionId: 'section-1',
+                label: 'Coro',
+                repeatCount: 2,
+                voices: ['women'],
+                instruction: 'Suave, sólo guitarra',
+                transition: { type: 'continue' },
+              },
+            ],
+          },
+        }),
+      ],
+    });
+    const html = sing(conVoces);
+    eq(html.toLowerCase().includes('mujeres'), true, 'quién canta, sí');
+    eq(html.includes('x2'), true, 'cuántas veces, también');
+    eq(html.includes('Suave, sólo guitarra'), false, 'la indicación del instrumento, no');
+  });
+
+  it('un momento con dos canciones lo escribe una sola vez', () => {
+    const html = sing(
+      setlistOf({
+        items: [
+          item({ id: 'a', songId: 'bendecire', moment: 'Comunión' }),
+          item({ id: 'b', songId: 'pescador', moment: 'Comunión' }),
+        ],
+      })
+    );
+    eq((html.match(/COMUNIÓN:/g) ?? []).length, 1);
+    eq(html.includes('Bendeciré al Señor'), true);
+    eq(html.includes('Pescador de Hombres'), true);
+  });
+
+  it('una canción sin acordes se ve igual que las demás: es sólo letra', () => {
+    const html = sing(setlistOf({ items: [item({ songId: 'bendecire' })] }));
+    eq(html.includes('Bendeciré al Señor, con toda mi alma.'), true);
+    eq(html.includes('Todavía sin acordes'), false, 'a quien canta eso no le dice nada');
+  });
+
+  it('una canción que falta se dice', () => {
+    eq(sing(setlistOf({ items: [item({ songId: 'no-existe' })] })).includes('No está en el cancionero'), true);
+  });
+
+  it('es papel: ni un control de la aplicación', () => {
+    const html = sing();
+    for (const control of ['Editar', 'Eliminar', 'Añadir canción', 'Sincronizar', '<input', '<button', 'rounded border']) {
+      eq(html.includes(control), false, control);
+    }
+  });
+});
+
 // --- La arquitectura que viene ---------------------------------------------
 
 describe('La hoja de quien canta, cuando llegue', () => {
@@ -492,12 +608,21 @@ describe('La hoja de quien canta, cuando llegue', () => {
     eq(sheetSource.includes('buildSetlistDocument'), true, 'la hoja sólo pinta el documento');
   });
 
-  it('hoy sólo existe la del músico: no hay media pantalla de la otra', () => {
+  it('las dos hojas se eligen desde el mismo sitio', () => {
     eq(detail.includes('Exportar PDF para músicos'), true);
-    for (const forbidden of ['no músicos', 'cantantes', 'audience', 'stripChords']) {
-      eq(detail.includes(forbidden), false, forbidden);
-      eq(sheetSource.includes(forbidden), false, `hoja: ${forbidden}`);
-    }
+    eq(detail.includes('Exportar PDF para quien canta'), true);
+  });
+
+  it('tocar la hoja de quien canta no puede cambiar la del músico', () => {
+    // Son dos renderizadores. El de los músicos no sabe que el otro existe.
+    const singers = readFileSync('src/components/Setlists/SetlistSingersSheet.tsx', 'utf8').replace(/\r\n/g, '\n');
+    eq(sheetSource.includes('Singers'), false, 'la hoja del músico no lo nombra');
+    eq(singers.includes('SetlistPrintSheet'), false, 'y la de quien canta tampoco');
+    // Y la de quien canta no toca el pintor de acordes.
+    eq(singers.includes('ChordSheet'), false);
+    // Lo que sí comparten es el documento, que se resuelve una sola vez.
+    eq(singers.includes('buildSetlistDocument'), true);
+    eq(sheetSource.includes('buildSetlistDocument'), true);
   });
 
   it('el PDF lo hace el navegador, sin añadir dependencias para escribirlo', () => {

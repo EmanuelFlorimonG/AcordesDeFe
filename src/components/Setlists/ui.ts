@@ -26,8 +26,12 @@ export const setlistSongHash = (setlistId: string, itemId: string) =>
 
 export const setlistHash = (setlistId: string) => `#/setlist/${encodeURIComponent(setlistId)}`;
 
-/** La hoja de un Setlist para imprimir o guardar como PDF. */
-export const setlistPrintHash = (setlistId: string) => `#/setlist/${encodeURIComponent(setlistId)}/pdf`;
+/**
+ * La hoja de un Setlist para imprimir o guardar como PDF: la de los músicos,
+ * con acordes, o la de quien canta, sólo con la letra.
+ */
+export const setlistPrintHash = (setlistId: string, audience: 'musicians' | 'singers' = 'musicians') =>
+  `#/setlist/${encodeURIComponent(setlistId)}/pdf${audience === 'singers' ? '/letra' : ''}`;
 
 /** The setlist being played live, in mass mode. */
 export const setlistMassHash = (setlistId: string) =>

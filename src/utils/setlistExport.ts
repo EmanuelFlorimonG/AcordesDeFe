@@ -1,5 +1,5 @@
 import type { Setlist, SetlistItem } from '../types/setlist';
-import type { Song } from '../types/song';
+import type { Song, SongSection } from '../types/song';
 import { resolveArrangement, type ResolvedArrangementSection } from './arrangement';
 import { parseSongSections, transposeSongContent } from './chordParser';
 import { parseKey } from './chordTransposer';
@@ -91,6 +91,12 @@ export interface SetlistDocumentEntry {
    * la impresión salió a medias.
    */
   hasChords: boolean;
+  /**
+   * La canción partida en sus secciones, ya transportada. Se resuelve una vez
+   * aquí porque las dos hojas la necesitan: la del músico para poner los
+   * acordes sobre la letra, la de quien canta para escribir sólo la letra.
+   */
+  sections: SongSection[];
 }
 
 /**
@@ -164,6 +170,7 @@ function entryOf(item: SetlistItem, song: Song | undefined, isLast: boolean): Se
     transitionToNext: isLast || !item.transitionToNext ? null : describeTransition(item.transitionToNext),
     missing: !song,
     hasChords: songHasChords(sections),
+    sections,
   };
 }
 

@@ -3,6 +3,7 @@ import { ArrowLeft, Printer } from 'lucide-react';
 import type { Setlist } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import { SetlistPrintSheetFor } from './SetlistPrintSheet';
+import { SetlistSingersSheetFor } from './SetlistSingersSheet';
 import { primaryButton, secondaryButton } from './ui';
 
 /**
@@ -19,14 +20,23 @@ import { primaryButton, secondaryButton } from './ui';
  * dependencia para escribir PDFs a mano.
  */
 
+/** Para quién es la hoja. Cambia lo que lleva dentro, no la maqueta. */
+export type PrintAudience = 'musicians' | 'singers';
+
 interface SetlistPrintScreenProps {
   /** Null cuando el Setlist ya no existe: un enlace viejo, o se borró. */
   setlist: Setlist | null;
   songsById: Map<string, Song>;
+  audience: PrintAudience;
   onBack: () => void;
 }
 
-export const SetlistPrintScreen: React.FC<SetlistPrintScreenProps> = ({ setlist, songsById, onBack }) => {
+export const SetlistPrintScreen: React.FC<SetlistPrintScreenProps> = ({
+  setlist,
+  songsById,
+  audience,
+  onBack,
+}) => {
   if (!setlist) {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
@@ -50,7 +60,8 @@ export const SetlistPrintScreen: React.FC<SetlistPrintScreenProps> = ({ setlist,
         </button>
         <div className="flex items-center gap-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            En el diálogo de impresión elige <strong className="font-semibold">Guardar como PDF</strong>.
+            Hoja {audience === 'singers' ? 'para quien canta' : 'para músicos'}. En el diálogo de impresión elige{' '}
+            <strong className="font-semibold">Guardar como PDF</strong>.
           </p>
           <button type="button" onClick={() => window.print()} className={primaryButton}>
             <Printer className="w-4 h-4" />
@@ -61,7 +72,11 @@ export const SetlistPrintScreen: React.FC<SetlistPrintScreenProps> = ({ setlist,
 
       {/* Una hoja: Letter con sus márgenes, blanca también en modo oscuro. */}
       <div className="mx-auto w-full max-w-[215.9mm] rounded-xl border border-slate-200 bg-white p-[18mm] shadow-sm print:m-0 print:w-auto print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none">
-        <SetlistPrintSheetFor setlist={setlist} songsById={songsById} />
+        {audience === 'singers' ? (
+          <SetlistSingersSheetFor setlist={setlist} songsById={songsById} />
+        ) : (
+          <SetlistPrintSheetFor setlist={setlist} songsById={songsById} />
+        )}
       </div>
     </div>
   );

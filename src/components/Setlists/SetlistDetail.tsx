@@ -70,11 +70,11 @@ interface SetlistDetailProps {
    */
   onShare?: () => void;
   /**
-   * Abre la hoja para imprimir o guardar como PDF. Hoy sólo existe la del
-   * músico —letra con acordes, tono, cejilla y arreglo—; la de quien canta
-   * llegará después, sobre el mismo documento.
+   * Abre la hoja para imprimir o guardar como PDF: la del músico —letra con
+   * acordes, tono, cejilla y arreglo— o la de quien canta, que es la misma
+   * hoja con sólo la letra.
    */
-  onExportPdf?: () => void;
+  onExportPdf?: (audience: 'musicians' | 'singers') => void;
   /** `moment` is set when the song was chosen from a part of the Mass */
   onAddSong: (song: Song, moment: string) => void;
   onRemoveItem: (itemId: string) => void;
@@ -243,7 +243,12 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
                       label: 'Exportar PDF para músicos',
                       icon: FileText,
                       separated: !onShare && !onSyncToAccount,
-                      onSelect: onExportPdf,
+                      onSelect: () => onExportPdf('musicians'),
+                    },
+                    {
+                      label: 'Exportar PDF para quien canta',
+                      icon: FileText,
+                      onSelect: () => onExportPdf('singers'),
                     },
                   ]
                 : []),
