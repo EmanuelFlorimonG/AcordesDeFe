@@ -25,6 +25,8 @@ import {
   ProposalEditScreen,
   SetlistConflictDialog,
   SetlistDetail,
+  ShareSetlistDialog,
+  SharedSetlistScreen,
   SetlistsView,
   SongEditProposalScreen,
   SongEditorScreen,
@@ -51,6 +53,7 @@ import { bindArrangement, withReviewNeeded } from './utils/arrangement';
 import { parseSongSections } from './utils/chordParser';
 import { songVersionOf } from './catalog/songRepository';
 import { setlistHash, setlistMassHash, setlistSongHash } from './components/Setlists/ui';
+import { readShareToken } from './storage/setlistShares';
 import { useMinistry } from './hooks/useMinistry';
 import { MinistryContext, type MinistryData } from './hooks/ministryContext';
 import { useEvents } from './hooks/useEvents';
@@ -114,7 +117,9 @@ type AppPage =
   /** Suggesting an edit of a published song: #/song/<id>/sugerir */
   | 'songEdit'
   /** Setting a new password, after the link from the recovery mail */
-  | 'newPassword';
+  | 'newPassword'
+  /** A setlist somebody shared: #/shared/setlist/<token>, open to anyone */
+  | 'sharedSetlist';
 
 /** The public editor: #/canciones/nueva */
 const NEW_SONG_ROUTE = '#/canciones/nueva';
@@ -127,6 +132,8 @@ const PROPOSAL_EDIT_ROUTE = /^#\/propuesta\/([^/]+)\/editar$/;
 const SETLIST_SONG_ROUTE = /^#\/setlist\/([^/]+)\/song\/([^/]+)$/;
 /** A setlist being played live: #/setlist/<setlist>/misa */
 const SETLIST_MASS_ROUTE = /^#\/setlist\/([^/]+)\/misa$/;
+/** A setlist shared by link: #/shared/setlist/<token>. No account needed. */
+const SHARED_SETLIST_ROUTE = /^#\/shared\/setlist\/([^/]+)$/;
 /** Routes that show the songbook's home, where search and filters live. */
 const isSongbookRoute = (hash: string) =>
   hash === '' ||
@@ -293,6 +300,8 @@ export function App() {
   const [openSetlistId, setOpenSetlistId] = useState<string | null>(null);
   /** Set while a song is open as part of a setlist, instead of on its own. */
   const [setlistSongRoute, setSetlistSongRoute] = useState<{ setlistId: string; itemId: string } | null>(null);
+  /** El token del enlace compartido que se está abriendo, o null si no lo es. */
+  const [sharedToken, setSharedToken] = useState<string | null>(null);
   /** Set while a setlist is being played live, in mass mode. */
   const [massSetlistId, setMassSetlistId] = useState<string | null>(null);
 
@@ -363,6 +372,18 @@ export function App() {
       if (!SETLIST_MASS_ROUTE.test(hash)) setMassOrigin(null);
       if (!EVENT_ROUTE.test(hash)) setClosingKey(null);
       setOpenRecordId(null);
+
+      // Un enlace compartido, que puede abrir cualquiera. Lo primero de todo:
+      // quien llega aquí no tiene por qué tener cuenta ni haber estado nunca.
+      const sharedMatch = hash.match(SHARED_SETLIST_ROUTE);
+      if (sharedMatch) {
+        const token = readShareToken(sharedMatch[1]);
+        setSharedToken(token);
+        setPage('sharedSetlist');
+        setSection('setlists');
+        return;
+      }
+      setSharedToken(null);
 
       if (hash === '#/privacidad') {
         setPage('privacy');
@@ -761,6 +782,8 @@ export function App() {
    * the time the button is pressed.
    */
   const [conflict, setConflict] = useState<{ setlistId: string; versions: SetlistVersions | null } | null>(null);
+  /** El Setlist cuya ventana de compartir está abierta, o null. */
+  const [sharingId, setSharingId] = useState<string | null>(null);
 
   const openConflict = (setlist: Setlist) => {
     setConflict({ setlistId: setlist.id, versions: null });
@@ -792,6 +815,17 @@ export function App() {
     });
   };
 
+  /**
+   * Lee un enlace compartido. Va aparte para que la pantalla pública no sepa
+   * nada de Supabase y se pueda probar sin red, y en diferido para que quien
+   * nunca abre un enlace no se descargue esto.
+   */
+  const loadShared = useCallback(async (token: string) => {
+    if (!readShareToken(token)) return { state: 'gone' as const };
+    const { loadSharedSetlist } = await import('./storage/setlistShareSession');
+    return loadSharedSetlist(token);
+  }, []);
+
   const openSetlist = openSetlistId ? setlists.getSetlist(openSetlistId) : null;
   // What, if anything, to offer for the setlist on screen: a first upload, a
   // save of what changed since, or nothing at all.
@@ -806,6 +840,7 @@ export function App() {
       ? openSetlistCloudState
       : null;
   const conflictSetlist = conflict ? setlists.getSetlist(conflict.setlistId) : null;
+  const sharingSetlist = sharingId ? setlists.getSetlist(sharingId) : null;
   /** The setlist being played live, when mass mode is open over it. */
   const massSetlist = massSetlistId ? setlists.getSetlist(massSetlistId) : null;
   const activeSetlist = setlistSongRoute ? setlists.getSetlist(setlistSongRoute.setlistId) : null;
@@ -1203,6 +1238,13 @@ export function App() {
             : undefined
         }
         syncOffer={cloudOffer ?? 'new'}
+        onShare={
+          // Sólo cuando ya está en la cuenta: un enlace enseña lo que hay en
+          // la nube, y de uno que nunca subió no hay nada que enseñar.
+          openSetlist && (openSetlistCloudState === 'synced' || openSetlistCloudState === 'changed')
+            ? () => setSharingId(setlistId)
+            : undefined
+        }
         syncingToAccount={cloudSync.busy === setlistId}
         onDelete={() => {
           const name = openSetlist?.name;
@@ -1400,6 +1442,17 @@ export function App() {
     switch (page) {
       case 'newPassword':
         return <NewPasswordScreen onDone={handleBackToDashboard} />;
+      case 'sharedSetlist':
+        // Sin token no hay nada que abrir, y se dice igual que si el enlace
+        // se hubiera desactivado: para quien mira es lo mismo.
+        return (
+          <SharedSetlistScreen
+            token={sharedToken ?? ''}
+            songsById={songsById}
+            load={loadShared}
+            onGoToSongbook={handleBackToDashboard}
+          />
+        );
       case 'privacy':
         return <PrivacyPolicy onBack={handleBackToDashboard} />;
       case 'terms':
@@ -1711,6 +1764,16 @@ export function App() {
             onSongOpened={(songId) => recordOpenedRef.current(songId)}
             isDarkMode={isDarkMode}
             onToggleDarkMode={() => setIsDarkMode((value) => !value)}
+          />
+        </Suspense>
+      )}
+
+      {sharingSetlist && (
+        <Suspense fallback={null}>
+          <ShareSetlistDialog
+            setlistId={sharingSetlist.id}
+            setlistName={sharingSetlist.name}
+            onClose={() => setSharingId(null)}
           />
         </Suspense>
       )}

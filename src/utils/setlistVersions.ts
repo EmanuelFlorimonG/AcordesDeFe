@@ -59,7 +59,7 @@ export function describeTranspose(steps: number): string {
   return `${amount} más ${steps > 0 ? 'alto' : 'bajo'}`;
 }
 
-const describeCapo = (fret: number): string => (fret > 0 ? `Cejilla en el traste ${fret}` : 'Sin cejilla');
+export const describeCapo = (fret: number): string => (fret > 0 ? `Cejilla en el traste ${fret}` : 'Sin cejilla');
 
 const TRANSITIONS: Record<SetlistSongTransition['type'], string> = {
   stop: 'termina y hay pausa',
@@ -68,7 +68,7 @@ const TRANSITIONS: Record<SetlistSongTransition['type'], string> = {
   custom: 'como diga la indicación',
 };
 
-const describeTransition = (transition: SetlistSongTransition | undefined): string => {
+export const describeTransition = (transition: SetlistSongTransition | undefined): string => {
   if (!transition) return 'Sin indicar';
   const how = TRANSITIONS[transition.type] ?? 'Sin indicar';
   return transition.instruction.trim() ? `${how} — ${transition.instruction.trim()}` : how;

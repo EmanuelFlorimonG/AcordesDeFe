@@ -996,6 +996,9 @@ describe('Este paso sigue sin sincronizar nada', () => {
       others.filter((file) => reads(file).includes('cloudSetlists')),
       [
         'src/hooks/useSetlistCloudSync.ts',
+        // Compartir por enlace lee una fila con el mismo lector, para que un
+        // enlace enseñe lo mismo que vería el dueño desde otro dispositivo.
+        'src/storage/setlistShares.ts',
         'src/storage/setlistSyncExecutor.ts',
         'src/storage/setlistSyncPass.ts',
         'src/storage/setlistSyncPreflight.ts',

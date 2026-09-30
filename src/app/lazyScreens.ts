@@ -25,6 +25,16 @@ export const SetlistConflictDialog = lazy(() =>
   import('../components/Setlists/SetlistConflictDialog').then((module) => ({ default: module.SetlistConflictDialog }))
 );
 
+/** La ventana de compartir, con su código QR. Sólo pesa si alguien comparte. */
+export const ShareSetlistDialog = lazy(() =>
+  import('../components/Setlists/ShareSetlistDialog').then((module) => ({ default: module.ShareSetlistDialog }))
+);
+
+/** La página pública de un enlace compartido. */
+export const SharedSetlistScreen = lazy(() =>
+  import('../components/Setlists/SharedSetlistScreen').then((module) => ({ default: module.SharedSetlistScreen }))
+);
+
 export const SetlistDetail = lazy(() =>
   import('../components/Setlists/SetlistDetail').then((module) => ({ default: module.SetlistDetail }))
 );

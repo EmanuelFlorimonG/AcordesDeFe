@@ -676,6 +676,10 @@ describe('Este paso no sincroniza nada', () => {
     );
     eq(users, [
       'src/hooks/useSetlistCloudSync.ts',
+      // Compartir por enlace hidrata la fila que devuelve la función pública
+      // con este mismo lector, para que un enlace enseñe exactamente lo que
+      // vería el dueño desde otro dispositivo.
+      'src/storage/setlistShares.ts',
       'src/storage/setlistSync.ts',
       'src/storage/setlistSyncExecutor.ts',
       'src/storage/setlistSyncPass.ts',

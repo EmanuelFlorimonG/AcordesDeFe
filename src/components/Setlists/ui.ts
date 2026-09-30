@@ -42,3 +42,19 @@ export const chipOff =
   'border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 text-slate-600 dark:text-slate-300 hover:border-[#2464ED] hover:text-[#2464ED] dark:hover:text-sky-400';
 
 export const chipOn = 'border-[#2464ED] bg-[#2464ED] text-white hover:bg-[#1D56D6]';
+
+/** La página pública de un Setlist compartido. Sin cuenta y sólo de lectura. */
+export const sharedSetlistHash = (token: string) => `#/shared/setlist/${encodeURIComponent(token)}`;
+
+/**
+ * El enlace que se copia y que va dentro del código QR, siempre el mismo.
+ *
+ * Se arma con el sitio donde está la aplicación ahora mismo, así que funciona
+ * igual en el portátil de quien la desarrolla y en el dominio publicado, sin
+ * que ninguno de los dos esté escrito en el código. `pathname` va incluido
+ * por si algún día vive bajo una subcarpeta; `search` y el hash actual no,
+ * que son de la página en la que está la persona y no del enlace.
+ */
+export function sharedSetlistLink(token: string, at: { origin: string; pathname: string }): string {
+  return `${at.origin}${at.pathname}${sharedSetlistHash(token)}`;
+}

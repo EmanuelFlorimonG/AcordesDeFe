@@ -47,6 +47,8 @@ navegador (widget Turnstile) -> Edge Function submit-song -> Cloudflare siteveri
 | `song_submissions` | Propuestas del público | Solo revisores | Solo las funciones |
 | `editorial_roles` | Quién es `admin` o `reviewer` | Cada usuario su propio rol | Nadie desde la API (se asigna en SQL) |
 | `submission_rate_events` | Límite de envíos (IP en hash) | Nadie | Solo `submit_song_submission` |
+| `setlists` | Los Setlists de cada cuenta | Solo su dueño (`auth.uid()`) | Solo su dueño |
+| `setlist_shares` | Enlaces públicos de un Setlist | Solo su dueño; el público nunca la toca | Solo su dueño (crear y desactivar) |
 
 Row Level Security está activado en todas. Además, los roles `anon` y
 `authenticated` no tienen permiso de `insert`, `update` ni `delete` en ninguna
@@ -62,6 +64,21 @@ tabla: aunque alguien añadiera una política por error, no podrían escribir.
 | `approve_submission(id, song_id?, nota?)` | Usuario autenticado **con rol** | Publica en una sola transacción: canción + versión + propuesta aprobada |
 | `request_submission_changes(id, nota)` | Usuario autenticado con rol | Pide cambios |
 | `reject_submission(id, nota)` | Usuario autenticado con rol | Rechaza |
+| `shared_setlist(token)` | Público (`anon`) | Devuelve el Setlist de un enlace compartido: solo lectura, sin `owner_id` ni relojes del servidor, y nada si el enlace no existe, se desactivó o el Setlist se borró |
+
+### Compartir un Setlist por enlace
+
+`public.setlists` sigue siendo privada: saber el id interno de un Setlist no
+sirve para leerlo. La única puerta pública es `shared_setlist(token)`, que es
+`security definer`, `stable` y solo responde con un token de 32 hexadecimales
+que genera la base de datos (`gen_random_uuid()`, 122 bits). Desactivar es
+borrar la fila de `setlist_shares`: el enlace deja de abrir nada en ese mismo
+instante, y volver a compartir da uno nuevo.
+
+El enlace enseña **la versión que la cuenta tiene guardada en la nube** en ese
+momento, no una copia congelada del día en que se compartió: quien comparte
+corrige algo, sincroniza, y quien tiene el enlace lo ve. Un cambio hecho en un
+dispositivo y todavía sin sincronizar no se ve, y la aplicación lo avisa.
 
 Las funciones de revisión comprueban el rol dentro de la base de datos
 (`has_editorial_role`). Ocultar botones en React no protege nada; esto sí.

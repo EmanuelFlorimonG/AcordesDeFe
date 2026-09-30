@@ -11,6 +11,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Share2,
   Sparkle,
   Trash2,
 } from 'lucide-react';
@@ -61,6 +62,12 @@ interface SetlistDetailProps {
   syncOffer?: 'new' | 'changed' | 'conflict';
   /** While it is in the air, so the action cannot be started twice. */
   syncingToAccount?: boolean;
+  /**
+   * Abre la ventana de compartir. Sólo llega cuando este Setlist está en la
+   * cuenta: un enlace enseña lo que hay en la nube, así que uno que no ha
+   * subido nunca no tiene nada que enseñar.
+   */
+  onShare?: () => void;
   /** `moment` is set when the song was chosen from a part of the Mass */
   onAddSong: (song: Song, moment: string) => void;
   onRemoveItem: (itemId: string) => void;
@@ -102,6 +109,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   onSyncToAccount,
   syncOffer = 'new',
   syncingToAccount = false,
+  onShare,
   onAddSong,
   onRemoveItem,
   onMoveItem,
@@ -208,6 +216,16 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
                       disabled: syncingToAccount,
                       separated: true,
                       onSelect: onSyncToAccount,
+                    },
+                  ]
+                : []),
+              ...(onShare
+                ? [
+                    {
+                      label: 'Compartir Setlist',
+                      icon: Share2,
+                      separated: !onSyncToAccount,
+                      onSelect: onShare,
                     },
                   ]
                 : []),
