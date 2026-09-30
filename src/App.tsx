@@ -1651,7 +1651,7 @@ export function App() {
       // While rehearsing, the app underneath can't be reached by keyboard or
       // screen reader; rehearsal mode itself is portalled outside this element.
       inert={rehearsalActive || massActive}
-      className="h-screen flex bg-white dark:bg-dark-950 text-[#10203A] dark:text-slate-100 font-sans overflow-hidden"
+      className="h-screen flex bg-white dark:bg-dark-950 text-[#10203A] dark:text-slate-100 font-sans overflow-hidden print:h-auto print:overflow-visible print:block"
     >
       <Sidebar
         activeSection={sidebarActiveSection}
@@ -1680,7 +1680,7 @@ export function App() {
         </Suspense>
       )}
 
-      <div className="flex flex-col flex-grow min-w-0">
+      <div className="flex flex-col flex-grow min-w-0 print:block">
         <Topbar
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
@@ -1702,7 +1702,7 @@ export function App() {
           inputRef={searchInputRef}
         />
 
-        <div ref={scrollContainerRef} className="flex-grow min-h-0 overflow-y-auto flex flex-col">
+        <div ref={scrollContainerRef} className="flex-grow min-h-0 overflow-y-auto flex flex-col print:min-h-0 print:overflow-visible print:block">
           <main className="flex-grow flex flex-col">
             {/* A screen loaded on demand shows its outline meanwhile; the key restarts it per page. */}
             <Suspense fallback={<ScreenFallback />}>{renderContent()}</Suspense>

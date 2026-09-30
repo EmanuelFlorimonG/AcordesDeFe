@@ -2,6 +2,7 @@ import type { Setlist, SetlistItem } from '../types/setlist';
 import type { Song } from '../types/song';
 import { resolveArrangement, type ResolvedArrangementSection } from './arrangement';
 import { parseSongSections, transposeSongContent } from './chordParser';
+import { parseKey } from './chordTransposer';
 import { describeKey, type KeyDescription } from './keySettings';
 import { formatSetlistDate } from './setlists';
 import { songHasChords } from './songSections';
@@ -31,6 +32,28 @@ import { describeTransition } from './setlistVersions';
 
 export const MINISTRY_NAME = 'Ministerio Acordes de Fe';
 
+/**
+ * El tono como lo escribe el ministerio: Do, Re, Mi… y un guion para el
+ * menor, igual que en las hojas que ya reparte («María mírame (Do)»,
+ * «Oh Cordero (Mi-)»).
+ *
+ * Es sólo para el título de la canción. Los acordes encima de la letra
+ * siguen en cifrado americano, que es como los lee un músico y como los
+ * enseña la aplicación entera: C, G, Am. Las dos cosas conviven en la misma
+ * hoja porque cada una se lee de una manera distinta.
+ */
+const LATIN = ['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Si'];
+const LETTERS = 'CDEFGAB';
+
+export function latinKeyName(key: string | undefined): string | null {
+  const parsed = key ? parseKey(key) : null;
+  if (!parsed) return null;
+  const letter = LETTERS.indexOf(parsed.tonic[0].toUpperCase());
+  if (letter === -1) return null;
+  const accidental = parsed.tonic.slice(1).replace(/x/g, '##');
+  return `${LATIN[letter]}${accidental}${parsed.isMinor ? '-' : ''}`;
+}
+
 export interface SetlistDocumentEntry {
   /** Identidad de esta aparición: la misma canción puede ir dos veces. */
   itemId: string;
@@ -45,6 +68,8 @@ export interface SetlistDocumentEntry {
   content: string;
   /** Qué tono suena, qué forma se toca con cejilla, y el original si cambió. */
   key: KeyDescription | null;
+  /** El tono que suena, escrito como en las hojas: "Do", "Mi-". */
+  latinKey: string | null;
   transposeSteps: number;
   capoFret: number;
   tempo: number | null;
@@ -68,13 +93,41 @@ export interface SetlistDocumentEntry {
   hasChords: boolean;
 }
 
+/**
+ * Un momento de la celebración con lo que se canta en él.
+ *
+ * Van agrupadas a propósito: en las hojas del ministerio el momento se
+ * escribe una vez y debajo pueden ir dos o tres canciones. Sólo se agrupan
+ * las seguidas, porque el orden del Setlist es el orden en que se canta y
+ * juntar dos «Comunión» separadas por una «Paz» cambiaría la celebración.
+ */
+export interface SetlistDocumentMoment {
+  /** "ENTRADA", "COMUNIÓN"… Vacío para lo que nadie situó en un momento. */
+  moment: string;
+  entries: SetlistDocumentEntry[];
+}
+
 export interface SetlistDocument {
   ministry: string;
   title: string;
   /** La fecha ya escrita para leer, o vacía si la celebración no tiene. */
   date: string;
   description: string;
+  /** Todo lo que se canta, en orden, agrupado por momento. */
+  moments: SetlistDocumentMoment[];
+  /** Lo mismo sin agrupar, para quien sólo necesite la lista. */
   entries: SetlistDocumentEntry[];
+}
+
+/** Las canciones seguidas que comparten momento van bajo una sola cabecera. */
+function groupByMoment(entries: SetlistDocumentEntry[]): SetlistDocumentMoment[] {
+  const moments: SetlistDocumentMoment[] = [];
+  for (const entry of entries) {
+    const last = moments[moments.length - 1];
+    if (last && last.moment === entry.moment) last.entries.push(entry);
+    else moments.push({ moment: entry.moment, entries: [entry] });
+  }
+  return moments;
 }
 
 /**
@@ -89,14 +142,16 @@ function entryOf(item: SetlistItem, song: Song | undefined, isLast: boolean): Se
   const content = song ? transposeSongContent(song.content, item.transposeSteps, song.originalKey) : '';
   const settings = { transposeSteps: item.transposeSteps, capoFret: item.capoFret };
   const sections = parseSongSections(content);
+  const key = song ? describeKey(song.originalKey, settings, song.recommendedCapo ?? 0) : null;
 
   return {
     itemId: item.id,
-    moment: item.moment.trim(),
+    moment: item.moment.trim().toLocaleUpperCase('es'),
     title: song?.title ?? 'Canción no disponible',
     artist: song?.artist?.trim() ?? '',
     content,
-    key: song ? describeKey(song.originalKey, settings, song.recommendedCapo ?? 0) : null,
+    key,
+    latinKey: latinKeyName(key?.sounding),
     transposeSteps: item.transposeSteps,
     capoFret: item.capoFret,
     tempo: typeof song?.tempo === 'number' ? song.tempo : null,
@@ -114,13 +169,15 @@ function entryOf(item: SetlistItem, song: Song | undefined, isLast: boolean): Se
 
 /** El Setlist entero, listo para pintar en una hoja o en otra. */
 export function buildSetlistDocument(setlist: Setlist, songsById: Map<string, Song>): SetlistDocument {
+  const entries = setlist.items.map((item, at) =>
+    entryOf(item, songsById.get(item.songId), at === setlist.items.length - 1)
+  );
   return {
     ministry: MINISTRY_NAME,
     title: setlist.name.trim(),
     date: formatSetlistDate(setlist.date, 'long'),
     description: setlist.description.trim(),
-    entries: setlist.items.map((item, at) =>
-      entryOf(item, songsById.get(item.songId), at === setlist.items.length - 1)
-    ),
+    moments: groupByMoment(entries),
+    entries,
   };
 }

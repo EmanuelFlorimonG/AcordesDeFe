@@ -2,112 +2,130 @@ import React from 'react';
 import type { Song } from '../../types/song';
 import type { Setlist } from '../../types/setlist';
 import { buildSetlistDocument, type SetlistDocument, type SetlistDocumentEntry } from '../../utils/setlistExport';
-import { formatSongCount } from '../../utils/setlists';
 import { ChordSheet } from '../SongViewer/ChordSheet';
 
 /**
- * La hoja del músico: el Setlist entero para tocar desde el papel.
+ * La hoja del músico: el cancionero de la misa, con acordes.
  *
- * Sigue la plantilla de siempre del ministerio —los momentos en orden, el
- * título y el tono— y le añade lo único que la hoja de quien canta no
- * necesita: los acordes encima de la letra, la cejilla, y lo que diga el
- * arreglo de esta ocasión.
+ * Es el documento que el ministerio reparte desde siempre. Esa hoja está
+ * maquetada como un cancionero: dos columnas por página, el momento en
+ * mayúsculas, la canción con su tono entre paréntesis, la letra debajo, y
+ * todo seguido — cuando una canción termina, la siguiente empieza ahí mismo.
+ * Si no cabe, continúa en la columna de al lado, y después en la página
+ * siguiente. Nada empieza arriba porque sí, y no se deja media hoja en
+ * blanco porque cambie el momento.
  *
- * Está pensada para un atril, no para una pantalla: una sola columna, para
- * que un acorde caiga siempre sobre su sílaba, y cortes de página que nunca
- * parten una sección por la mitad ni dejan un título solo al pie.
+ * Eso es exactamente lo que hace `columns-2`: el navegador reparte el flujo
+ * entre las dos columnas y, al imprimir, sigue en la página siguiente. No hay
+ * nada que calcular aquí.
  *
- * Lo que pinta sale de `buildSetlistDocument`, que es también de donde saldrá
- * la hoja de quien canta: lo que las dos comparten se decide una vez y allí.
+ * Lo único que se añade a la hoja de siempre son los acordes sobre la letra y
+ * cuatro indicaciones para quien toca. Van en pequeño y en su sitio: si se
+ * les quitaran, debería quedar el mismo documento de antes.
+ *
+ * Por eso aquí no hay ni un componente de la aplicación: ni chips, ni cajas,
+ * ni barras de color, ni iconos. Un cancionero es tinta negra sobre papel
+ * blanco, y tiene que leerse igual de bien fotocopiado.
  */
 
 interface SetlistPrintSheetProps {
   sheet: SetlistDocument;
 }
 
-/** Cómo suena y cómo se toca, en una línea. */
-function keyLines(entry: SetlistDocumentEntry): string[] {
+/**
+ * Lo que hace falta para tocarla, en una línea pequeña bajo el título: la
+ * cejilla, con qué formas, el compás, el tempo, y de dónde salió si alguien
+ * la movió. Sin etiquetas: quien lo lee sabe leerlo.
+ */
+function playingLine(entry: SetlistDocumentEntry): string {
   const parts: string[] = [];
-  if (entry.key) {
-    parts.push(`Tono: ${entry.key.sounding}`);
-    // Con cejilla, lo que suena y lo que se toca no son lo mismo, y el músico
-    // necesita las dos cosas: la forma es la que tienen los dedos.
-    if (entry.key.shape) parts.push(`Formas de ${entry.key.shape}`);
-    if (entry.key.original) parts.push(`Escrita en ${entry.key.original}`);
-  }
-  if (entry.capoFret > 0) parts.push(`Cejilla en el traste ${entry.capoFret}`);
-  if (entry.tempo) parts.push(`${entry.tempo} BPM`);
+  if (entry.capoFret > 0) parts.push(`Capo ${entry.capoFret}`);
+  if (entry.key?.shape) parts.push(`formas de ${entry.key.shape}`);
   if (entry.timeSignature) parts.push(entry.timeSignature);
-  return parts;
+  if (entry.tempo) parts.push(`${entry.tempo} BPM`);
+  if (entry.key?.original) parts.push(`escrita en ${entry.key.original}`);
+  return parts.join(' · ');
 }
 
-const SongEntry: React.FC<{ entry: SetlistDocumentEntry; position: number }> = ({ entry, position }) => {
-  const settings = keyLines(entry);
+const SongEntry: React.FC<{ entry: SetlistDocumentEntry }> = ({ entry }) => {
+  const playing = playingLine(entry);
+  // El tono va pegado al título, como en la hoja de siempre.
+  const key = entry.latinKey ? ` (${entry.latinKey})` : '';
 
   return (
-    <article className="mt-10 first:mt-0 break-before-page first:break-before-auto">
-      {/* La cabecera nunca se queda sola al pie de una página. */}
-      <header className="[break-after:avoid] border-b border-slate-200 pb-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-          {entry.moment ? `${position}. ${entry.moment}` : `${position}.`}
+    <div className="mt-3 first:mt-1.5">
+      {/* El título no se queda nunca solo al final de una columna. */}
+      <div className="[break-after:avoid] break-inside-avoid">
+        <p className="text-[11.5pt] font-bold leading-tight text-slate-900">
+          {entry.title}
+          {key}
         </p>
-        <h2 className="mt-1 text-xl font-bold text-slate-900">{entry.title}</h2>
-        {entry.artist && <p className="text-sm text-slate-500">{entry.artist}</p>}
-
-        {settings.length > 0 && (
-          <p className="mt-2 text-sm font-semibold text-slate-700">{settings.join(' · ')}</p>
-        )}
-        {entry.notes && <p className="mt-1.5 text-sm italic text-slate-600">{entry.notes}</p>}
-      </header>
-
-      {!entry.missing && !entry.hasChords && (
-        <p className="mt-3 text-sm italic text-slate-500">
-          Esta canción todavía no tiene acordes en el cancionero: aquí va sólo la letra.
-        </p>
-      )}
+        {playing && <p className="text-[9pt] leading-tight text-slate-700">{playing}</p>}
+        {entry.notes && <p className="text-[9pt] italic leading-tight text-slate-700">{entry.notes}</p>}
+      </div>
 
       {entry.missing ? (
-        <p className="mt-4 rounded-lg border border-dashed border-slate-300 px-3 py-3 text-sm text-slate-500">
-          Esta canción no está en el cancionero de este dispositivo, así que no se pudo imprimir su letra.
-        </p>
+        <p className="mt-1 text-[10pt] italic text-slate-700">No está en el cancionero de este dispositivo.</p>
       ) : (
-        <div className="mt-4">
-          <ChordSheet
-            content={entry.content}
-            fontSize="sm"
-            twoColumns={false}
-            showChords
-            arrangement={entry.arrangement}
-          />
-        </div>
+        <>
+          {!entry.hasChords && <p className="text-[9pt] italic text-slate-700">Todavía sin acordes.</p>}
+          <div className="mt-1">
+            <ChordSheet
+              content={entry.content}
+              fontSize="sm"
+              twoColumns={false}
+              showChords
+              variant="print"
+              arrangement={entry.arrangement}
+            />
+          </div>
+        </>
       )}
 
       {entry.transitionToNext && (
-        <p className="mt-4 border-t border-slate-200 pt-2 text-sm text-slate-600 [break-before:avoid]">
-          Al terminar: {entry.transitionToNext}
-        </p>
+        <p className="mt-1 text-[9pt] italic text-slate-700">Al terminar: {entry.transitionToNext}</p>
       )}
-    </article>
+    </div>
   );
 };
 
 export const SetlistPrintSheet: React.FC<SetlistPrintSheetProps> = ({ sheet }) => (
-  <div className="mx-auto max-w-[190mm] bg-white text-slate-900 print:max-w-none">
-    <header className="[break-after:avoid] border-b-2 border-slate-900 pb-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">{sheet.ministry}</p>
-      <h1 className="mt-1 text-2xl font-bold text-slate-900">{sheet.title}</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        {[sheet.date, formatSongCount(sheet.entries.length)].filter(Boolean).join(' · ')}
-      </p>
-      {sheet.description && (
-        <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{sheet.description}</p>
+  <div className="bg-white text-slate-900">
+    {/* El encabezado cruza las dos columnas y sale una sola vez, arriba. */}
+    <header className="[column-span:all] [break-after:avoid] mb-3 text-center">
+      <h1 className="text-[18pt] font-bold leading-tight tracking-[0.04em] text-slate-900">
+        {sheet.ministry.toLocaleUpperCase('es')}
+      </h1>
+      {(sheet.title || sheet.date) && (
+        <p className="text-[9.5pt] leading-tight text-slate-700">
+          {[sheet.title, sheet.date].filter(Boolean).join(' · ')}
+        </p>
       )}
     </header>
 
-    {sheet.entries.length === 0 ? (
-      <p className="mt-10 text-sm text-slate-500">Este Setlist todavía no tiene canciones.</p>
+    {sheet.moments.length === 0 ? (
+      <p className="text-[11pt] text-slate-700">Este Setlist todavía no tiene canciones.</p>
     ) : (
-      sheet.entries.map((entry, at) => <SongEntry key={entry.itemId} entry={entry} position={at + 1} />)
+      // Dos columnas, y el reparto lo hace el navegador. En papel cada página
+      // es un trozo de este bloque: llena las dos columnas, pasa a la hoja
+      // siguiente, y equilibra la última. `column-fill: auto` parecía lo
+      // suyo —llenar de arriba abajo— pero fuera de una altura acotada hace
+      // que el bloque mida lo que todo el contenido en una sola columna, y
+      // entonces se reservan páginas que salen en blanco.
+      <div className="columns-2 gap-[10mm]">
+        {sheet.moments.map((moment, at) => (
+          <section key={`${moment.moment}-${at}`} className="mt-4 first:mt-0">
+            {moment.moment && (
+              <h2 className="[break-after:avoid] text-[11.5pt] font-bold uppercase tracking-[0.06em] text-slate-900">
+                {moment.moment}:
+              </h2>
+            )}
+            {moment.entries.map((entry) => (
+              <SongEntry key={entry.itemId} entry={entry} />
+            ))}
+          </section>
+        ))}
+      </div>
     )}
   </div>
 );

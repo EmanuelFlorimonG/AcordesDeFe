@@ -68,11 +68,11 @@
   }
 }
 
-/* El papel: A4 con márgenes de carpeta. Se imprimen Setlists y canciones,
-   que se leen desde un atril, así que el margen es generoso a propósito. */
+/* El papel: Letter, que es el tamaño del cancionero que el ministerio ya
+   reparte, con márgenes parecidos a los suyos. */
 @page {
-  size: A4;
-  margin: 14mm;
+  size: letter;
+  margin: 18mm;
 }
 
 /* Monospace styling for chord alignment */

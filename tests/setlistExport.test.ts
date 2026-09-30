@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Setlist, SetlistItem } from '../src/types/setlist';
 import type { Song } from '../src/types/song';
-import { MINISTRY_NAME, buildSetlistDocument } from '../src/utils/setlistExport';
+import { MINISTRY_NAME, buildSetlistDocument, latinKeyName } from '../src/utils/setlistExport';
 import { SetlistPrintSheet } from '../src/components/Setlists/SetlistPrintSheet';
 
 /**
@@ -103,9 +103,51 @@ describe('El Setlist puesto en papel', () => {
       })
     );
     eq(doc.entries.map((entry) => [entry.moment, entry.title]), [
-      ['Entrada', 'Bendeciré al Señor'],
-      ['Comunión', 'Pescador de Hombres'],
+      ['ENTRADA', 'Bendeciré al Señor'],
+      ['COMUNIÓN', 'Pescador de Hombres'],
     ]);
+  });
+
+  it('las canciones seguidas del mismo momento van bajo una sola cabecera', () => {
+    const doc = build(
+      setlistOf({
+        items: [
+          item({ id: 'a', songId: 'bendecire', moment: 'Comunión' }),
+          item({ id: 'b', songId: 'pescador', moment: 'Comunión' }),
+          item({ id: 'c', songId: 'pescador', moment: 'Salida' }),
+        ],
+      })
+    );
+    eq(doc.moments.map((m) => [m.moment, m.entries.length]), [
+      ['COMUNIÓN', 2],
+      ['SALIDA', 1],
+    ]);
+  });
+
+  it('pero dos momentos iguales separados por otro no se juntan: el orden manda', () => {
+    const doc = build(
+      setlistOf({
+        items: [
+          item({ id: 'a', moment: 'Comunión' }),
+          item({ id: 'b', moment: 'Paz' }),
+          item({ id: 'c', moment: 'Comunión' }),
+        ],
+      })
+    );
+    eq(doc.moments.map((m) => m.moment), ['COMUNIÓN', 'PAZ', 'COMUNIÓN']);
+  });
+
+  it('el tono se escribe como lo escribe el ministerio, y los acordes no', () => {
+    // «María mírame (Do)», «Oh Cordero (Mi-)»: así están las hojas de siempre.
+    eq(build().entries[0].latinKey, 'Re', 'Re, no D');
+    eq(build(setlistOf({ items: [item({ transposeSteps: 2, capoFret: 3 })] })).entries[0].latinKey, 'Sol');
+    eq(latinKeyName('Am'), 'La-', 'el menor lleva guion');
+    eq(latinKeyName('Bb'), 'Sib');
+    eq(latinKeyName('F#m'), 'Fa#-');
+    eq(latinKeyName(undefined), null);
+    eq(latinKeyName('no es un tono'), null);
+    // Y la letra sigue trayendo el cifrado de siempre para quien toca.
+    eq(build().entries[0].content.includes('[D]'), true);
   });
 
   it('la letra llega ya en el tono que se va a tocar', () => {
@@ -222,18 +264,42 @@ describe('La hoja del músico', () => {
   const sheet = (setlist = setlistOf()) =>
     renderToStaticMarkup(createElement(SetlistPrintSheet, { sheet: build(setlist) }));
 
-  it('sigue la plantilla del ministerio: cabecera, momento, título y tono', () => {
+  it('sigue la plantilla del ministerio: cabecera, momento, y canción con su tono', () => {
     const html = sheet();
-    eq(html.includes(MINISTRY_NAME), true);
+    eq(html.includes(MINISTRY_NAME.toLocaleUpperCase('es')), true, 'el encabezado, en mayúsculas');
     eq(html.includes('Misa Siervas de María'), true);
-    eq(html.includes('Ensayo el viernes'), true);
-    eq(html.includes('1. Comunión'), true, 'el momento, numerado');
+    eq(html.includes('COMUNIÓN:'), true, 'el momento, en mayúsculas y con dos puntos');
+    eq(html.includes('Pescador de Hombres (Re)'), true, 'el tono pegado al título');
+    // Y en ese orden: encabezado, momento, canción.
+    eq(html.indexOf('MINISTERIO') < html.indexOf('COMUNIÓN:'), true);
+    eq(html.indexOf('COMUNIÓN:') < html.indexOf('Pescador de Hombres'), true);
+  });
+
+  it('no es un reporte: ni numeración, ni recuentos, ni fichas de datos', () => {
+    const html = sheet();
+    for (const forbidden of ['1. ', '2 canciones', 'Tono:', 'Cejilla en el traste', 'Canciones']) {
+      eq(html.includes(forbidden), false, forbidden);
+    }
+  });
+
+  it('un momento con dos canciones escribe el momento una sola vez', () => {
+    const html = sheet(
+      setlistOf({
+        items: [
+          item({ id: 'a', songId: 'bendecire', moment: 'Comunión' }),
+          item({ id: 'b', songId: 'pescador', moment: 'Comunión' }),
+        ],
+      })
+    );
+    eq((html.match(/COMUNIÓN:/g) ?? []).length, 1);
+    eq(html.includes('Bendeciré al Señor'), true);
     eq(html.includes('Pescador de Hombres'), true);
-    eq(html.includes('Cesáreo Gabaráin'), true);
-    eq(html.includes('Tono: D'), true);
-    // Y en ese orden: primero el momento, después el título, después el tono.
-    eq(html.indexOf('1. Comunión') < html.indexOf('Pescador de Hombres'), true);
-    eq(html.indexOf('Pescador de Hombres') < html.indexOf('Tono: D'), true);
+  });
+
+  it('una canción sin momento no inventa una cabecera vacía', () => {
+    const html = sheet(setlistOf({ items: [item({ moment: '' })] }));
+    eq(html.includes('Pescador de Hombres'), true);
+    eq(html.includes(':</h2>'), false);
   });
 
   it('los acordes van encima de la letra, no en una lista aparte', () => {
@@ -244,12 +310,16 @@ describe('La hoja del músico', () => {
     eq(/data-lyric-word/.test(html), true);
   });
 
-  it('con cejilla dice lo que suena y lo que tocan los dedos', () => {
+  it('con cejilla dice lo que suena y lo que tocan los dedos, en una línea', () => {
     const html = sheet(setlistOf({ items: [item({ transposeSteps: 2, capoFret: 3 })] }));
-    eq(html.includes('Tono: G'), true);
-    eq(html.includes('Formas de E'), true);
-    eq(html.includes('Escrita en D'), true);
-    eq(html.includes('Cejilla en el traste 3'), true);
+    eq(html.includes('Pescador de Hombres (Sol)'), true, 'lo que suena, junto al título');
+    eq(html.includes('Capo 3 · formas de E · 4/4 · 75 BPM · escrita en D'), true, 'y el resto, en una sola línea');
+  });
+
+  it('sin nada que decir, no se escribe esa línea', () => {
+    const html = sheet(setlistOf({ items: [item({ songId: 'bendecire' })] }));
+    eq(html.includes('Bendeciré al Señor (Do)'), true);
+    eq(html.includes('Capo'), false);
   });
 
   it('enseña el arreglo con sus repeticiones, sus voces y su indicación', () => {
@@ -275,20 +345,22 @@ describe('La hoja del músico', () => {
         ],
       })
     );
-    eq(html.includes('×2'), true);
+    eq(html.includes('x2'), true, 'las repeticiones, escritas a mano');
     eq(html.includes('Suave'), true);
     eq(html.toLowerCase().includes('mujeres'), true);
+    // Y como en un cancionero: "INTRO x2 - Mujeres - Suave", sin recuadros.
+    eq(html.includes('rounded border'), false, 'ni un badge');
   });
 
   it('una canción sin acordes lo dice, para que no parezca una impresión a medias', () => {
     const html = sheet(setlistOf({ items: [item({ songId: 'bendecire' })] }));
-    eq(html.includes('todavía no tiene acordes en el cancionero'), true);
+    eq(html.includes('Todavía sin acordes'), true);
     eq(html.includes('Bendeciré al Señor, con toda mi alma'), true, 'la letra sí sale');
   });
 
   it('una canción que falta se dice igual de claro', () => {
     const html = sheet(setlistOf({ items: [item({ songId: 'no-existe' })] }));
-    eq(html.includes('no está en el cancionero de este dispositivo'), true);
+    eq(html.includes('No está en el cancionero de este dispositivo'), true);
   });
 
   it('dice lo que hace la banda al terminar cada canción', () => {
@@ -337,6 +409,72 @@ describe('La hoja del músico', () => {
   });
 });
 
+// --- El papel -----------------------------------------------------------------
+
+describe('La maqueta del cancionero', () => {
+  const sheetFull = readFileSync('src/components/Setlists/SetlistPrintSheet.tsx', 'utf8').replace(/\r\n/g, '\n');
+  // Sin comentarios: lo que se comprueba es lo que hace, no lo que cuenta.
+  const sheetSource = sheetFull.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+  const chordSheet = readFileSync('src/components/SongViewer/ChordSheet.tsx', 'utf8').replace(/\r\n/g, '\n');
+  const css = readFileSync('src/index.css', 'utf8').replace(/\r\n/g, '\n');
+  const app = readFileSync('src/App.tsx', 'utf8').replace(/\r\n/g, '\n');
+  const screen = readFileSync('src/components/Setlists/SetlistPrintScreen.tsx', 'utf8').replace(/\r\n/g, '\n');
+
+  it('la hoja es Letter, como el cancionero que ya se reparte', () => {
+    eq(css.includes('size: letter'), true);
+    eq(css.includes('margin: 18mm'), true);
+    eq(css.includes('size: A4'), false, 'ya no');
+  });
+
+  it('dos columnas, y el reparto lo hace el navegador', () => {
+    eq(sheetSource.includes('columns-2'), true);
+    // `column-fill` es justo lo que no hay que fijar: fuera de una altura
+    // acotada hace que el bloque mida lo que todo el contenido en una sola
+    // columna, y el PDF sale con páginas en blanco al final.
+    eq(sheetSource.includes('column-fill'), false, 'sin column-fill, o vuelven las páginas vacías');
+  });
+
+  it('nada obliga a una canción a empezar arriba', () => {
+    for (const forbidden of ['break-before-page', 'break-before:page', 'break-after-page']) {
+      eq(sheetSource.includes(forbidden), false, forbidden);
+    }
+    // Lo único que se protege es la cabecera: que un título no se quede solo
+    // al pie de una columna. La canción entera fluye.
+    eq(sheetSource.includes('[break-after:avoid] break-inside-avoid'), true, 'sólo la cabecera');
+    eq((sheetSource.match(/break-inside-avoid/g) ?? []).length, 1, 'y nada más');
+  });
+
+  it('en papel no hay ni un componente de la aplicación', () => {
+    const paper = (name: string) => {
+      const at = chordSheet.indexOf(name);
+      return at === -1 ? '' : chordSheet.slice(at, at + 900);
+    };
+    // El acorde es texto, no un botón azul que se pueda pulsar.
+    eq(chordSheet.includes("isPrint ? (\n    <span"), true, 'el acorde, en papel, es un span');
+    eq(paper('const ChordButton').includes('text-slate-900'), true, 'y en negro, para la fotocopia');
+    // Las repeticiones y las voces se escriben, no se encapsulan.
+    eq(chordSheet.includes("<span className=\"shrink-0 text-[9pt] font-semibold text-slate-900\">x{entry.repeatCount}"), true);
+    // Y las rayas y la barra del estribillo se quedan en la pantalla.
+    eq(chordSheet.includes('{!isPrint && <span aria-hidden="true" className="h-px flex-1'), true);
+    eq(chordSheet.includes('!isRefrain || isPrint'), true);
+  });
+
+  it('la hoja escapa del contenedor con scroll sólo al imprimir', () => {
+    // La aplicación vive en una ventana con scroll propio; sin soltarla, el
+    // papel sale recortado a lo que cabía en pantalla.
+    eq(app.includes('print:h-auto print:overflow-visible print:block'), true);
+    eq(app.includes('print:min-h-0 print:overflow-visible print:block'), true);
+    // Y sólo al imprimir: en pantalla no cambia ni una clase.
+    eq(app.includes('h-screen flex bg-white'), true, 'la ventana sigue siendo la ventana');
+    eq(app.includes('flex-grow min-h-0 overflow-y-auto flex flex-col print:'), true, 'y el scroll, el scroll');
+  });
+
+  it('lo que es de la pantalla no sale en el papel', () => {
+    eq(screen.includes('print:hidden'), true, 'la barra de la vista previa');
+    eq(screen.includes('print:p-0'), true, 'y el marco de la hoja');
+  });
+});
+
 // --- La arquitectura que viene ---------------------------------------------
 
 describe('La hoja de quien canta, cuando llegue', () => {
@@ -356,7 +494,7 @@ describe('La hoja de quien canta, cuando llegue', () => {
 
   it('hoy sólo existe la del músico: no hay media pantalla de la otra', () => {
     eq(detail.includes('Exportar PDF para músicos'), true);
-    for (const forbidden of ['no músicos', 'cantantes', 'Siervas', 'audience', 'variant=']) {
+    for (const forbidden of ['no músicos', 'cantantes', 'audience', 'stripChords']) {
       eq(detail.includes(forbidden), false, forbidden);
       eq(sheetSource.includes(forbidden), false, `hoja: ${forbidden}`);
     }

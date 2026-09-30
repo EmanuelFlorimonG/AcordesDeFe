@@ -59,8 +59,8 @@ export const SetlistPrintScreen: React.FC<SetlistPrintScreenProps> = ({ setlist,
         </div>
       </div>
 
-      {/* Fondo blanco siempre, también en modo oscuro: esto es papel. */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 sm:p-10 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
+      {/* Una hoja: Letter con sus márgenes, blanca también en modo oscuro. */}
+      <div className="mx-auto w-full max-w-[215.9mm] rounded-xl border border-slate-200 bg-white p-[18mm] shadow-sm print:m-0 print:w-auto print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none">
         <SetlistPrintSheetFor setlist={setlist} songsById={songsById} />
       </div>
     </div>
