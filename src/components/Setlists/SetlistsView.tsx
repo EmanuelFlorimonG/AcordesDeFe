@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CalendarDays, ChevronRight, ListOrdered, Plus, RefreshCw, TriangleAlert } from 'lucide-react';
+import { CalendarDays, ChevronRight, CloudUpload, ListOrdered, Plus, RefreshCw, TriangleAlert } from 'lucide-react';
 import type { Setlist, SetlistDetails } from '../../types/setlist';
 import {
   formatDurationSummary,
@@ -25,6 +25,17 @@ interface SetlistsViewProps {
   onSyncAll?: () => void;
   /** While a pass is in the air, so it cannot be started twice. */
   syncingAll?: boolean;
+  /**
+   * Cuántos Setlists hechos antes de iniciar sesión siguen fuera de la
+   * cuenta. Cero, o ausente, y no se dice nada: un invitado no tiene cuenta a
+   * la que llevarlos, y quien nunca usó la aplicación sin cuenta no tiene
+   * ninguno.
+   */
+  guestSetlists?: number;
+  /** Los copia a la cuenta. Nada se mueve hasta que alguien lo pide. */
+  onImportGuestSetlists?: () => void;
+  /** Ahora no: no se borra ni se mueve nada, y se ofrece otro día. */
+  onDismissGuestSetlists?: () => void;
 }
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -133,6 +144,9 @@ export const SetlistsView: React.FC<SetlistsViewProps> = ({
   onCreate,
   onSyncAll,
   syncingAll = false,
+  guestSetlists = 0,
+  onImportGuestSetlists,
+  onDismissGuestSetlists,
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
@@ -168,6 +182,37 @@ export const SetlistsView: React.FC<SetlistsViewProps> = ({
           )}
         </div>
       </div>
+
+      {guestSetlists > 0 && onImportGuestSetlists && (
+        <div
+          role="status"
+          className="flex flex-col gap-3 mb-6 rounded-xl border border-[#2464ED]/20 dark:border-sky-500/30 bg-[#EAF1FF] dark:bg-sky-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-start gap-3 min-w-0">
+            <CloudUpload className="w-4 h-4 mt-0.5 shrink-0 text-[#2464ED] dark:text-sky-400" />
+            <div className="min-w-0 text-sm text-slate-700 dark:text-slate-200">
+              <p className="font-semibold text-slate-900 dark:text-white">
+                {guestSetlists === 1
+                  ? 'Tienes 1 Setlist creado antes de iniciar sesión.'
+                  : `Tienes ${guestSetlists} Setlists creados antes de iniciar sesión.`}
+              </p>
+              <p className="mt-0.5">
+                ¿Quieres guardarlos en tu cuenta? Se copian: no se borra nada de lo que ya tenías.
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 sm:ml-3">
+            {onDismissGuestSetlists && (
+              <button type="button" onClick={onDismissGuestSetlists} className={secondaryButton}>
+                Ahora no
+              </button>
+            )}
+            <button type="button" onClick={onImportGuestSetlists} className={primaryButton}>
+              Llevar a mi cuenta
+            </button>
+          </div>
+        </div>
+      )}
 
       {recoveredFromUnreadableData && !isNoticeDismissed && (
         <div

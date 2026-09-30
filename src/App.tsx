@@ -43,6 +43,7 @@ import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSetlists } from './hooks/useSetlists';
+import { useGuestSetlistImport } from './hooks/useGuestSetlistImport';
 import { useSetlistCloudSync, type SetlistVersions } from './hooks/useSetlistCloudSync';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
@@ -239,6 +240,8 @@ export function App() {
   // Keeping one setlist in step with the account, only ever because
   // somebody asked.
   const cloudSync = useSetlistCloudSync(setlistScope);
+  // Lo hecho antes de iniciar sesión, que cambiar de ámbito dejó de mostrar.
+  const guestImport = useGuestSetlistImport(setlistScope);
   // The people of the ministry and the keys they usually sing in.
   const ministry = useMinistry();
   const ministryData = useMemo<MinistryData>(
@@ -1142,6 +1145,15 @@ export function App() {
               : undefined
           }
           syncingAll={cloudSync.busyAll}
+          guestSetlists={guestImport.dismissed ? 0 : guestImport.pending}
+          onImportGuestSetlists={() => {
+            const answer = guestImport.importAll();
+            // Copiarlos los pone en el almacenamiento de la cuenta sin pasar
+            // por este hook, así que la lista tiene que volver a leerse.
+            setlists.reload();
+            if (answer) showToast(answer.message);
+          }}
+          onDismissGuestSetlists={guestImport.dismiss}
         />
       );
     }
