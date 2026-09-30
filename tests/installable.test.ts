@@ -99,13 +99,12 @@ describe('Lo que la página le dice al navegador', () => {
     }
   });
 
-  it('todavía no hay service worker: eso es de la fase siguiente', () => {
+  it('el service worker se registra desde la aplicación, no desde la página', () => {
+    // La página no lleva ni un <script> de registro: lo hace `src/pwa.ts`,
+    // que además sabe decir si la aplicación ya funciona sin conexión.
     for (const forbidden of ['serviceWorker', 'sw.js', 'workbox', 'registerSW']) {
       eq(html.includes(forbidden), false, forbidden);
     }
-    const main = readFileSync('src/main.tsx', 'utf8');
-    eq(main.includes('serviceWorker'), false);
-    const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-    eq(Object.keys(pkg.devDependencies).includes('vite-plugin-pwa'), false);
+    eq(readFileSync('src/main.tsx', 'utf8').includes('registerPwa()'), true);
   });
 });
