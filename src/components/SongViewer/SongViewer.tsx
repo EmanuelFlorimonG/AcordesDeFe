@@ -10,6 +10,7 @@ import { ArrangementPendingNotice } from '../Setlists/ArrangementPendingNotice';
 import { getCategoryStyle } from '../../utils/categoryStyle';
 import { useTransposeControls } from '../../hooks/useTransposeControls';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useOnline } from '../../hooks/useOnline';
 import { useMetronome } from '../../hooks/useMetronome';
 import { ChordSheet } from './ChordSheet';
 import { InstrumentChordDiagram } from './InstrumentChordDiagram';
@@ -75,21 +76,6 @@ interface SongViewerProps extends SongSetlistActions {
   history?: React.ReactNode;
   /** Opens the editor to suggest changes to this song ("Agregar acordes" / "Sugerir edición") */
   onSuggestEdit?: () => void;
-}
-
-/** Whether the browser says it is online; a suggestion needs the song's current version from Supabase. */
-function useOnline(): boolean {
-  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false));
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine !== false);
-    window.addEventListener('online', update);
-    window.addEventListener('offline', update);
-    return () => {
-      window.removeEventListener('online', update);
-      window.removeEventListener('offline', update);
-    };
-  }, []);
-  return online;
 }
 
 // The key a song was left in stays for the rest of the browser session, so

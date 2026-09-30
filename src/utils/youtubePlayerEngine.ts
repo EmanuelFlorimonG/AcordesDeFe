@@ -22,30 +22,96 @@ export interface YouTubePlayerListener {
 }
 
 const CONTAINER_ID = 'genesaret-youtube-audio-engine';
+const SCRIPT_MARK = 'data-genesaret-youtube-api';
+
+/**
+ * No se pudo llegar a YouTube: sin conexión, bloqueado por la red, o la carga
+ * del reproductor se cortó a medias.
+ *
+ * Es su propio tipo porque quien escucha tiene que poder decirlo con palabras
+ * distintas a «esta canción no está disponible»: la canción está bien, lo que
+ * falta es internet.
+ */
+export class YouTubeUnavailableError extends Error {
+  constructor(message = 'No se pudo cargar el reproductor de YouTube.') {
+    super(message);
+    this.name = 'YouTubeUnavailableError';
+  }
+}
+
+/** Lo que el navegador dice ahora mismo. `false` sólo cuando lo afirma. */
+const offline = (): boolean => typeof navigator !== 'undefined' && navigator.onLine === false;
+
+/** Cuánto se espera a que la API aparezca antes de darla por perdida. */
+const API_TIMEOUT_MS = 10_000;
 
 let apiPromise: Promise<void> | null = null;
 
+/**
+ * Carga la API de YouTube, o dice que no se puede.
+ *
+ * Antes esto podía quedarse esperando para siempre: se inyectaba el
+ * `<script>` y se confiaba en que algún día llamara a
+ * `onYouTubeIframeAPIReady`. Sin conexión, o con YouTube bloqueado, esa
+ * llamada no llega nunca — y la promesa tampoco se rompía, así que el botón
+ * de reproducir se quedaba en «Cargando reproductor…» hasta recargar.
+ *
+ * Ahora falla de tres maneras y todas terminan: el navegador dice que no hay
+ * red y ni se intenta; el `<script>` avisa de que no pudo cargarse; o pasa
+ * demasiado tiempo sin que la API aparezca. En los tres casos se olvida el
+ * intento, así que volver a pulsar cuando haya internet vuelve a intentarlo
+ * de verdad en vez de devolver el fracaso de antes.
+ */
 function loadIframeApi(): Promise<void> {
   if (apiPromise) return apiPromise;
 
-  apiPromise = new Promise((resolve) => {
+  // Sin conexión no se pide nada: ni una petición a YouTube, ni un <script>
+  // colgado esperando. Y al no recordar el intento, con internet se reintenta.
+  if (offline()) return Promise.reject(new YouTubeUnavailableError('La reproducción necesita conexión a internet.'));
+
+  apiPromise = new Promise<void>((resolve, reject) => {
     if (window.YT && window.YT.Player) {
       resolve();
       return;
     }
 
+    let settled = false;
+    const done = (fail?: Error) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      if (fail) reject(fail);
+      else resolve();
+    };
+
     const previousCallback = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => {
       previousCallback?.();
-      resolve();
+      done();
     };
 
-    if (!document.querySelector('script[data-genesaret-youtube-api]')) {
-      const script = document.createElement('script');
-      script.src = 'https://www.youtube.com/iframe_api';
-      script.setAttribute('data-genesaret-youtube-api', 'true');
-      document.head.appendChild(script);
+    // La API a veces no llama a nada: el <script> carga y se queda callado
+    // (un portal cautivo que devuelve su propia página, por ejemplo).
+    const timer = window.setTimeout(() => done(new YouTubeUnavailableError()), API_TIMEOUT_MS);
+
+    const existing = document.querySelector(`script[${SCRIPT_MARK}]`);
+    if (existing) {
+      existing.addEventListener('error', () => done(new YouTubeUnavailableError()), { once: true });
+      return;
     }
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.setAttribute(SCRIPT_MARK, 'true');
+    script.addEventListener('error', () => {
+      // Se quita para que el siguiente intento vuelva a pedirlo de verdad.
+      script.remove();
+      done(new YouTubeUnavailableError());
+    });
+    document.head.appendChild(script);
+  }).catch((error: unknown) => {
+    // Olvidar el intento es lo que permite reintentar cuando vuelva la red.
+    apiPromise = null;
+    throw error;
   });
 
   return apiPromise;
@@ -120,6 +186,13 @@ export function getYouTubePlayer(): Promise<YT.Player> {
         });
       })
   );
+
+  // Un intento fallido no se guarda: pulsar otra vez con internet tiene que
+  // volver a intentarlo, no repetir el fracaso de hace media hora.
+  playerPromise = playerPromise.catch((error: unknown) => {
+    playerPromise = null;
+    throw error;
+  });
 
   return playerPromise;
 }

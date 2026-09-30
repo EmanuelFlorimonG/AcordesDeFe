@@ -1,5 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { PLAYER_STATE, getYouTubePlayer, subscribeYouTubePlayer } from '../../utils/youtubePlayerEngine';
+import { PLAYBACK_NEEDS_INTERNET } from '../../utils/playerStatus';
+import {
+  PLAYER_STATE,
+  YouTubeUnavailableError,
+  getYouTubePlayer,
+  subscribeYouTubePlayer,
+} from '../../utils/youtubePlayerEngine';
 
 export interface YouTubeAudioPlayerHandle {
   seekTo: (seconds: number) => void;
@@ -27,6 +33,19 @@ function describeYouTubeError(_code: number): string {
 }
 
 /**
+ * No llegar al reproductor no es que la canción esté mal.
+ *
+ * Antes esto no se decía de ninguna manera: la promesa se quedaba esperando y
+ * el botón con ella. Ahora falla, y falla con palabras distintas según de qué
+ * falta se trate — la de internet es la única que la persona puede arreglar.
+ */
+function describeUnavailable(error: unknown): string {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return PLAYBACK_NEEDS_INTERNET;
+  if (error instanceof YouTubeUnavailableError) return 'No se pudo cargar el reproductor. Inténtalo otra vez.';
+  return 'No se pudo reproducir. Inténtalo otra vez.';
+}
+
+/**
  * Invisible controller: wires the app's own PlayerBar UI to a single, hidden
  * YouTube IFrame player. Renders nothing — playback state reaches the app via
  * the callback props, and it's driven by the props below (declarative), with
@@ -51,9 +70,15 @@ export const YouTubeAudioPlayer = forwardRef<YouTubeAudioPlayerHandle, YouTubeAu
     const onDurationKnownRef = useRef(onDurationKnown);
     onDurationKnownRef.current = onDurationKnown;
 
+    // El último onError, leído desde dentro de las promesas, para no rehacer
+    // los efectos sólo porque el padre volvió a pintarse.
+    const onErrorRef = useRef(onError);
+    onErrorRef.current = onError;
+    const failed = (error: unknown) => onErrorRef.current?.(describeUnavailable(error));
+
     useImperativeHandle(ref, () => ({
       seekTo(seconds: number) {
-        getYouTubePlayer().then((player) => player.seekTo(seconds, true));
+        getYouTubePlayer().then((player) => player.seekTo(seconds, true), failed);
       },
     }));
 
@@ -75,7 +100,7 @@ export const YouTubeAudioPlayer = forwardRef<YouTubeAudioPlayerHandle, YouTubeAu
           if (loadedVideoId && loadedVideoId === loadedVideoIdRef.current && duration > 0) {
             onDurationKnownRef.current?.(loadedVideoId, duration);
           }
-        });
+        }, failed);
       }, 500);
 
       return () => {
@@ -90,13 +115,18 @@ export const YouTubeAudioPlayer = forwardRef<YouTubeAudioPlayerHandle, YouTubeAu
     useEffect(() => {
       let cancelled = false;
 
-      getYouTubePlayer().then((player) => {
-        if (cancelled) return;
-        onReady?.();
-        // Loading the initial video (if any) is handled by the videoId
-        // effect below, which also runs on mount.
-        void player;
-      });
+      getYouTubePlayer().then(
+        (player) => {
+          if (cancelled) return;
+          onReady?.();
+          // Loading the initial video (if any) is handled by the videoId
+          // effect below, which also runs on mount.
+          void player;
+        },
+        (error: unknown) => {
+          if (!cancelled) failed(error);
+        }
+      );
 
       const unsubscribe = subscribeYouTubePlayer({
         onStateChange: (state) => {
@@ -129,7 +159,7 @@ export const YouTubeAudioPlayer = forwardRef<YouTubeAudioPlayerHandle, YouTubeAu
 
       getYouTubePlayer().then((player) => {
         player.cueVideoById(videoId);
-      });
+      }, failed);
     }, [videoId]);
 
     // React to play/pause intent — the only place playVideo() is ever
@@ -144,12 +174,16 @@ export const YouTubeAudioPlayer = forwardRef<YouTubeAudioPlayerHandle, YouTubeAu
         } else {
           player.pauseVideo();
         }
-      });
+      }, failed);
     }, [isPlaying, videoId]);
 
     // React to volume changes.
     useEffect(() => {
-      getYouTubePlayer().then((player) => player.setVolume(volume));
+      // El volumen no merece un aviso: si el reproductor no está, ya se dijo.
+      getYouTubePlayer().then(
+        (player) => player.setVolume(volume),
+        () => {}
+      );
     }, [volume]);
 
     return null;

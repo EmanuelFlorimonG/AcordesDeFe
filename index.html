@@ -5,10 +5,11 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Acordes de Fe | Cancionero Joven & Acordes</title>
-    <!-- Google Fonts: Inter & JetBrains Mono -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Inter y JetBrains Mono van dentro de la aplicación (ver index.css),
+         para que la letra y los acordes se vean igual sin conexión. -->
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-400-normal.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin-600-normal.woff2" crossorigin>
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/jetbrains-mono-latin-700-normal.woff2" crossorigin>
   </head>
   <body class="bg-white text-slate-900 antialiased selection:bg-blue-600 selection:text-white">
     <div id="root"></div>

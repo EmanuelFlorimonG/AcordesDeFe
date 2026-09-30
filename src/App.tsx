@@ -46,6 +46,7 @@ import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import type { PrintAudience } from './components/Setlists/SetlistPrintScreen';
+import { useOnline } from './hooks/useOnline';
 import { useSetlists } from './hooks/useSetlists';
 import { useGuestSetlistImport } from './hooks/useGuestSetlistImport';
 import { useSetlistCloudSync, type SetlistVersions } from './hooks/useSetlistCloudSync';
@@ -228,6 +229,9 @@ export function App() {
 
   const [volume, setVolume] = useLocalStorage<number>('genesaret_volume', 70);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
+  // Lo que dice el navegador sobre la conexión. Hoy sólo lo usa el
+  // reproductor, que es lo único de esta pantalla que no funciona sin red.
+  const online = useOnline();
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playerError, setPlayerError] = useState<string | null>(null);
@@ -1005,6 +1009,7 @@ export function App() {
         hasVideo: Boolean(lastOpenedSong.youtubeId),
         isReady: isPlayerReady,
         error: playerError,
+        online,
         onTogglePlay: () => setIsPlayerPlaying((v) => !v),
         onNext: handlePlayerNext,
         onPrev: handlePlayerPrev,
@@ -1760,6 +1765,7 @@ export function App() {
               hasVideo={Boolean(lastOpenedSong.youtubeId)}
               isPlayerReady={isPlayerReady}
               playerError={playerError}
+              online={online}
               currentTime={currentTime}
               duration={duration}
               onSeek={handleSeek}

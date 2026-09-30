@@ -13,5 +13,8 @@
     "jsx": "react-jsx",
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["tests", "scripts/generate-catalog-import.ts", "scripts/verify-remote-catalog.ts"]
+  // src/types lleva las declaraciones de ambiente (el namespace YT, por
+  // ejemplo). Sin ellas, un test que importe código de src que las use no
+  // compila aquí aunque la aplicación sí compile.
+  "include": ["tests", "src/types", "scripts/generate-catalog-import.ts", "scripts/verify-remote-catalog.ts"]
 }

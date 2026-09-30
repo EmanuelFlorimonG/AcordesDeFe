@@ -14,6 +14,8 @@ export interface CompactPlayerState {
   hasVideo: boolean;
   isReady: boolean;
   error: string | null;
+  /** Si el navegador dice que hay conexión: la reproducción la necesita. */
+  online?: boolean;
   onTogglePlay: () => void;
   onNext: () => void;
   onPrev: () => void;
@@ -24,7 +26,7 @@ const skipButton =
 
 export const MiniPlayer: React.FC<{ player: CompactPlayerState }> = ({ player }) => {
   const { disabled, title } = getPlayButtonState(player);
-  const status = player.error ?? (player.hasVideo ? player.song.artist ?? null : 'Audio no disponible');
+  const status = player.error ?? (player.hasVideo && player.online === false ? title : null) ?? (player.hasVideo ? player.song.artist ?? null : 'Audio no disponible');
 
   return (
     <div role="group" aria-label="Reproductor" className="flex items-center gap-0.5 min-w-0">

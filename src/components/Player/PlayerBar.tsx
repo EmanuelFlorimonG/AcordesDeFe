@@ -17,6 +17,8 @@ interface PlayerBarProps {
   hasVideo: boolean;
   isPlayerReady: boolean;
   playerError: string | null;
+  /** Si el navegador dice que hay conexión: la reproducción la necesita. */
+  online?: boolean;
   currentTime: number;
   duration: number;
   onSeek: (seconds: number) => void;
@@ -44,6 +46,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   hasVideo,
   isPlayerReady,
   playerError,
+  online = true,
   currentTime,
   duration,
   onSeek,
@@ -55,6 +58,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     isReady: isPlayerReady,
     error: playerError,
     isPlaying,
+    online,
   });
 
   return (

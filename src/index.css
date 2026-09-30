@@ -1,3 +1,74 @@
+/*
+ * Las dos tipografías de la aplicación, servidas desde ella misma.
+ *
+ * Venían de Google Fonts, y eso significaba que sin conexión la letra caía a
+ * la del sistema. En una hoja de acordes eso no es un detalle: los acordes se
+ * alinean sobre su sílaba contando con una monoespaciada concreta, y con otra
+ * cualquiera dejan de caer donde deben.
+ *
+ * Son los mismos archivos que servía Google, con el subconjunto latino y sólo
+ * los pesos que la aplicación usa de verdad: Inter 400/500/600/700/800 y
+ * JetBrains Mono 600 (las anotaciones) y 700 (los acordes). Sin `unicode-range`
+ * a propósito: con un solo subconjunto no ahorra ninguna descarga y sí podría
+ * dejar un carácter suelto en otra tipografía.
+ */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-latin-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin-700-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/inter-latin-800-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-700-normal.woff2') format('woff2');
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
