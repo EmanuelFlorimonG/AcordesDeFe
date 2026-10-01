@@ -59,6 +59,8 @@ export interface SetlistShare {
   busy: boolean;
   /** Qué ha pasado, en palabras de la persona. */
   message: string | null;
+  canRetry: boolean;
+  retry: () => void;
   create: () => void;
   revoke: () => void;
 }
@@ -89,6 +91,8 @@ export function useSetlistShare(setlistId: string | null): SetlistShare {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [online, setOnline] = useState(isOnline);
+  const [readFailure, setReadFailure] = useState<ShareFailure | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   // La cuenta de quien está dentro, que es la que da nombre a lo guardado.
   // Un invitado no tiene ninguna, y tampoco tiene enlaces: crearlos exige sesión.
@@ -118,6 +122,7 @@ export function useSetlistShare(setlistId: string | null): SetlistShare {
     setShare(null);
     setFromMemory(false);
     setMessage(null);
+    setReadFailure(null);
   }
 
   // Si hay red o no, para poder decirlo sin intentarlo.
@@ -145,6 +150,7 @@ export function useSetlistShare(setlistId: string | null): SetlistShare {
       if (online && !repository) {
         setStatus('error');
         setMessage(SESSION_LOST);
+        setReadFailure('auth');
         return;
       }
 
@@ -158,13 +164,22 @@ export function useSetlistShare(setlistId: string | null): SetlistShare {
       setShare(found.state === 'on' ? found.share : null);
       setFromMemory(found.state === 'on' && found.fromMemory);
       setStatus(found.state === 'error' ? 'error' : found.state);
-      if (found.state === 'error') setMessage(explain(found.failure));
-    })();
+      if (found.state === 'error') {
+        setMessage(explain(found.failure));
+        setReadFailure(found.failure);
+      } else setMessage(null);
+    })().catch((error: unknown) => {
+      if (!current) return;
+      const failure = classifyShareFailure(error);
+      setStatus('error');
+      setMessage(explain(failure));
+      setReadFailure(failure);
+    });
 
     return () => {
       current = false;
     };
-  }, [setlistId, shares, memory]);
+  }, [setlistId, shares, memory, attempt]);
 
   const act = useCallback(
     (work: (repository: NonNullable<Awaited<ReturnType<typeof shares>>>) => Promise<void>) => {
@@ -226,7 +241,17 @@ export function useSetlistShare(setlistId: string | null): SetlistShare {
     });
   }, [act, setlistId, memory]);
 
+  const canRetry = status === 'error' && online && (readFailure === 'network' || readFailure === 'server');
+  const retry = () => {
+    if (!canRetry || !isOnline()) return;
+    setStatus('loading');
+    setMessage(null);
+    setAttempt((value) => value + 1);
+  };
+
   return {
+    canRetry,
+    retry,
     status,
     link: share ? sharedSetlistLink(share.token, here()) : null,
     fromMemory,

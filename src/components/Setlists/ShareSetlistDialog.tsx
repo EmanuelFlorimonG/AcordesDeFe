@@ -117,6 +117,11 @@ export const ShareSetlistDialog: React.FC<ShareSetlistDialogProps> = ({ setlistI
           {share.message ?? 'No se pudo comprobar si está compartido.'}
         </p>
       )}
+      {share.canRetry && (
+        <button type="button" onClick={share.retry} className={`${secondaryButton} mt-3`}>
+          Reintentar
+        </button>
+      )}
 
       {share.status === 'off' && (
         <div>

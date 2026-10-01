@@ -75,7 +75,7 @@ describe('La política de privacidad dice lo que la aplicación hace', () => {
 
   it('dice que reproducir pasa por YouTube y necesita internet', () => {
     eq(html.includes('YouTube'), true);
-    eq(/Hace falta internet/i.test(html), true);
+    eq(/requiere conexión a internet/i.test(html), true);
   });
 
   it('y no inventa nada que el código no haga', () => {

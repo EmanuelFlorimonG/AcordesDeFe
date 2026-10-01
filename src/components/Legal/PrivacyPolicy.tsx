@@ -108,9 +108,10 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
         <section>
           <h2 className={h2}>7. Reproducir música</h2>
           <p>
-            Las canciones con vídeo se reproducen a través de YouTube, que carga su reproductor y
-            aplica sus propias condiciones. Hace falta internet, y si no pulsas reproducir, no se
-            carga nada de YouTube.
+            Al abrir una canción con vídeo, la aplicación puede cargar el reproductor de YouTube
+            y preparar el vídeo. La reproducción sólo comienza cuando decides reproducir.
+            YouTube es un servicio externo con sus propias condiciones, y cargar su reproductor
+            requiere conexión a internet.
           </p>
         </section>
 
