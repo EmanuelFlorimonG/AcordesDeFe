@@ -225,7 +225,7 @@ describe('El Setlist puesto en papel', () => {
         items: [item({ id: 'a', transitionToNext: transition }), item({ id: 'b', transitionToNext: transition })],
       })
     );
-    eq(doc.entries[0].transitionToNext, 'entra directa en la siguiente — Sin respirar');
+    eq(doc.entries[0].transitionToNext, 'entra directa en la siguiente. Sin respirar');
     eq(doc.entries[1].transitionToNext, null, 'la última no va a ninguna parte');
   });
 
@@ -373,7 +373,7 @@ describe('La hoja del músico', () => {
         ],
       })
     );
-    eq(html.includes('Al terminar: sigue la música entre las dos — Dejar sonar'), true);
+    eq(html.includes('Al terminar: sigue la música entre las dos. Dejar sonar'), true);
   });
 
   it('las notas de ese día salen con la canción', () => {

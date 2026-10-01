@@ -71,6 +71,11 @@ interface SetlistDetailProps {
    */
   onShare?: () => void;
   /**
+   * Por qué todavía no se puede compartir, cuando no se puede. Se enseña en su
+   * sitio, apagado: una función que desaparece sin decir nada parece un fallo.
+   */
+  shareBlockedReason?: string;
+  /**
    * Abre la hoja para imprimir o guardar como PDF: la del músico —letra con
    * acordes, tono, cejilla y arreglo— o la de quien canta, que es la misma
    * hoja con sólo la letra.
@@ -118,6 +123,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   syncOffer = 'new',
   syncingToAccount = false,
   onShare,
+  shareBlockedReason,
   onExportPdf,
   onAddSong,
   onRemoveItem,
@@ -237,7 +243,18 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
                       onSelect: onShare,
                     },
                   ]
-                : []),
+                : shareBlockedReason
+                  ? [
+                      {
+                        label: 'Compartir Setlist',
+                        icon: Share2,
+                        separated: !onSyncToAccount,
+                        disabled: true,
+                        note: shareBlockedReason,
+                        onSelect: () => {},
+                      },
+                    ]
+                  : []),
               ...(onExportPdf
                 ? [
                     {
@@ -304,6 +321,11 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
             Añadir canción
           </button>
         </div>
+        {/* Guardar en la cuenta, compartir y las hojas para imprimir viven en el
+            menú. Decirlo una vez evita que nadie las encuentre nunca. */}
+        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          En Opciones tienes guardar en tu cuenta, compartir y las hojas para imprimir.
+        </p>
       </header>
 
       <SetlistTeam

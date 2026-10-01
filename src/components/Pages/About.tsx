@@ -42,13 +42,15 @@ export const About: React.FC<AboutProps> = ({ onBack }) => {
           <Users className="w-5 h-5 text-blue-600 mb-2" />
           <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">Del ministerio</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Mantenido por y para el ministerio, sin cuentas ni datos personales de por medio.
+            Se usa sin cuenta. Crear una es opcional y sirve para llevar tus Setlists de un
+            dispositivo a otro.
           </p>
         </div>
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-dark-800 pt-6">
-        Esta sección se puede ampliar con la historia y misión propias de tu ministerio antes de publicar el sitio.
+      <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed border-t border-slate-100 dark:border-dark-800 pt-6">
+        Funciona sin conexión una vez abierta, así que sirve también donde no hay cobertura, que
+        suele ser justo donde se canta.
       </p>
     </div>
   );

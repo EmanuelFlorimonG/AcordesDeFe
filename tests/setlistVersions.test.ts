@@ -158,7 +158,7 @@ describe('Comparar dos versiones de un Setlist', () => {
     eq(arreglo?.theirs, 'Se toca como está escrita');
     eq(detalles.find((field) => field.label === 'Repeticiones y saltos')?.mine, '1 bloque repetido');
     const alTerminar = detalles.find((field) => field.label === 'Al terminar');
-    eq(alTerminar?.mine, 'entra directa en la siguiente — Sin respirar');
+    eq(alTerminar?.mine, 'entra directa en la siguiente. Sin respirar');
     eq(alTerminar?.theirs, 'Sin indicar');
   });
 

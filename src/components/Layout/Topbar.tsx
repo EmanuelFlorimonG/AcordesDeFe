@@ -5,6 +5,8 @@ interface TopbarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onOpenSidebar: () => void;
+  /** Para que el botón diga si lo que abre está abierto. */
+  isSidebarOpen?: boolean;
   onGoToCancionero: () => void;
   onGoToAbout: () => void;
   onGoToContact: () => void;
@@ -18,6 +20,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   searchQuery,
   onSearchChange,
   onOpenSidebar,
+  isSidebarOpen = false,
   onGoToCancionero,
   onGoToAbout,
   onGoToContact,
@@ -46,10 +49,13 @@ export const Topbar: React.FC<TopbarProps> = ({
   return (
     <header className="flex items-center gap-3 sm:gap-5 px-4 sm:px-6 py-4 border-b border-slate-100 dark:border-dark-800 bg-white dark:bg-dark-950 print:hidden">
       <button
+        type="button"
         onClick={onOpenSidebar}
-        className="lg:hidden p-2 -ml-1 rounded-md text-slate-500 dark:text-slate-400"
+        aria-label="Abrir el menú"
+        aria-expanded={isSidebarOpen}
+        className="lg:hidden p-2 -ml-1 rounded-md text-slate-500 dark:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
       >
-        <Menu className="w-5 h-5" />
+        <Menu aria-hidden="true" className="w-5 h-5" />
       </button>
 
       <div className="flex flex-grow min-w-0 max-w-2xl items-center gap-2">

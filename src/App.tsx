@@ -186,7 +186,9 @@ export function App() {
   const [section, setSection] = useState<SidebarSection>('cancionero');
   const [activeSong, setActiveSong] = useState<Song | null>(null);
   /** A song the address asks for that the catalog shown doesn't have (yet): waiting for Supabase, or offline */
-  const [pendingSongId, setPendingSongId] = useState<string | null>(null);
+  // El cancionero contestó y esa canción no está, que no es lo mismo que no
+  // haber podido preguntar: se dice distinto y no se ofrece reintentar.
+  const [missingSong, setMissingSong] = useState(false);
   /**
    * The official catalog: ONE complete source at a time (Supabase, its last
    * valid copy in this browser, or the bundled songs), see catalogStore.ts.
@@ -207,11 +209,11 @@ export function App() {
     catalogRef.current = catalog;
   }, [catalog]);
 
-  const [favorites, setFavorites] = useLocalStorage<string[]>('genesaret_favorites', [
-    'huracan-hakuna',
-    'nadie-te-ama-como-yo',
-    'contigo-maria',
-  ]);
+  // Se empieza sin ninguna. Marcarlas es de quien canta, y una aplicación que
+  // llega con tres favoritas puestas está diciendo que le gustan a alguien que
+  // no es él. Esto sólo decide el estado inicial: lo que ya hay guardado se lee
+  // tal cual y no se toca.
+  const [favorites, setFavorites] = useLocalStorage<string[]>('genesaret_favorites', []);
   const [playlists, setPlaylists] = useLocalStorage<Playlist[]>('genesaret_playlists', []);
   const [isDarkMode, setIsDarkMode] = useLocalStorage<boolean>('genesaret_dark_mode', false);
   const [lastOpenedSongId, setLastOpenedSongId] = useLocalStorage<string | null>(
@@ -477,9 +479,11 @@ export function App() {
           // Not in what is shown: maybe a song newer than this device's catalog.
           // While Supabase answers, wait; without it, say so instead of showing the songbook.
           const availability = getCatalogStore().availability(songId);
-          if (availability === 'checking' || availability === 'unverified') {
-            setPendingSongId(songId);
+          if (availability !== 'available') {
+            // Esperando, sin poder preguntar, o preguntado y no está: las tres
+            // se dicen, y ninguna acaba en el cancionero sin explicar nada.
             setPage(availability === 'checking' ? 'songPending' : 'songUnavailable');
+            setMissingSong(availability === 'missing');
             return;
           }
         }
@@ -505,7 +509,6 @@ export function App() {
         const item = setlist?.items.find((candidate) => candidate.id === itemId);
         const itemSong = item && catalogRef.current.byId.get(item.songId);
         if (item && !itemSong && getCatalogStore().availability(item.songId) === 'checking') {
-          setPendingSongId(item.songId);
           setPage('songPending');
           return;
         }
@@ -1285,6 +1288,13 @@ export function App() {
             ? () => setSharingId(setlistId)
             : undefined
         }
+        shareBlockedReason={
+          openSetlistCloudState === 'guest'
+            ? 'Necesitas una cuenta: el enlace enseña lo que hay guardado en ella'
+            : openSetlistCloudState === 'new'
+              ? 'Guárdalo antes en tu cuenta'
+              : undefined
+        }
         syncingToAccount={cloudSync.busy === setlistId}
         onDelete={() => {
           const name = openSetlist?.name;
@@ -1564,12 +1574,22 @@ export function App() {
           renderSongViewer(currentSong, currentSong.id, null)
         ) : (
           // It was open and the catalog no longer has it: said plainly, never a blank page.
-          <SongUnavailableScreen songId={activeSongId} onRetry={refreshCatalog} onBack={handleBackToDashboard} />
+          <SongUnavailableScreen
+            reason={getCatalogStore().availability(activeSongId ?? '') === 'missing' ? 'missing' : 'offline'}
+            onRetry={refreshCatalog}
+            onBack={handleBackToDashboard}
+          />
         );
       case 'songPending':
         return <SongPendingScreen />;
       case 'songUnavailable':
-        return <SongUnavailableScreen songId={pendingSongId} onRetry={refreshCatalog} onBack={handleBackToDashboard} />;
+        return (
+          <SongUnavailableScreen
+            reason={missingSong ? 'missing' : 'offline'}
+            onRetry={refreshCatalog}
+            onBack={handleBackToDashboard}
+          />
+        );
       default:
         switch (section) {
           case 'setlists':
@@ -1719,6 +1739,7 @@ export function App() {
             ) : null
           }
           onOpenSidebar={() => setIsMobileSidebarOpen(true)}
+          isSidebarOpen={isMobileSidebarOpen}
           onGoToCancionero={() => navigateTo('#/')}
           onGoToAbout={() => navigateTo('#/nosotros')}
           onGoToContact={() => navigateTo('#/contacto')}

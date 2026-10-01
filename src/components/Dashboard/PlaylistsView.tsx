@@ -104,7 +104,8 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
         Listas
       </h1>
       <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-        Organiza canciones para tus encuentros y ensayos.
+        Tus colecciones de canciones, para tenerlas a mano. Para preparar una celebración concreta,
+        con su orden y sus tonos, están los Setlists.
       </p>
 
       <div className="flex items-center gap-2 mb-6 max-w-md">
@@ -130,7 +131,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
         <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
           <ListPlus className="w-8 h-8 text-slate-300 mb-3" />
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">
-            Aún no tienes listas. Crea la primera arriba, o añade una canción a una lista nueva desde el menú (⋮) del cancionero.
+            Aún no tienes listas. Crea la primera arriba, o añade una canción a una lista nueva desde el menú (⋮) del cancionero. Una lista guarda canciones sueltas; no tiene orden de celebración ni tonos.
           </p>
         </div>
       ) : (

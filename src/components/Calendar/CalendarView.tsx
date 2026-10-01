@@ -75,7 +75,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#10203A] dark:text-white">Calendario</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Misas, ensayos y actividades del ministerio.</p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Misas, ensayos y actividades, anotados en este dispositivo.
+        </p>
       </div>
       <button type="button" onClick={() => onCreate(selectedDate)} className={primaryButton}>
         <Plus className="w-4 h-4" />

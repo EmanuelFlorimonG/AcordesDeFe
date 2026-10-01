@@ -1,5 +1,5 @@
-import React from 'react';
-import { Cross, ListMusic, ListOrdered, Heart, Tags, Users, UserRound, CalendarDays, History, ListPlus, LogIn, ShieldCheck, Sun, Moon, X, Quote } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { ListMusic, ListOrdered, Heart, Tags, Users, UserRound, CalendarDays, History, ListPlus, LogIn, ShieldCheck, Sun, Moon, X, Quote } from 'lucide-react';
 import { initialOf, nameOf, type AppSession } from '../../auth/session';
 
 export type SidebarSection =
@@ -45,6 +45,26 @@ const NAV_ITEMS: Array<{ id: SidebarSection; label: string; icon: React.ElementT
   { id: 'listas', label: 'Listas', icon: ListPlus },
 ];
 
+/**
+ * La nota de Acordes de Fe.
+ *
+ * Es el mismo trazo que lleva el icono de la aplicación instalada y el de la
+ * pestaña del navegador (public/favicon.svg), para que el menú y el icono del
+ * móvil digan lo mismo. Aquí va sin su cuadrado azul porque el cuadrado ya lo
+ * pone el menú, con el color de siempre.
+ */
+const BrandNote: React.FC<{ className?: string }> = ({ className }) => (
+  <svg viewBox="0 0 32 32" aria-hidden="true" className={className} fill="none">
+    <path
+      d="M16 6C14.5 6 13.5 7 13.5 8.5V21.5C12 20.5 10 20.5 8.5 21.5C6.5 23 6.5 26 8.5 27C10.5 28 13.5 27 13.5 24.5V13L22.5 10V18.5C21 17.5 19 17.5 17.5 18.5C15.5 20 15.5 23 17.5 24C19.5 25 22.5 24 22.5 21.5V8L16 6Z"
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth="0.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeSection,
   onNavigate,
@@ -57,6 +77,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isSessionLoading = false,
   onOpenAccount,
 }) => {
+  // Mientras el cajón está abierto, el teclado se queda dentro de él. Nada de
+  // librerías: lo que hace falta es saber cuál es el primer elemento y cuál el
+  // último, y el navegador ya sabe decirlo.
+  const drawer = useRef<HTMLElement | null>(null);
+  // Quien lo abrió, para devolverle el foco al cerrar. Si alguien pulsa Escape
+  // y el foco se queda en el aire, se pierde dónde estaba.
+  const opener = useRef<Element | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    opener.current = document.activeElement;
+    // Al abrir, el foco entra en el cajón: lo siguiente que se lea es el menú,
+    // no lo que haya quedado detrás.
+    drawer.current?.focus({ preventScroll: true });
+    return () => {
+      const volver = opener.current;
+      opener.current = null;
+      if (volver instanceof HTMLElement && document.contains(volver)) volver.focus({ preventScroll: true });
+    };
+  }, [isOpen]);
+
+  const focusables = () =>
+    Array.from(
+      drawer.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) ?? []
+    ).filter((node) => node.offsetParent !== null || node === document.activeElement);
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const dentro = focusables();
+    if (dentro.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const primero = dentro[0];
+    const ultimo = dentro[dentro.length - 1];
+    const actual = document.activeElement;
+    if (event.shiftKey && (actual === primero || actual === drawer.current)) {
+      event.preventDefault();
+      ultimo.focus();
+    } else if (!event.shiftKey && actual === ultimo) {
+      event.preventDefault();
+      primero.focus();
+    }
+  };
+
   const content = (
     <div className="flex flex-col h-full w-full">
       <div className="flex items-center justify-between px-6 pt-7 pb-6">
@@ -65,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="flex items-center gap-3 text-left focus:outline-none"
         >
           <div className="w-10 h-10 rounded-xl bg-[#2464ED] flex items-center justify-center flex-shrink-0">
-            <Cross className="w-5 h-5 text-white" strokeWidth={2.25} />
+            <BrandNote className="w-5 h-5 text-white" />
           </div>
           <div>
             <span className="font-extrabold text-base tracking-tight text-[#10203A] dark:text-white leading-tight block">
@@ -77,10 +149,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </button>
         <button
+          type="button"
           onClick={onClose}
-          className="lg:hidden p-1.5 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+          aria-label="Cerrar el menú"
+          className="lg:hidden p-1.5 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
         >
-          <X className="w-5 h-5" />
+          <X aria-hidden="true" className="w-5 h-5" />
         </button>
       </div>
 
@@ -192,7 +266,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {isOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-          <aside className="absolute inset-y-0 left-0 w-72 bg-white dark:bg-dark-950 shadow-xl">
+          <aside
+            ref={drawer}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menú de navegación"
+            // Sin esto no se le puede dar el foco, y sin foco dentro no llegan ni
+            // Escape ni el tabulador: el cajón quedaría abierto y mudo.
+            tabIndex={-1}
+            onKeyDown={onKeyDown}
+            className="absolute inset-y-0 left-0 w-72 bg-white dark:bg-dark-950 shadow-xl focus:outline-none"
+          >
             {content}
           </aside>
         </div>

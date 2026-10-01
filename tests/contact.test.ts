@@ -54,6 +54,12 @@ describe('Quien programa', () => {
   });
 });
 
+describe('Lo que se lee al entrar', () => {
+  it('dice que se contacta con quien programa la página', () => {
+    eq(html.includes('Conéctate con la comunidad y con quien programa la página Acordes de Fe.'), true);
+  });
+});
+
 describe('Nada de relleno', () => {
   it('no queda ni una instrucción para quien lo programó', () => {
     for (const resto of [

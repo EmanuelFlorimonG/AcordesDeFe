@@ -164,7 +164,8 @@ export const SetlistsView: React.FC<SetlistsViewProps> = ({
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-[#10203A] dark:text-white mb-1">Setlists</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            El orden, el tono y las notas de cada celebración.
+            Una celebración preparada: qué se canta, en qué orden, en qué tono y con qué notas.
+            Para guardar canciones sin más están las Listas.
           </p>
         </div>
         <div className="flex items-center gap-2">

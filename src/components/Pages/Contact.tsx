@@ -40,7 +40,7 @@ export const Contact: React.FC<ContactProps> = ({ onBack }) => {
 
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Contacto</h1>
       <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-8">
-        Conéctate con la comunidad y con quien programa Acordes de Fe.
+        Conéctate con la comunidad y con quien programa la página Acordes de Fe.
       </p>
 
       <div className="space-y-4">

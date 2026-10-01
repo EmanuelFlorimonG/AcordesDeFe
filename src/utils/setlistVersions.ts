@@ -71,7 +71,7 @@ const TRANSITIONS: Record<SetlistSongTransition['type'], string> = {
 export const describeTransition = (transition: SetlistSongTransition | undefined): string => {
   if (!transition) return 'Sin indicar';
   const how = TRANSITIONS[transition.type] ?? 'Sin indicar';
-  return transition.instruction.trim() ? `${how} — ${transition.instruction.trim()}` : how;
+  return transition.instruction.trim() ? `${how}. ${transition.instruction.trim()}` : how;
 };
 
 /**

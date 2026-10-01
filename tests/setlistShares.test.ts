@@ -331,7 +331,11 @@ describe('La página pública de un Setlist compartido', () => {
   it('dice que es de otra persona y que sólo se lee', () => {
     const html = view();
     eq(html.includes('sólo lectura'), true);
-    eq(html.includes('Los cambios que hagas aquí no llegan a quien lo compartió'), true);
+    // Antes decía «los cambios que hagas aquí no llegan», que invitaba a creer
+    // que se podía cambiar algo. No se puede: es una copia para leer.
+    eq(html.includes('aquí no se puede cambiar nada'), true);
+    eq(html.includes('Los cambios que hagas aquí'), false);
+    eq(html.includes('—'), false, 'y sin raya larga');
   });
 
   it('no tiene por dónde cambiar nada', () => {

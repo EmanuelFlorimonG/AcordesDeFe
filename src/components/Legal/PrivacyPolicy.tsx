@@ -1,9 +1,24 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 
+/**
+ * Qué pasa con los datos de quien usa Acordes de Fe.
+ *
+ * Escrita mirando el código, no de memoria: cada cosa que dice es algo que la
+ * aplicación hace de verdad. Lo que no hace tampoco se promete al revés: no
+ * hay analítica, no hay publicidad y no hay cookies de seguimiento, y eso se
+ * dice porque es verdad, no porque quede bien.
+ *
+ * Es corta a propósito. Una política de diez páginas para un cancionero no la
+ * lee nadie, y una que nadie lee no informa de nada.
+ */
+
 interface PrivacyPolicyProps {
   onBack: () => void;
 }
+
+const h2 = 'text-lg font-semibold text-slate-900 dark:text-white mb-2';
+const linkClass = 'text-blue-600 dark:text-blue-400 hover:underline';
 
 export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
   return (
@@ -17,48 +32,115 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
       </button>
 
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Política de privacidad</h1>
-      <p className="text-xs text-slate-500 dark:text-slate-400 mb-8">Última actualización: septiembre 2026</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-8">Última actualización: octubre de 2026</p>
 
       <div className="space-y-6 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">1. Datos que recopilamos</h2>
+          <h2 className={h2}>1. Lo que hace falta para usarla</h2>
           <p>
-            Acordes de Fe es una aplicación web que funciona completamente en tu navegador. No recopilamos datos personales, no solicitamos registro de cuentas y no enviamos información a servidores externos.
+            Acordes de Fe se puede usar sin cuenta. El cancionero, las listas, los Setlists, el
+            metrónomo y el modo en vivo funcionan tal cual, y lo que haces se guarda en tu
+            dispositivo.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">2. Almacenamiento local</h2>
+          <h2 className={h2}>2. Lo que se guarda en tu dispositivo</h2>
           <p>
-            La aplicación utiliza <code className="text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-1 py-0.5 rounded text-xs border border-blue-100 dark:border-blue-500/20">localStorage</code> del navegador para guardar tus preferencias: canciones favoritas, listas y modo oscuro. Estos datos permanecen exclusivamente en tu dispositivo y nunca son transmitidos.
+            La aplicación usa el almacenamiento del navegador para lo que preparas y para lo que
+            prefieres: tus canciones favoritas, tus listas, tus Setlists, las personas del
+            ministerio y las actividades que anotas, el modo oscuro y los ajustes de lectura. Se
+            guarda también una copia del cancionero para que abra sin conexión.
+          </p>
+          <p className="mt-2">
+            Todo eso vive en tu navegador y nadie más lo ve. Si borras los datos del sitio,
+            desaparece.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">3. Cookies</h2>
+          <h2 className={h2}>3. La cuenta, si decides crearla</h2>
           <p>
-            No utilizamos cookies de seguimiento, cookies de terceros ni ningún mecanismo de rastreo. No se integran servicios de analítica ni publicidad.
+            Crear una cuenta es opcional y sirve para una cosa: llevar tus Setlists de un
+            dispositivo a otro. Para ello se guardan tu correo, el nombre que elijas y tus
+            Setlists sincronizados en Supabase, que es quien aloja la base de datos y se encarga
+            del inicio de sesión.
+          </p>
+          <p className="mt-2">
+            Lo demás no sube: las listas, las favoritas, el historial, las personas del ministerio
+            y las actividades se quedan en el dispositivo. Y sin sesión no se envía nada: tus
+            Setlists siguen siendo tuyos y de este navegador.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">4. Fuentes externas</h2>
+          <h2 className={h2}>4. Sin conexión</h2>
           <p>
-            La aplicación carga fuentes tipográficas (Inter y JetBrains Mono) desde Google Fonts. Consulta la <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">política de privacidad de Google</a> para información sobre ese servicio.
+            La aplicación guarda una copia de sí misma para abrir sin internet, y lo que escribes
+            sin cobertura se queda en el dispositivo hasta que vuelva la conexión. Si tienes
+            sesión, al recuperarla se intenta sincronizar tus Setlists. Cuando un mismo Setlist
+            cambió en dos sitios, no se decide por ti: se te pregunta cuál conservar.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">5. Contenido musical</h2>
+          <h2 className={h2}>5. Compartir un Setlist</h2>
           <p>
-            Las letras y acordes incluidos se proporcionan con fines educativos y de uso comunitario en contextos litúrgicos y de oración. Los derechos de autor pertenecen a sus autores y compositores respectivos.
+            Puedes crear un enlace público para un Setlist que esté en tu cuenta. Quien tenga ese
+            enlace podrá ver el Setlist sin registrarse, y sólo verlo: no puede cambiar nada ni
+            llegar al resto de los tuyos. El enlace deja de funcionar en cuanto lo desactivas.
+          </p>
+          <p className="mt-2">
+            Mientras esté activo, cualquiera con el enlace puede abrirlo, así que compártelo con
+            quien quieras que lo vea.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">6. Contacto</h2>
+          <h2 className={h2}>6. Proponer una canción</h2>
           <p>
-            Si tienes preguntas sobre esta política de privacidad, puedes escribirnos desde la sección de <a href="#/contacto" className="text-blue-600 dark:text-blue-400 hover:underline">Contacto</a>.
+            Si envías una canción o una corrección, se guarda lo que propones junto al nombre y el
+            correo que quieras dejar, los dos opcionales, para poder responderte. El envío pasa
+            por una comprobación de Cloudflare Turnstile que distingue a una persona de un robot.
+          </p>
+        </section>
+
+        <section>
+          <h2 className={h2}>7. Reproducir música</h2>
+          <p>
+            Las canciones con vídeo se reproducen a través de YouTube, que carga su reproductor y
+            aplica sus propias condiciones. Hace falta internet, y si no pulsas reproducir, no se
+            carga nada de YouTube.
+          </p>
+        </section>
+
+        <section>
+          <h2 className={h2}>8. Lo que no hay</h2>
+          <p>
+            No hay analítica, ni publicidad, ni cookies de seguimiento, ni perfilado, ni venta de
+            datos a nadie. Las tipografías vienen dentro de la propia aplicación, así que tampoco
+            se piden a ningún servicio externo.
+          </p>
+        </section>
+
+        <section>
+          <h2 className={h2}>9. Contenido musical</h2>
+          <p>
+            Las letras y acordes se recogen con fines educativos y de uso comunitario en contextos
+            litúrgicos y de oración. Los derechos pertenecen a sus autores y compositores.
+          </p>
+        </section>
+
+        <section>
+          <h2 className={h2}>10. Tus datos y tus dudas</h2>
+          <p>
+            Puedes borrar tus datos locales vaciando los datos del sitio en tu navegador. Si tienes
+            cuenta y quieres que la eliminemos, o te queda cualquier duda sobre esto, escríbenos
+            desde{' '}
+            <a href="#/contacto" className={linkClass}>
+              Contacto
+            </a>
+            .
           </p>
         </section>
       </div>

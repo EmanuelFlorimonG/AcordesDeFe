@@ -52,7 +52,7 @@ export const MembersView: React.FC<MembersViewProps> = ({ members, onOpen, onCre
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#10203A] dark:text-white">Miembros</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Las personas del ministerio: qué hacen, qué tocan y qué voz suelen cantar.
+            Quién canta y quién toca, anotado en este dispositivo: qué hacen, qué tocan y qué voz suelen llevar.
           </p>
         </div>
         <button type="button" onClick={onCreate} className={primaryButton}>

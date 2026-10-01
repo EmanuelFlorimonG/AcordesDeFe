@@ -192,8 +192,10 @@ export const AccountDialog: React.FC<AccountDialogProps> = ({ session, editorial
         )}
 
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-          Tu cuenta servirá para llevar tus setlists de un dispositivo a otro. Todavía no está activo: por ahora se guardan en este
-          dispositivo, como siempre.
+          Tu cuenta lleva tus Setlists de un dispositivo a otro. Los guardas en ella cuando
+          quieres, uno a uno, y siguen estando en este dispositivo: sin conexión se preparan igual
+          y al volver la red se sincronizan solos. Si un Setlist cambió en dos sitios, se te
+          pregunta cuál conservar.
         </p>
 
         <div className="mt-5 space-y-2">

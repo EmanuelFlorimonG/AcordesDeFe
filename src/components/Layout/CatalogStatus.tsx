@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, CloudOff, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CloudOff, RotateCcw, Search } from 'lucide-react';
 import type { CatalogSnapshot } from '../../catalog/catalogStore';
 import { secondaryButton } from '../Setlists/ui';
 
@@ -42,11 +42,39 @@ export const CatalogFallbackNotice: React.FC<{ catalog: CatalogSnapshot; onRetry
 };
 
 /**
- * A song this device has never received and can't check now (no connection
- * and no saved copy with it). It is said plainly: the song may exist.
+ * Por qué no se puede abrir una canción.
+ *
+ * Son dos cosas distintas y se dicen distinto. Que este dispositivo no la
+ * tenga y ahora no pueda preguntar es una pausa: con internet vuelve. Que el
+ * cancionero haya contestado y no esté es otra cosa, y entonces no hay nada
+ * que reintentar, sólo volver a buscar.
+ *
+ * El id interno no se enseña. A quien mira no le dice nada, y desde que hay
+ * canciones retiradas puede aparecer en un Setlist viejo sin que sea culpa de
+ * nadie.
  */
-export const SongUnavailableScreen: React.FC<{ songId: string | null; onRetry: () => Promise<void>; onBack: () => void }> = ({ songId, onRetry, onBack }) => {
+export type UnavailableReason = 'offline' | 'missing';
+
+const UNAVAILABLE_COPY: Record<UnavailableReason, { title: string; detail: string }> = {
+  offline: {
+    title: 'No disponible sin conexión',
+    detail:
+      'Esta canción todavía no está guardada en este dispositivo y ahora no se puede consultar el catálogo. Vuelve a intentarlo con internet.',
+  },
+  missing: {
+    title: 'No encontramos esta canción',
+    detail:
+      'Puede que se haya retirado del cancionero o que el enlace esté equivocado. Busca por su nombre y la encuentras si sigue estando.',
+  },
+};
+
+export const SongUnavailableScreen: React.FC<{
+  reason?: UnavailableReason;
+  onRetry: () => Promise<void>;
+  onBack: () => void;
+}> = ({ reason = 'offline', onRetry, onBack }) => {
   const [retrying, setRetrying] = useState(false);
+  const copy = UNAVAILABLE_COPY[reason];
   return (
     <div className="w-full px-5 py-6 sm:px-10 sm:py-8">
       <button
@@ -61,24 +89,30 @@ export const SongUnavailableScreen: React.FC<{ songId: string | null; onRetry: (
         <span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-dark-800 dark:text-slate-400">
           <CloudOff aria-hidden="true" className="h-5 w-5" />
         </span>
-        <h1 className="text-lg font-bold text-[#10203A] dark:text-white">No disponible sin conexión</h1>
+        <h1 className="text-lg font-bold text-[#10203A] dark:text-white">{copy.title}</h1>
         <p role="alert" className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          Esta canción todavía no está guardada en este dispositivo y ahora no se puede consultar el catálogo. Vuelve a intentarlo con internet.
+          {copy.detail}
         </p>
-        {songId && <p className="mt-2 font-mono text-xs text-slate-400">{songId}</p>}
-        <button
-          type="button"
-          disabled={retrying}
-          onClick={async () => {
-            setRetrying(true);
-            await onRetry();
-            setRetrying(false);
-          }}
-          className={`${secondaryButton} mt-5`}
-        >
-          <RotateCcw aria-hidden="true" className={`h-4 w-4 ${retrying ? 'motion-safe:animate-spin' : ''}`} />
-          Reintentar
-        </button>
+        {reason === 'offline' ? (
+          <button
+            type="button"
+            disabled={retrying}
+            onClick={async () => {
+              setRetrying(true);
+              await onRetry();
+              setRetrying(false);
+            }}
+            className={`${secondaryButton} mt-5`}
+          >
+            <RotateCcw aria-hidden="true" className={`h-4 w-4 ${retrying ? 'motion-safe:animate-spin' : ''}`} />
+            Reintentar
+          </button>
+        ) : (
+          <button type="button" onClick={onBack} className={`${secondaryButton} mt-5`}>
+            <Search aria-hidden="true" className="h-4 w-4" />
+            Buscar en el cancionero
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarDays, Eye, Link2Off, ListOrdered, Loader2, Music } from 'lucide-react';
+import { CalendarDays, Eye, Link2Off, ListOrdered, Loader2, Music, RotateCcw } from 'lucide-react';
 import type { Setlist } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import type { SharedSetlistRead } from '../../storage/setlistShares';
 import { formatSetlistDate, formatSongCount } from '../../utils/setlists';
 import { describeCapo, describeTranspose, describeTransition } from '../../utils/setlistVersions';
-import { primaryButton } from './ui';
+import { primaryButton, secondaryButton } from './ui';
 
 /**
  * Un Setlist abierto desde un enlace compartido.
@@ -45,6 +45,9 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
   onGoToSongbook,
 }) => {
   const [screen, setScreen] = useState<Screen>({ state: 'loading' });
+  // Cada pulsación de "Reintentar" es un intento, y uno solo: se vuelve a
+  // pedir lo mismo con la misma función. Nada se reintenta por su cuenta.
+  const [attempt, setAttempt] = useState(0);
   // Otro enlace es otra pantalla. Se vuelve a "abriendo" durante el render, no
   // en un efecto, para que nadie vea un instante del Setlist anterior.
   const [openedFor, setOpenedFor] = useState<string | null>(token);
@@ -71,7 +74,7 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
     return () => {
       current = false;
     };
-  }, [token, load]);
+  }, [token, load, attempt]);
 
   if (screen.state === 'loading') {
     return (
@@ -97,9 +100,26 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
             ? 'Puede que quien lo compartió haya desactivado el enlace, o que el enlace esté incompleto. Pídele uno nuevo.'
             : 'Comprueba tu conexión e inténtalo otra vez.'}
         </p>
-        <button type="button" onClick={onGoToSongbook} className={`${primaryButton} mt-6`}>
-          Ir al cancionero
-        </button>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+          {/* Un enlace desactivado no se arregla insistiendo; un fallo de red, a
+              veces sí. Por eso sólo se ofrece cuando puede servir de algo. */}
+          {!gone && (
+            <button
+              type="button"
+              onClick={() => {
+                setScreen({ state: 'loading' });
+                setAttempt((veces) => veces + 1);
+              }}
+              className={primaryButton}
+            >
+              <RotateCcw aria-hidden="true" className="h-4 w-4" />
+              Reintentar
+            </button>
+          )}
+          <button type="button" onClick={onGoToSongbook} className={gone ? primaryButton : secondaryButton}>
+            Ir al cancionero
+          </button>
+        </div>
       </div>
     );
   }
@@ -208,7 +228,7 @@ export const SharedSetlistView: React.FC<{
                               {block.repeatCount > 1 && ` ×${block.repeatCount}`}
                               {block.transition.type === 'jump' && ' · vuelve atrás'}
                               {block.transition.type === 'end' && ' · final'}
-                              {block.instruction && ` — ${block.instruction}`}
+                              {block.instruction && `. ${block.instruction}`}
                             </li>
                           ))}
                         </ol>
@@ -230,7 +250,7 @@ export const SharedSetlistView: React.FC<{
 
       <div className="mt-8 rounded-xl border border-slate-200 dark:border-dark-700 px-4 py-4 text-center">
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Esto es una copia para leer. Los cambios que hagas aquí no llegan a quien lo compartió.
+          Esto es una copia para leer, así que aquí no se puede cambiar nada. Lo que se ve es lo que tenga guardado quien lo compartió.
         </p>
         <button type="button" onClick={onGoToSongbook} className={`${primaryButton} mt-3`}>
           Ver el cancionero

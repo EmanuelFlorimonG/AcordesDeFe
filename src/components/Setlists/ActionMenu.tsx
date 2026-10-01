@@ -5,6 +5,8 @@ export interface ActionMenuItem {
   icon: React.ElementType;
   onSelect: () => void;
   disabled?: boolean;
+  /** Por qué no se puede, cuando no se puede. Se lee debajo de la etiqueta. */
+  note?: string;
   danger?: boolean;
   /** Draws a divider above this item */
   separated?: boolean;
@@ -130,14 +132,19 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({ label, icon: Icon, items
                     close();
                     item.onSelect();
                   }}
-                  className={`w-full h-10 flex items-center gap-3 px-3.5 text-left text-sm font-medium transition-colors disabled:opacity-35 focus:outline-none ${
+                  className={`w-full flex items-center gap-3 px-3.5 py-2 text-left text-sm font-medium transition-colors disabled:opacity-60 focus:outline-none ${item.note ? '' : 'h-10'} ${
                     item.danger
                       ? 'text-red-600 dark:text-red-400 hover:bg-red-50 focus:bg-red-50 dark:hover:bg-red-500/10 dark:focus:bg-red-500/10'
                       : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 focus:bg-slate-50 dark:hover:bg-dark-800 dark:focus:bg-dark-800'
                   }`}
                 >
                   <ItemIcon className={`w-4 h-4 shrink-0 ${item.danger ? '' : 'text-slate-400'}`} />
-                  <span className="truncate">{item.label}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{item.label}</span>
+                    {item.note && (
+                      <span className="block text-xs font-normal text-slate-400 dark:text-slate-500">{item.note}</span>
+                    )}
+                  </span>
                 </button>
               </React.Fragment>
             );
