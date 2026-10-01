@@ -147,9 +147,28 @@ export interface SetlistSongTransition {
   instruction: string;
 }
 
+/**
+ * Qué clase de celebración es.
+ *
+ * Una misa y una adoración se preparan igual —canciones, orden, tonos,
+ * arreglos— pero sus partes no se llaman igual: una tiene Ofertorio y Santo,
+ * la otra tiene peticiones al Espíritu Santo y procesión. Lo único que cambia
+ * es qué momentos se ofrecen al escribirlos.
+ *
+ * Ausente significa misa: es lo que fue siempre, y los Setlists de antes no
+ * dijeron otra cosa. Por eso no se guarda cuando es una misa (ver
+ * canonicalSetlist): lo que ya estaba de acuerdo con la nube sigue estándolo.
+ */
+export type SetlistKind = 'misa' | 'adoracion';
+
+/** Lo que es un Setlist cuando nadie dijo nada: una misa. */
+export const DEFAULT_SETLIST_KIND: SetlistKind = 'misa';
+
 export interface Setlist {
   id: string;
   name: string;
+  /** Misa o adoración. Ausente es misa, que es lo que fueron todos hasta ahora. */
+  kind?: SetlistKind;
   /** Calendar date of the occasion as "YYYY-MM-DD", or "" when not set. */
   date: string;
   description: string;
@@ -169,6 +188,8 @@ export interface SetlistDetails {
   name: string;
   date: string;
   description: string;
+  /** Sólo se elige al crear; cambiarlo después renombraría momentos ya escritos. */
+  kind?: SetlistKind;
 }
 
 /**

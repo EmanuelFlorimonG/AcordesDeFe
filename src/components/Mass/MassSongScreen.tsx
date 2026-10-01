@@ -12,6 +12,8 @@ import { MassNextCard, type MassNextSong } from './MassNextCard';
 import { MassSongContent } from './MassSongContent';
 
 interface MassSongScreenProps {
+  /** «Modo Misa» o «Modo Adoración», según lo que se toque. */
+  modeName: string;
   song: Song;
   item: SetlistItem;
   /** Writes down that a block of this entry's arrangement needs someone to look at it */
@@ -45,6 +47,7 @@ interface MassSongScreenProps {
  * so reading by hand always pauses it.
  */
 export const MassSongScreen: React.FC<MassSongScreenProps> = ({
+  modeName,
   song,
   item,
   position,
@@ -76,6 +79,7 @@ export const MassSongScreen: React.FC<MassSongScreenProps> = ({
   return (
     <>
       <MassHeader
+        modeName={modeName}
         moment={item.moment}
         title={song.title}
         artist={song.artist}

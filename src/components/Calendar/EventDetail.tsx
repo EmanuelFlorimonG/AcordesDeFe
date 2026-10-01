@@ -36,7 +36,7 @@ import {
 } from '../../utils/ministryEvents';
 import { occurrenceActions, recordableItems } from '../../utils/performanceHistory';
 import { ClosePerformanceDialog } from '../History/ClosePerformanceDialog';
-import { formatSetlistDate, formatSongCount } from '../../utils/setlists';
+import { formatSetlistDate, formatSongCount, liveModeName } from '../../utils/setlists';
 import { MemberAvatar } from '../Members/MemberAvatar';
 import { MemberPicker } from '../Members/MemberPicker';
 import { ActionMenu, type ActionMenuItem } from '../Setlists/ActionMenu';
@@ -188,7 +188,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     { label: 'Duplicar actividad', icon: Copy, onSelect: () => setDialog('duplicate') },
     // Mass mode stays reachable for any activity with repertoire, just out of the way.
     ...(!isMass && setlist && canPlay
-      ? [{ label: 'Modo Misa', icon: Sparkle, onSelect: () => onStartMass(setlist.id), separated: true }]
+      ? [{ label: liveModeName(setlist.kind), icon: Sparkle, onSelect: () => onStartMass(setlist.id), separated: true }]
       : []),
     ...(actions.includes('cancel')
       ? [{ label: isSeries ? 'Cancelar esta fecha' : 'Cancelar actividad', icon: Ban, onSelect: () => requestStatus('cancelled'), separated: true }]
@@ -288,7 +288,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                 className={isToday && status === 'scheduled' ? primaryButton : secondaryButton}
               >
                 <Sparkle className="w-4 h-4" />
-                Modo Misa
+                {liveModeName(setlist.kind)}
               </button>
             )}
             <button

@@ -7,6 +7,7 @@ import {
   MAX_NOTES_LENGTH,
   cleanSetlistDetails,
   createId,
+  readSetlistKind,
   type IdFactory,
 } from '../utils/setlists';
 
@@ -150,9 +151,12 @@ export function sanitizeSetlist(value: unknown, now = Date.now(), makeId: IdFact
     });
 
   const createdAt = asTimestamp(value.createdAt, now);
+  const kind = readSetlistKind(value.kind);
   return {
     id: asString(value.id).trim() || makeId(),
     name: details.name || 'Setlist sin nombre',
+    // Lo que no es 'adoracion' es una misa, y una misa no lo dice.
+    ...(kind ? { kind } : {}),
     date: details.date,
     description: details.description,
     participantIds: normalizeMemberIds(value.participantIds),

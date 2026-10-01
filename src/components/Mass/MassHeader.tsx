@@ -3,6 +3,8 @@ import { ListOrdered, MoreHorizontal, X } from 'lucide-react';
 import type { MassKeyInfo } from '../../utils/massMode';
 
 interface MassHeaderProps {
+  /** «Modo Misa» o «Modo Adoración», según lo que se toque. */
+  modeName: string;
   moment: string;
   title: string;
   artist?: string;
@@ -26,6 +28,7 @@ const headerButton =
  * controls live at the bottom, out of the way of the words.
  */
 export const MassHeader: React.FC<MassHeaderProps> = ({
+  modeName,
   moment,
   title,
   artist,
@@ -83,7 +86,7 @@ export const MassHeader: React.FC<MassHeaderProps> = ({
             type="button"
             onClick={onOpenMenu}
             aria-haspopup="dialog"
-            aria-label="Opciones del Modo Misa"
+            aria-label={`Opciones del ${modeName}`}
             title="Opciones"
             className={headerButton}
           >
@@ -92,8 +95,8 @@ export const MassHeader: React.FC<MassHeaderProps> = ({
           <button
             type="button"
             onClick={onExit}
-            aria-label="Salir del Modo Misa"
-            title="Salir del Modo Misa"
+            aria-label={`Salir del ${modeName}`}
+            title={`Salir del ${modeName}`}
             className={headerButton}
           >
             <X className="w-[18px] h-[18px]" />

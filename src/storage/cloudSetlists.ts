@@ -61,6 +61,8 @@ export interface CloudSetlistItem extends Omit<SetlistItem, 'arrangement'> {
 export interface CloudSetlistWrite {
   id: string;
   name: string;
+  /** 'adoracion', o nada cuando es una misa: la columna acepta null. */
+  kind: string | null;
   /** "YYYY-MM-DD", or null when the celebration has no date (the column is nullable, "" is not a date) */
   date: string | null;
   description: string | null;
@@ -75,6 +77,7 @@ export interface CloudSetlistWrite {
 export interface CloudSetlistRow {
   id?: unknown;
   name?: unknown;
+  kind?: unknown;
   date?: unknown;
   description?: unknown;
   items?: unknown;
@@ -144,6 +147,9 @@ export function setlistToCloud(setlist: Setlist, revision: number): CloudSetlist
   return {
     id: setlist.id,
     name: setlist.name,
+    // Una misa no manda nada: las filas de antes tienen null y significan lo
+    // mismo, así que una columna nueva no convierte en distinto lo que no lo es.
+    kind: setlist.kind ?? null,
     date: setlist.date || null,
     description: setlist.description || null,
     items: setlist.items.map(cloudItem),
@@ -324,6 +330,7 @@ export function cloudToSetlist(row: CloudSetlistRow, localExisting?: Setlist | n
   // and never anything it did not say.
   const setlist = sanitizeSetlist({
     id,
+    kind: row.kind,
     name: text(row.name),
     date: text(row.date),
     description: text(row.description),
@@ -390,7 +397,7 @@ export interface CloudSetlistRepository {
 }
 
 const COLUMNS =
-  'id,name,date,description,items,payload_version,revision,client_created_at,client_updated_at,created_at,updated_at,deleted_at';
+  'id,name,kind,date,description,items,payload_version,revision,client_created_at,client_updated_at,created_at,updated_at,deleted_at';
 
 /**
  * The cloud setlists of whoever is signed in.

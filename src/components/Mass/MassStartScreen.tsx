@@ -7,6 +7,8 @@ import { unavailableText } from '../../catalog/catalogStore';
 import { useSongAvailability } from '../../catalog/useCatalog';
 
 interface MassStartScreenProps {
+  /** «Modo Misa» o «Modo Adoración», según lo que se toque. */
+  modeName: string;
   setlistName: string;
   /** "YYYY-MM-DD" or empty */
   date: string;
@@ -25,6 +27,7 @@ interface MassStartScreenProps {
  * when the first ones have already been sung.
  */
 export const MassStartScreen: React.FC<MassStartScreenProps> = ({
+  modeName,
   setlistName,
   date,
   stops,
@@ -44,7 +47,7 @@ export const MassStartScreen: React.FC<MassStartScreenProps> = ({
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-xl px-5 sm:px-8 py-8 sm:py-12">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2464ED] dark:text-sky-400">
-          Modo Misa
+          {modeName}
         </p>
         <h1 className="mt-2 text-2xl sm:text-3xl font-bold leading-tight tracking-tight text-[#10203A] dark:text-white break-words">
           {setlistName}

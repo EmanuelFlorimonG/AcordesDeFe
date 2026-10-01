@@ -87,7 +87,7 @@ function song(id: string): Song {
 const HURACAN = song('huracan-hakuna'); // G, cejilla recomendada 5
 const NADIE = song('nadie-te-ama-como-yo'); // C
 const CONTIGO = song('contigo-maria'); // G
-const ALFARERO = song('alfarero'); // D
+const DELEITE = song('sencillamente-dios'); // D, cejilla recomendada 2
 
 /** "Misa Domingo" with Huracán, Nadie te ama como yo and Contigo María. */
 function sampleSetlist(makeId = idSequence()): Setlist {
@@ -372,13 +372,13 @@ describe('Persistencia', () => {
 
   it('migra el formato sin versión (una lista simple)', () => {
     const storage = memoryStorage({
-      [SETLIST_STORAGE_KEY]: JSON.stringify([{ id: 'old', name: 'Vigilia', createdAt: NOW, items: [{ songId: 'alfarero' }] }]),
+      [SETLIST_STORAGE_KEY]: JSON.stringify([{ id: 'old', name: 'Vigilia', createdAt: NOW, items: [{ songId: 'sencillamente-dios' }] }]),
     });
     const repository = createLocalSetlistRepository(storage);
     const { setlists } = repository.load();
     eq(setlists.length, 1);
     eq(setlists[0].name, 'Vigilia');
-    eq(setlists[0].items[0].songId, ALFARERO.id);
+    eq(setlists[0].items[0].songId, DELEITE.id);
     eq(setlists[0].items[0].transposeSteps, 0);
     eq(typeof setlists[0].items[0].id, 'string');
     repository.save(setlists);
@@ -514,7 +514,7 @@ describe('Clasificar por momento de la misa', () => {
     const categories = listSongCategories(MOCK_SONGS);
     eq(
       categories.filter((entry) => entry.isMassMoment).map((entry) => entry.name),
-      ['Entrada', 'Piedad', 'Gloria', 'Aclamación', 'Ofertorio', 'Santo', 'Paz', 'Cordero', 'Comunión', 'Salida']
+      ['Entrada', 'Piedad', 'Gloria', 'Aclamación', 'Ofertorio', 'Santo', 'Cordero', 'Comunión', 'PostComunión', 'Salida']
     );
 
     const others = categories.filter((entry) => entry.isMassMoment === false);

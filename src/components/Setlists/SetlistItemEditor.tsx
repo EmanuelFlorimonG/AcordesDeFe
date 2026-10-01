@@ -7,6 +7,7 @@ import type {
   SongTransitionType,
 } from '../../types/setlist';
 import type { Song } from '../../types/song';
+import type { SetlistKind } from '../../types/setlist';
 import { songVersionOf } from '../../catalog/songRepository';
 import {
   arrangementSaveState,
@@ -27,7 +28,7 @@ import {
 } from '../../utils/songTransition';
 import { parseSongSections } from '../../utils/chordParser';
 import { normalizeText } from '../../utils/normalizeText';
-import { MAX_CAPO, MAX_MOMENT_LENGTH, MAX_NOTES_LENGTH, SUGGESTED_MOMENTS } from '../../utils/setlists';
+import { MAX_CAPO, MAX_MOMENT_LENGTH, MAX_NOTES_LENGTH, suggestedMoments } from '../../utils/setlists';
 import { describeKey, moveCapoBy, transposeBy, type KeySettings } from '../../utils/keySettings';
 import { Stepper } from '../Rehearsal/RehearsalControls';
 import { ArrangementEditor } from './ArrangementEditor';
@@ -70,6 +71,8 @@ interface SetlistItemEditorProps {
   nextSongTitle: string | null;
   /** The team of the setlist, offered first when assigning people to sections */
   participantIds?: string[];
+  /** Qué se está preparando, que es lo que decide qué momentos se ofrecen. */
+  setlistKind?: SetlistKind;
   onSave: (changes: SetlistItemDraft) => void;
   onClose: () => void;
 }
@@ -86,6 +89,7 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   item,
   nextSongTitle,
   participantIds = [],
+  setlistKind,
   onSave,
   onClose,
 }) => {
@@ -161,7 +165,7 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
     new Set(membersById.keys())
   );
 
-  const suggestions = SUGGESTED_MOMENTS.filter((suggestion) => {
+  const suggestions = suggestedMoments(setlistKind).filter((suggestion: string) => {
     const typed = normalizeText(moment.trim());
     return !typed || (normalizeText(suggestion).includes(typed) && normalizeText(suggestion) !== typed);
   }).slice(0, MAX_SUGGESTIONS);

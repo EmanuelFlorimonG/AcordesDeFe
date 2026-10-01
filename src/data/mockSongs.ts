@@ -10,7 +10,7 @@ export const MOCK_SONGS: Song[] = [
     recommendedCapo: 5,
     timeSignature: '4/4',
     tempo: 78,
-    categories: ['Adoración', 'Hakuna', 'Jornadas'],
+    categories: ['Adoración', 'Hakuna'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: ['Eucaristía', 'Espíritu Santo', 'Favoritas', 'Hakuna'],
     chordsUsed: ['G', 'D', 'Em', 'C'],
@@ -97,7 +97,7 @@ export const MOCK_SONGS: Song[] = [
     timeSignature: '4/4',
     tempo: 68,
     categories: ['Adoración', 'Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario'],
     tags: ['Clásico', 'Amor de Dios', 'Cruz', 'Favoritas'],
     chordsUsed: ['C', 'G/B', 'Am', 'F', 'Dm', 'G', 'Em'],
     difficulty: 'Fácil',
@@ -209,7 +209,7 @@ Quédate en mi [D]pecho y no me dejes [A]más,
     recommendedCapo: 0,
     timeSignature: '4/4',
     tempo: 72,
-    categories: ['María', 'Adoración'],
+    categories: ['Marianas', 'Adoración'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: ['Virgen María', 'Madre', 'Devoción', 'Favoritas'],
     chordsUsed: ['G', 'D/F#', 'Em', 'C', 'D', 'Am7', 'G/B'],
@@ -251,56 +251,6 @@ lle[Em]vando a la gente la luz de [C]Jesús.
 [G]  [D/F#]  [Em]  [C]  [G]`
   },
   {
-    id: 'alfarero',
-    title: 'Alfarero',
-    artist: 'Alfareros',
-    // 👉 PEGA AQUÍ el id real de YouTube (lo que va después de "v=" en la URL del video). Ejemplo: 'dQw4w9WgXcQ'
-    youtubeId: '',
-    originalKey: 'D',
-    recommendedCapo: 0,
-    timeSignature: '4/4',
-    tempo: 80,
-    categories: ['Adoración', 'Jornadas'],
-    liturgicalSeasons: ['todo-el-ano'],
-    tags: ['Entrega', 'Espíritu', 'Comunidad'],
-    chordsUsed: ['D', 'A', 'Bm', 'G', 'Em', 'A7'],
-    difficulty: 'Fácil',
-    year: '2011',
-    content: `[Intro]
-[D]  [A]  [Bm]  [G]
-
-[Verso 1]
-[D]  Gira que gira, [A]rueda que rueda,
-[Bm]  siento tus manos [G]sobre mi greda.
-[D]  Tú me modelas [A]a tu manera,
-[Bm]  quitas las piedras [G]que me lastiman.
-
-[Pre-Coro]
-[Em]  No me resisto al calor de tu [A]fuego,
-[Em]  haz de mi vida un vaso [A7]nuevo.
-
-[Coro]
-[D]  Tú eres el alfa[A]rero, yo soy la ar[Bm]cilla,
-moldea mi [G]vida, Señor de ma[D]ravillas.
-Quebranta mi or[A]gullo, transfórmame en [Bm]amor,
-que viva sólo [G]para tu gloria, Se[D]ñor.
-
-[Verso 2]
-[D]  A veces duele [A]cuando me pules,
-[Bm]  pero confío en [G]tu obra sublime.
-[D]  Eres el artista [A]de la creación,
-[Bm]  que escribe versos [G]en mi corazón.
-
-[Coro]
-[D]  Tú eres el alfa[A]rero, yo soy la ar[Bm]cilla,
-moldea mi [G]vida, Señor de ma[D]ravillas.
-Quebranta mi or[A]gullo, transfórmame en [Bm]amor,
-que viva sólo [G]para tu gloria, Se[D]ñor.
-
-[Outro]
-[D]  [A]  [Bm]  [G]  [D]`
-  },
-  {
     id: 'digno-de-alabar',
     title: 'Digno de Alabar',
     artist: 'Athenas',
@@ -309,7 +259,7 @@ que viva sólo [G]para tu gloria, Se[D]ñor.
     recommendedCapo: 2,
     timeSignature: '4/4',
     tempo: 120,
-    categories: ['Alabanza', 'Jornadas'],
+    categories: ['Alabanza'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: ['Júbilo', 'Fuerza', 'Animación'],
     chordsUsed: ['A', 'E', 'F#m', 'D', 'Bm', 'Esus4'],
@@ -356,60 +306,6 @@ mi roca y mi can[F#m]ción por la eterni[D]dad.
 [A]  [E]  [F#m]  [D]  [A]`
   },
   {
-    id: 'pescador-de-hombres',
-    title: 'Pescador de Hombres',
-    artist: 'Cesáreo Gabaráin',
-    youtubeId: 'm0WwrQsCiN0',
-    originalKey: 'D',
-    recommendedCapo: 0,
-    timeSignature: '4/4',
-    tempo: 75,
-    categories: ['Comunión', 'Jornadas'],
-    liturgicalSeasons: ['todo-el-ano'],
-    tags: ['Misión', 'Vocación', 'Clásico'],
-    chordsUsed: ['D', 'A', 'Bm', 'G', 'A7'],
-    difficulty: 'Fácil',
-    year: '1979',
-    content: `[Intro]
-[D]  [A]  [Bm]  [G]  [A]
-
-[Verso 1]
-[D]  Tú has venido a la [A]orilla,
-[Bm]  no has buscado ni a [G]sabios ni a ricos,
-[D]  tan sólo quieres [A]que yo te [D]siga. [A7]
-
-[Coro]
-[D]  Señor, me has mirado a los [A]ojos,
-[G]  sonriendo has dicho mi [D]nombre.
-[D]  En la arena he dejado mi [A]barca,
-[G]  junto a Ti busca[A]ré otro [D]mar.
-
-[Verso 2]
-[D]  Tú sabes bien lo que [A]tengo:
-[Bm]  en mi barca no hay [G]oro ni espadas,
-[D]  tan sólo redes [A]y mi tra[D]bajo. [A7]
-
-[Coro]
-[D]  Señor, me has mirado a los [A]ojos,
-[G]  sonriendo has dicho mi [D]nombre.
-[D]  En la arena he dejado mi [A]barca,
-[G]  junto a Ti busca[A]ré otro [D]mar.
-
-[Verso 3]
-[D]  Tú necesitas mis [A]manos,
-[Bm]  mi cansancio que a [G]otros descanse,
-[D]  amor que quiera [A]seguir a[D]mando. [A7]
-
-[Coro]
-[D]  Señor, me has mirado a los [A]ojos,
-[G]  sonriendo has dicho mi [D]nombre.
-[D]  En la arena he dejado mi [A]barca,
-[G]  junto a Ti busca[A]ré otro [D]mar.
-
-[Outro]
-[G]  [A]  [D]`
-  },
-  {
     id: 'forajidos-hakuna',
     title: 'Forajidos',
     artist: 'Hakuna Group Music',
@@ -417,7 +313,7 @@ mi roca y mi can[F#m]ción por la eterni[D]dad.
     recommendedCapo: 0,
     timeSignature: '4/4',
     tempo: 104,
-    categories: ['Hakuna', 'Jornadas'],
+    categories: ['Hakuna'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: ['Revolución', 'Amistad', 'Juventud', 'Hakuna'],
     chordsUsed: ['Em', 'C', 'G', 'D', 'Am', 'B7'],
@@ -866,7 +762,7 @@ Sintiendo [B7]miedo!
     id: 'vienen-con-alegria',
     title: 'Vienen con Alegría',
     categories: ['Entrada'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Coro:
@@ -889,7 +785,7 @@ Coro
     title: 'Bendeciré al Señor',
     originalKey: 'C',
     categories: ['Entrada'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Coro:
@@ -912,7 +808,7 @@ Coro`
     id: 'fiesta-de-fe',
     title: 'Fiesta de Fe',
     categories: ['Entrada'],
-    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'pascua'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Coro:
@@ -927,7 +823,7 @@ Coro`
     id: 'somos-un-pueblo-que-camina',
     title: 'Somos un Pueblo que Camina',
     categories: ['Entrada'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Coro:
@@ -952,33 +848,10 @@ sin penas ni tristezas
 ciudad de eternidad.//`
   },
   {
-    id: 'estamos-de-fiesta-con-jesus',
-    title: 'Estamos de Fiesta con Jesús',
-    categories: ['Entrada'],
-    liturgicalSeasons: ['todo-el-ano'],
-    tags: [],
-    chordsUsed: [],
-    content: `Estamos de fiesta con Jesús,
-al cielo queremos ir,
-estamos reunidos en la mesa,
-y es Cristo quien va a servir.
-
-Coro:
-Poderoso es nuestro Dios (x4)
-Él sana, Él salva, poderoso es nuestro Dios.
-
-Su amor nos demuestra por doquier,
-nos llena con su amistad,
-su pan y su vino nos regala,
-Él mismo se nos dará.
-
-Coro`
-  },
-  {
     id: 'abba-padre-venga-tu-reino',
     title: 'Abba Padre Venga tu Reino',
     categories: ['Entrada'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `El Señor, el Señor ya está aquí
@@ -998,7 +871,7 @@ Coro`
     id: 'ven-senor-no-tardes',
     title: 'Ven Señor no Tardes',
     categories: ['Entrada'],
-    liturgicalSeasons: ['adviento'],
+    liturgicalSeasons: ['adviento', 'cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `Coro:
@@ -1042,6 +915,7 @@ Coro`
     id: 'que-alegria-cuando-me-dijeron',
     title: 'Qué Alegría Cuando me Dijeron',
     categories: ['Entrada'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Coro:
@@ -1092,7 +966,7 @@ Bajo el signo del amor y la Unidad...`
     id: 'hoy-perdoname',
     title: 'Hoy Perdóname',
     categories: ['Piedad'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `Hoy, perdóname
@@ -1111,7 +985,7 @@ Vuelvo a ti (x4)`
     id: 'ten-piedad',
     title: 'Ten Piedad',
     categories: ['Piedad'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `//Ten piedad, Señor, ten piedad,
@@ -1128,7 +1002,7 @@ soy pecador, ten piedad//`
     title: 'Piedad Don Martín',
     originalKey: 'C',
     categories: ['Piedad'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Señor ten piedad de nosotros, ohhh Señor
@@ -1140,7 +1014,7 @@ Señor ten piedad de nosotros, ohhh Señor...`
     id: 'piedad-via-raisa',
     title: 'Piedad Via Raisa',
     categories: ['Piedad'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Señor ten piedad de nosotros (solista)
@@ -1203,8 +1077,9 @@ a Él que sea la Gloria,
   },
   {
     id: 'gloria-a-dios-en-el-cielo-pascua',
-    title: 'Gloria a Dios en el Cielo (Pascua)',
+    title: 'Gloria a Dios en el Cielo',
     categories: ['Gloria'],
+    liturgicalSeasons: ['pascua'],
     tags: [],
     chordsUsed: [],
     content: `Gloria, Gloria a Dios en el cielo, y en la tierra paz a los hombres que ama el Señor (Bis)
@@ -1289,7 +1164,7 @@ y en la tierra paz a los por Él amados. (bis)`
     title: 'Atentos a Escuchar',
     originalKey: 'D',
     categories: ['Aclamación'],
-    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'pascua'],
+    liturgicalSeasons: ['navidad', 'tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Atentos a escuchar, bellas palabras de anhelos y vida.
@@ -1303,7 +1178,7 @@ Aleluya, aleluya; con sus lindas palabras quiere a todos salvar.`
     id: 'su-palabra-es-la-verdad',
     title: 'Su Palabra es la Verdad',
     categories: ['Aclamación'],
-    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'pascua'],
+    liturgicalSeasons: ['navidad', 'tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `//Aleluya, Aleluya,
@@ -1349,7 +1224,7 @@ que en tus obras el descubra, que Jesús es quien la da.`
     id: 'dichoso',
     title: 'Dichoso',
     categories: ['Aclamación'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Dichoso el que con vida intachable
@@ -1365,6 +1240,7 @@ En ella esperaré`
     id: 'llegara-con-la-luz',
     title: 'Llegará con la Luz',
     categories: ['Aclamación'],
+    liturgicalSeasons: ['adviento'],
     tags: [],
     chordsUsed: [],
     content: `Caminamos hacia el sol esperando la verdad;
@@ -1377,7 +1253,7 @@ la mentira, la opresión, cuando vengas cesarán.
     title: 'Queremos Escuchar tu Voz',
     originalKey: 'C',
     categories: ['Aclamación'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Queremos escuchar tu voz,
@@ -1393,7 +1269,7 @@ siendo testimonio en nuestro caminar. (bis)`
     title: 'Pongo en tus Manos',
     originalKey: 'C',
     categories: ['Ofertorio'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['navidad', 'tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Pongo en tus manos, las penas y el dolor.
@@ -1417,7 +1293,7 @@ Coro`
     id: 'te-presentamos-el-vino-y-el-pan',
     title: 'Te Presentamos el Vino y el Pan',
     categories: ['Ofertorio'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Te presentamos el vino y el pan
@@ -1447,7 +1323,7 @@ Coro`
     id: 'hemos-entregado',
     title: 'Hemos Entregado',
     categories: ['Ofertorio'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Hemos entregado nuestras vidas al Señor
@@ -1475,7 +1351,7 @@ Que hemos recibido de tu amor y bondad`
     title: 'Te Ofrecemos Nuestra Juventud',
     originalKey: 'D',
     categories: ['Ofertorio'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Este día que amanece entre cantos y alegrías,
@@ -1499,7 +1375,7 @@ Estribillo`
     id: 'en-su-mesa-hay-amor',
     title: 'En su Mesa Hay Amor',
     categories: ['Ofertorio'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `El Señor nos ha reunido junto a Él
@@ -1519,7 +1395,7 @@ acoges mi vida y mi oración`
     id: 'hoy-senor-te-ofrecemos',
     title: 'Hoy Señor te Ofrecemos',
     categories: ['Ofertorio'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['navidad', 'tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Hoy Señor te ofrecemos nuestro anhelo
@@ -1545,39 +1421,10 @@ Que ofrecemos con amor, que
 llevamos en verdad, te venimos a ofrendar.`
   },
   {
-    id: 'te-presentamos-el-vino-y-el-pan-ii',
-    title: 'Te Presentamos el Vino y el Pan (II)',
-    categories: ['Ofertorio'],
-    liturgicalSeasons: ['todo-el-ano'],
-    tags: [],
-    chordsUsed: [],
-    content: `Te presentamos el vino y el pan
-Te presentamos el vino y el pan
-Como señal de que nos entregamos
-Tu cuerpo y sangre quiere que comamos
-Y así llenar nuestras vidas ansiosas de ti
-
-Te presentamos el vino y el pan
-Hechos de frutas y trigo maduro
-Esta es la ofrenda que te presentamos
-Que ser cuerpo y sangre de ti, oh Señor.
-
-Coro:
-//Pan y Vino, Pan y Vino
-Tu cuerpo y sangre que hoy ofrecemos.
-Pan y Vino, Pan y Vino
-Que compartimos a cada momento//
-
-Te presentamos el vino y el pan
-Para que tu lo bendigas y partas
-Y así con fe comulguemos con ellos
-Y así llenar nuestras vidas, oh Señor.`
-  },
-  {
     id: 'este-pan-y-vino',
     title: 'Este Pan y Vino',
     categories: ['Ofertorio'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Este pan y vino
@@ -1603,7 +1450,7 @@ Este pan y vino...`
     id: 'santo-swing',
     title: 'Santo Swing',
     categories: ['Santo'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Santo santo, es el Señor.
@@ -1625,7 +1472,7 @@ De tu gloria Señor, llenos están, llenos de ti`
     title: 'Santo Lento',
     originalKey: 'Am',
     categories: ['Santo'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Santo, Santo, Santo es el Señor Dios del universo.
@@ -1648,7 +1495,7 @@ En el cielo (x2)`
     id: 'santo-juvenil',
     title: 'Santo Juvenil',
     categories: ['Santo'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Santo es el Señor
@@ -1670,7 +1517,7 @@ Vuelve coro`
     id: 'santo-merengue',
     title: 'Santo Merengue',
     categories: ['Santo'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Santo, Santo, Santo, es el Señor Dios del universo,
@@ -1685,7 +1532,7 @@ Hosanna`
     id: 'santo-via-raisa',
     title: 'Santo Via Raisa',
     categories: ['Santo'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Santo, Santo (x2)
@@ -1699,7 +1546,7 @@ Ohsanna en el cielo, bendito es el que viene en nombre de Dios (x3)`
     id: 'santo-joel',
     title: 'Santo Joel',
     categories: ['Santo'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Santo, Santo, Santo,
@@ -1717,7 +1564,7 @@ Hosanna en el cielo. (bis)`
   {
     id: 'no-hay-un-saludo-mas-lindo',
     title: 'No Hay un Saludo Más Lindo',
-    categories: ['Paz'],
+    categories: [],
     liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
@@ -1732,7 +1579,7 @@ Dios te bendiga mi hermano//`
   {
     id: 'la-paz-te-doy',
     title: 'La Paz te Doy',
-    categories: ['Paz'],
+    categories: [],
     liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
@@ -1750,7 +1597,7 @@ que el mundo no te puede dar. (bis)`
     title: 'Oh Cordero',
     originalKey: 'C',
     categories: ['Cordero'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `//Oh, Cordero, Cordero,
@@ -1769,7 +1616,7 @@ La paz.`
     id: 'cordero-via-raisa',
     title: 'Cordero Via Raisa',
     categories: ['Cordero'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `[Hombres]
@@ -1792,7 +1639,7 @@ Ten piedad de nosotros, de nosotros ten piedad, ten piedad de nosotros y danos, 
     title: 'Cordero de Dios (Nuevo)',
     originalKey: 'G',
     categories: ['Cordero'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Cordero de Dios, quitas el pecado, el pecado del mundo. (bis)
@@ -1805,7 +1652,7 @@ Danos la paz.`
     id: 'yo-siento-senor',
     title: 'Yo Siento Señor',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Yo siento Señor que tú me amas
@@ -1833,7 +1680,7 @@ Coro`
     id: 'cirineo',
     title: 'Cirineo',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `He caído mil veces
@@ -1875,7 +1722,7 @@ Coro
     id: 'jesus-amigo',
     title: 'Jesús Amigo',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `Hoy te quiero contar Jesús Amigo,
@@ -1921,7 +1768,7 @@ y en cada Misa Tú repites tu sacrificio.`
     id: 'es-mi-cuerpo-siempre-nos-ama-el-senor',
     title: 'Es mi Cuerpo / Siempre nos Ama el Señor',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Siempre nos ama el Señor, como nadie nos amó.
@@ -1959,7 +1806,7 @@ nadie puede separarnos de su amor.`
     id: 'mi-barca-me-has-mirado-a-los-ojos',
     title: 'Mi Barca / Me has Mirado a los Ojos',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `Tú has venido a la orilla
@@ -1993,7 +1840,7 @@ Junto a ti, buscaré otro mar (x3)`
     id: 'entre-tus-manos',
     title: 'Entre tus Manos',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `Estribillo:
@@ -2013,7 +1860,7 @@ Estribillo`
     id: 'como-el-padre-me-amo',
     title: 'Como el Padre me Amó',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `Estribillo:
@@ -2038,7 +1885,7 @@ Estribillo`
     id: 'cristo-salvador',
     title: 'Cristo Salvador',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['pascua'],
     tags: [],
     chordsUsed: [],
     content: `Eres mi fuerza y mi poder
@@ -2066,7 +1913,7 @@ Cristo Redentor, digno de adorar...
     id: 'yo-soy-el-pan-de-vida',
     title: 'Yo Soy el Pan de Vida',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['pascua'],
     tags: [],
     chordsUsed: [],
     content: `Yo soy el Pan de vida
@@ -2090,7 +1937,7 @@ vivirá en mí, y tendrá la vida eterna.`
     id: 'no-he-venido-a-pedirte',
     title: 'No he Venido a Pedirte',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `No he venido a pedirte, como suelo, Señor
@@ -2124,7 +1971,7 @@ Coro`
     title: 'Eucaristía (Milagro de Amor)',
     originalKey: 'C',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Eucaristía, milagro de amor
@@ -2145,7 +1992,7 @@ Ser servidores de los demás, entregando todo con humildad.`
     id: 'llevame-a-la-cruz',
     title: 'Llévame a la Cruz',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `Si mis oraciones
@@ -2195,7 +2042,7 @@ Coro`
     title: 'Es un Deleite',
     originalKey: 'D',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Es un deleite para mí
@@ -2218,7 +2065,7 @@ te hayas quedado en este humilde pan. (x3)`
     title: 'Me has Seducido',
     originalKey: 'Am',
     categories: ['Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'cuaresma'],
     tags: [],
     chordsUsed: [],
     content: `Señor, no soy nada,
@@ -2249,7 +2096,7 @@ Me has seducido, Señor. (bis)`
     id: 'popurri',
     title: 'Popurrí',
     categories: ['Salida'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Mi Dios está vivo,
@@ -2278,7 +2125,7 @@ Déjalo que se mueva dentro de tu corazón.`
     id: 'buscamos-un-avivamiento',
     title: 'Buscamos un Avivamiento',
     categories: ['Salida'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['tiempo-ordinario', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Estamos buscando un avivamiento.
@@ -2289,7 +2136,7 @@ Estamos buscando el poder de Dios.
     id: 'peregrino',
     title: 'Peregrino',
     categories: ['Salida'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Peregrino ¿a dónde vas?, si no sabes a dónde ir.
@@ -2338,7 +2185,7 @@ A recibir un gran mensaje`
     id: 'quiero-agradecer',
     title: 'Quiero Agradecer',
     categories: ['Salida'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Quiero agradecer lo que me has dado mi Señor
@@ -2380,7 +2227,8 @@ Brazo, pierna, cabeza, corazón (x3)//`
   {
     id: 'mi-amigo-claret',
     title: 'Mi Amigo Claret',
-    categories: ['Salida'],
+    categories: ['Salida', 'Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
     content: `Quiero cantarle a un amigo llamado Claret.
@@ -2470,6 +2318,7 @@ dijo: "Mira, palpa mi herida y ten fe."`
     id: 'siempre-es-pentecostes',
     title: 'Siempre es Pentecostés',
     categories: ['Salida'],
+    liturgicalSeasons: ['pascua'],
     tags: [],
     chordsUsed: [],
     content: `Cuando rezamos, cuando cantamos, cuando la fiesta es
@@ -2767,8 +2616,8 @@ Simplemen[C]te porque [G]Tú eres [C]Dios`
     title: 'Puedo Entrar',
     originalKey: 'G',
     recommendedCapo: 1,
-    categories: ['Adoración', 'Comunión'],
-    liturgicalSeasons: ['todo-el-ano'],
+    categories: ['Adoración', 'PostComunión'],
+    liturgicalSeasons: ['tiempo-ordinario'],
     tags: [],
     chordsUsed: [],
     content: `Puedo entrar confiadamente
@@ -2820,7 +2669,7 @@ de tu amor.`
     title: 'Bendito sea Dios',
     originalKey: 'C',
     categories: ['Adoración'],
-    liturgicalSeasons: ['todo-el-ano'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
     tags: [],
     chordsUsed: [],
     content: `Bendito, bendito, bendito sea Dios,
@@ -2838,7 +2687,7 @@ los ángeles cantan y alaban a Dios. (bis)`
   {
     id: 'maria-doncella-divina',
     title: 'María Doncella Divina',
-    categories: ['María'],
+    categories: ['Marianas'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
@@ -2875,7 +2724,7 @@ Coro`
   {
     id: 'maria-tu-que-velas-junto-a-mi',
     title: 'María, Tú que Velas Junto a Mí',
-    categories: ['María'],
+    categories: ['Marianas', 'Salida'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
@@ -2902,7 +2751,8 @@ con ritmo alegre de juventud /3`
   {
     id: 'salve-regina',
     title: 'Salve Regina',
-    categories: ['María'],
+    categories: ['Marianas'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
     content: `Salve Regina, Madre de misericordia
@@ -2922,7 +2772,7 @@ Salve Regina, Salve, Salve`
   {
     id: 'estrella-del-cielo',
     title: 'Estrella del Cielo',
-    categories: ['María'],
+    categories: ['Marianas'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
@@ -2974,7 +2824,7 @@ Oh María, ¡quédate!`
   {
     id: 'hacia-ti',
     title: 'Hacia Ti',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
@@ -2990,7 +2840,7 @@ Vamos hacia ti!`
   {
     id: 'dibujo-perfecto',
     title: 'Dibujo Perfecto',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
     liturgicalSeasons: ['todo-el-ano'],
     tags: [],
     chordsUsed: [],
@@ -3017,7 +2867,8 @@ Soy el dibujo perfecto de Dios`
   {
     id: 'vamos-claretianos',
     title: 'Vamos Claretianos',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Vamos Claretianos a evangelizar,
@@ -3043,7 +2894,8 @@ démosle la oportunidad.`
   {
     id: 'la-fuerza-del-espiritu',
     title: 'La Fuerza del Espíritu',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `La fuerza del Espíritu mueve a Claret
@@ -3067,7 +2919,8 @@ le lleva a las almas, a darle gloria a Dios.`
   {
     id: 'danza-claretiana',
     title: 'Danza Claretiana',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Su voz llevaba la Palabra,
@@ -3095,7 +2948,8 @@ Siempre se cuestionó:
   {
     id: 'claret-fuego-ardiente',
     title: 'Claret Fuego Ardiente',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Claret fuego ardiente,
@@ -3121,7 +2975,8 @@ fuego ardiente.`
   {
     id: 'claret-misionero-de-luz',
     title: 'Claret Misionero de Luz',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Es Claret misionero de luz,
@@ -3146,7 +3001,8 @@ es una gran familia la Congregación, su congregación.`
   {
     id: 'consagracion-filial',
     title: 'Consagración Filial',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret', 'María'],
     chordsUsed: [],
     content: `Nos consagramos a tu amor materno
@@ -3171,7 +3027,8 @@ trigo limpio y Evangelio vivo de Dios.`
   {
     id: 'claret-cristiano-de-fuego',
     title: 'Claret Cristiano de Fuego',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Claret cristiano de fuego,
@@ -3202,7 +3059,8 @@ la aljaba de su ilusión.`
   {
     id: 'himno-a-claret',
     title: 'Himno a Claret',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Pasó el Señor cruzando tu camino
@@ -3235,7 +3093,8 @@ levadura de vida y salvación.`
   {
     id: 'misionero-ideal',
     title: 'Misionero Ideal',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Misionero ideal, oh, Claret mi buen amigo,
@@ -3259,7 +3118,8 @@ y me diga al oído: “Tu Madre soy yo”.`
   {
     id: 'el-padre-claret',
     title: 'El Padre Claret',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `El Padre Claret, ay ombe, ay ombe,
@@ -3279,7 +3139,8 @@ para que la amemos como tú la amaste.`
   {
     id: 'un-cantar-para-claret',
     title: 'Un Cantar para Claret',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `San Antonio María Claret,
@@ -3301,7 +3162,8 @@ la ilusión que tú nos diste en tu vida terrenal.`
     id: 'los-claretianos-unidos',
     title: 'Los Claretianos Unidos',
     artist: 'Martín Delgado y Francis Serrano',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Los claretianos unidos, por el amor, por el amor,
@@ -3320,7 +3182,8 @@ La familia...`
   {
     id: 'como-claret-misionero-quiero-ser',
     title: 'Como Claret Misionero Quiero Ser',
-    categories: ['Otros'],
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
     tags: ['Claret'],
     chordsUsed: [],
     content: `Como Claret, misionero quiero ser,

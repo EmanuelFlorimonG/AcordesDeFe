@@ -6,6 +6,7 @@ import { AUTO_SCROLL_SPEEDS, DEFAULT_AUTO_SCROLL_SPEED } from '../../hooks/useAu
 import { useFullscreen } from '../../hooks/useFullscreen';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useMassSession } from '../../hooks/useMassSession';
+import { liveModeName } from '../../utils/setlists';
 import { useMetronome } from '../../hooks/useMetronome';
 import { useWakeLock } from '../../hooks/useWakeLock';
 import { transposeSongContent } from '../../utils/chordParser';
@@ -72,6 +73,8 @@ export const MassMode: React.FC<MassModeProps> = ({
   onToggleDarkMode,
 }) => {
   const exitLabel = returnsTo === 'activity' ? 'Volver a la actividad' : 'Volver al Setlist';
+  // El mismo modo, con el nombre de lo que se está tocando.
+  const modeName = liveModeName(setlist.kind);
   const session = useMassSession({ setlist, isPlayable });
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [selectedChord, setSelectedChord] = useState<string | null>(null);
@@ -195,6 +198,7 @@ export const MassMode: React.FC<MassModeProps> = ({
     if (session.phase === 'start') {
       return (
         <MassStartScreen
+          modeName={modeName}
           setlistName={setlist.name}
           date={setlist.date}
           stops={stops}
@@ -247,6 +251,7 @@ export const MassMode: React.FC<MassModeProps> = ({
 
     return (
       <MassSongScreen
+        modeName={modeName}
         // Each song is mounted on its own: it starts at the first line, with
         // auto-scroll stopped and its own scrolling element.
         key={item.id}
@@ -287,7 +292,7 @@ export const MassMode: React.FC<MassModeProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`Modo Misa: ${setlist.name}`}
+      aria-label={`${modeName}: ${setlist.name}`}
       className="fixed inset-0 z-[60] flex flex-col bg-white dark:bg-dark-950 text-slate-900 dark:text-slate-100 font-sans"
     >
       {/* Progress is announced once per song, not on every scroll. */}
@@ -317,6 +322,7 @@ export const MassMode: React.FC<MassModeProps> = ({
 
       {overlay === 'menu' && (
         <MassMenu
+          modeName={modeName}
           metronome={metronome}
           instrument={hasChords ? instrument : null}
           onInstrumentChange={setInstrument}
@@ -333,7 +339,7 @@ export const MassMode: React.FC<MassModeProps> = ({
 
       {overlay === 'exit' && (
         <ConfirmDialog
-          title="¿Salir del Modo Misa?"
+          title={`¿Salir del ${modeName}?`}
           message={`Se cierra la celebración en curso y vuelves ${
             returnsTo === 'activity' ? 'a la actividad' : 'al Setlist'
           }. Nada de lo que preparaste se pierde.`}

@@ -8,6 +8,8 @@ import { Dialog } from '../Setlists/Dialog';
 import { sectionHeading } from '../Setlists/ui';
 
 interface MassMenuProps {
+  /** «Modo Misa» o «Modo Adoración», según lo que se toque. */
+  modeName: string;
   metronome: MetronomeControls;
   /** Null when the song has no chords to draw */
   instrument: Instrument | null;
@@ -31,6 +33,7 @@ const row =
  * the way out.
  */
 export const MassMenu: React.FC<MassMenuProps> = ({
+  modeName,
   metronome,
   instrument,
   onInstrumentChange,
@@ -43,7 +46,7 @@ export const MassMenu: React.FC<MassMenuProps> = ({
   onExit,
   onClose,
 }) => (
-  <Dialog title="Modo Misa" onClose={onClose} size="sm">
+  <Dialog title={modeName} onClose={onClose} size="sm">
     <div className="space-y-5">
       {metronome.isSupported && (
         <div>
@@ -145,7 +148,7 @@ export const MassMenu: React.FC<MassMenuProps> = ({
         className="w-full flex items-center justify-center gap-2 h-12 rounded-xl border border-slate-200 dark:border-dark-700 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:border-red-300 hover:text-red-600 dark:hover:text-red-400 transition-colors touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
       >
         <LogOut aria-hidden="true" className="w-4 h-4" />
-        Salir del Modo Misa
+        Salir del {modeName}
       </button>
     </div>
   </Dialog>

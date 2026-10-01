@@ -165,47 +165,35 @@ describe('Las canciones del cancionero', () => {
     }
   });
 
-  it('91 clasificadas y 19 pendientes de revisar', () => {
+  it('las 106 clasificadas, ninguna pendiente', () => {
+    // El ministerio revisó el cancionero entero, canción por canción.
     const unclassified = MOCK_SONGS.filter((song) => getSongSeasons(song).length === 0).map((song) => song.id);
-    eq(MOCK_SONGS.length, 110);
-    eq(unclassified.sort(), [
-      'claret-cristiano-de-fuego',
-      'claret-fuego-ardiente',
-      'claret-misionero-de-luz',
-      'como-claret-misionero-quiero-ser',
-      'consagracion-filial',
-      'danza-claretiana',
-      'el-padre-claret',
-      'gloria-a-dios-en-el-cielo-pascua',
-      'himno-a-claret',
-      'la-fuerza-del-espiritu',
-      'llegara-con-la-luz',
-      'los-claretianos-unidos',
-      'mi-amigo-claret',
-      'misionero-ideal',
-      'que-alegria-cuando-me-dijeron',
-      'salve-regina',
-      'siempre-es-pentecostes',
-      'un-cantar-para-claret',
-      'vamos-claretianos',
-    ]);
-    eq(MOCK_SONGS.filter(isAllYearSong).length, 78);
+    eq(MOCK_SONGS.length, 106);
+    eq(unclassified, []);
+    // «Todo el año» deja de ser el cajón de lo no revisado y pasa a querer
+    // decir lo que dice: que se canta en cualquier tiempo.
+    eq(MOCK_SONGS.filter(isAllYearSong).length, 42);
   });
 
-  it('ejemplos: Adviento, Pascua y Todo el año', () => {
-    eq(getSongSeasons(findSong('ven-senor-no-tardes')), ['adviento']);
+  it('ejemplos: la espera, la Pascua y el tiempo de siempre', () => {
+    // Se canta esperando: en Adviento y en Cuaresma, que son los dos tiempos
+    // en que la Iglesia espera.
+    eq(getSongSeasons(findSong('ven-senor-no-tardes')), ['adviento', 'cuaresma']);
     eq(getSongSeasons(findSong('resucita-hoy')), ['pascua']);
-    eq(getSongSeasons(findSong('nadie-te-ama-como-yo')), ['todo-el-ano']);
-    eq(findSong('nadie-te-ama-como-yo').categories, ['Adoración', 'Comunión'], 'las categorías no cambian');
+    eq(getSongSeasons(findSong('nadie-te-ama-como-yo')), ['tiempo-ordinario']);
+    eq(findSong('bendito-sea-dios').categories, ['Adoración'], 'el tiempo no cambia las categorías');
   });
 
   it('ningún Gloria aparece en Adviento ni en Cuaresma', () => {
+    // El Gloria no se canta ni en Adviento ni en Cuaresma, y los cinco del
+    // cancionero lo respetan. Uno es sólo de Pascua, así que no se le pide
+    // que valga también para Navidad.
     const glorias = MOCK_SONGS.filter((song) => song.categories.includes('Gloria') && getSongSeasons(song).length > 0);
-    eq(glorias.length, 4);
+    eq(glorias.length, 5);
     for (const song of glorias) {
       eq(songFitsSeason(song, 'adviento'), false, song.id);
       eq(songFitsSeason(song, 'cuaresma'), false, song.id);
-      eq(songFitsSeason(song, 'navidad') && songFitsSeason(song, 'tiempo-ordinario') && songFitsSeason(song, 'pascua'), true, song.id);
+      eq(songFitsSeason(song, 'pascua'), true, song.id);
     }
   });
 
@@ -217,8 +205,15 @@ describe('Las canciones del cancionero', () => {
 
   it('el filtro de Cuaresma incluye las de Todo el año y ninguna solo de Pascua', () => {
     const lent = filterSongsBySeason(MOCK_SONGS, 'cuaresma');
-    eq(lent.length, 78);
-    eq(lent.some((song) => getSongSeasons(song).includes('pascua')), false);
+    eq(lent.length, 65);
+    // Una canción de cualquier tiempo también vale en Cuaresma aunque valga
+    // en Pascua; lo que no puede colarse es una que sea sólo de Pascua.
+    const soloPascua = (song: Song) => {
+      const seasons = getSongSeasons(song);
+      return seasons.length === 1 && seasons[0] === 'pascua';
+    };
+    eq(lent.some(soloPascua), false);
+    eq(MOCK_SONGS.some(soloPascua), true, 'y haberlas, haylas');
   });
 });
 

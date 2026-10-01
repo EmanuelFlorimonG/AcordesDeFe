@@ -93,7 +93,7 @@ function song(id: string) {
   return found;
 }
 
-const ALFARERO = song('alfarero'); // D
+const DELEITE = song('sencillamente-dios'); // D, cejilla recomendada 2
 const SONGS_BY_ID = new Map(MOCK_SONGS.map((entry) => [entry.id, entry]));
 
 /** Emanuel, María, José y Laura, como en la prueba del ministerio. */
@@ -264,11 +264,11 @@ describe('El equipo de un Setlist', () => {
 
   it('eliminar a alguien lo quita del equipo y de los arreglos', () => {
     const { maria, laura } = team();
-    const sections = parseSongSections(ALFARERO.content);
+    const sections = parseSongSections(DELEITE.content);
     let arrangement = createArrangement(sections, idSequence('arr'));
     arrangement = updateArrangementSection(arrangement, 'arr-2', { voices: ['soloist'], assignedMemberIds: [maria.id] });
     arrangement = updateArrangementSection(arrangement, 'arr-3', { assignedMemberIds: [maria.id, laura.id] });
-    let setlist = addSongsToSetlist(base(), [ALFARERO], { now: NOW, createId: idSequence('i') });
+    let setlist = addSongsToSetlist(base(), [DELEITE], { now: NOW, createId: idSequence('i') });
     setlist = setSetlistParticipants(setlist, [maria.id, laura.id], NOW);
     setlist = updateSetlistItem(setlist, setlist.items[0].id, { arrangement }, NOW);
 
@@ -283,11 +283,11 @@ describe('El equipo de un Setlist', () => {
 
   it('duplicar el Setlist conserva equipo y asignaciones, con arreglo de ids nuevos', () => {
     const { maria } = team();
-    const sections = parseSongSections(ALFARERO.content);
+    const sections = parseSongSections(DELEITE.content);
     let arrangement = createArrangement(sections, idSequence('arr'));
     arrangement = updateArrangementSection(arrangement, 'arr-2', { assignedMemberIds: [maria.id] });
     arrangement = updateArrangementSection(arrangement, 'arr-3', { transition: { type: 'jump', targetId: 'arr-4' } });
-    let setlist = addSongsToSetlist(base(), [ALFARERO], { now: NOW, createId: idSequence('i') });
+    let setlist = addSongsToSetlist(base(), [DELEITE], { now: NOW, createId: idSequence('i') });
     setlist = setSetlistParticipants(setlist, [maria.id], NOW);
     setlist = updateSetlistItem(setlist, setlist.items[0].id, { arrangement }, NOW);
 
@@ -304,7 +304,7 @@ describe('El equipo de un Setlist', () => {
 });
 
 describe('Personas en las secciones del arreglo', () => {
-  const sections = parseSongSections(ALFARERO.content);
+  const sections = parseSongSections(DELEITE.content);
 
   it('SOLISTA con María, y MUJERES · SOPRANO con María y Laura', () => {
     const { maria, laura } = team();
@@ -370,7 +370,7 @@ describe('Personas en las secciones del arreglo', () => {
     arrangement = updateArrangementSection(arrangement, 'arr-2', { assignedMemberIds: [maria.id] });
     let setlist = addSongsToSetlist(
       createSetlist({ name: 'Misa' }, { now: NOW, createId: idSequence('s') }),
-      [ALFARERO],
+      [DELEITE],
       { now: NOW, createId: idSequence('i') }
     );
     setlist = setSetlistParticipants(setlist, [maria.id], NOW);
@@ -400,7 +400,7 @@ describe('Personas en las secciones del arreglo', () => {
         name: 'Misa vieja',
         date: '',
         description: '',
-        items: [{ id: 'i', songId: 'alfarero', moment: '', transposeSteps: 0, capoFret: 0, notes: '' }],
+        items: [{ id: 'i', songId: 'sencillamente-dios', moment: '', transposeSteps: 0, capoFret: 0, notes: '' }],
         createdAt: NOW,
         updatedAt: NOW,
       };
@@ -448,51 +448,51 @@ describe('Tonalidad preferida por cantante', () => {
   });
 
   it('una tonalidad guardada con otro nombre se conserva y se reconoce', () => {
-    const preferences = setKeyPreference([], 'm', 'alfarero', 'C#', NOW);
+    const preferences = setKeyPreference([], 'm', 'sencillamente-dios', 'C#', NOW);
     eq(preferences[0].key, 'C#');
     eq(keyOptionsFor('D').some((option) => isSameKey(option, 'C#')), true, 'se marca como Db en la lista');
   });
 
   it('crear, cambiar y quitar', () => {
     const { maria } = team();
-    let preferences = setKeyPreference([], maria.id, 'alfarero', 'Bb', NOW);
-    eq(findKeyPreference(preferences, maria.id, 'alfarero')?.key, 'Bb');
-    preferences = setKeyPreference(preferences, maria.id, 'alfarero', 'C', LATER);
+    let preferences = setKeyPreference([], maria.id, 'sencillamente-dios', 'Bb', NOW);
+    eq(findKeyPreference(preferences, maria.id, 'sencillamente-dios')?.key, 'Bb');
+    preferences = setKeyPreference(preferences, maria.id, 'sencillamente-dios', 'C', LATER);
     eq(preferences.length, 1, 'una por cantante y canción');
-    eq(preferences[0], { memberId: maria.id, songId: 'alfarero', key: 'C', updatedAt: LATER });
-    eq(setKeyPreference(preferences, maria.id, 'alfarero', 'X#', LATER), preferences, 'tonalidad inválida: nada cambia');
-    eq(removeKeyPreference(preferences, maria.id, 'alfarero'), []);
+    eq(preferences[0], { memberId: maria.id, songId: 'sencillamente-dios', key: 'C', updatedAt: LATER });
+    eq(setKeyPreference(preferences, maria.id, 'sencillamente-dios', 'X#', LATER), preferences, 'tonalidad inválida: nada cambia');
+    eq(removeKeyPreference(preferences, maria.id, 'sencillamente-dios'), []);
   });
 
   it('misma canción con dos personas, y una persona con dos canciones', () => {
     const { maria, emanuel } = team();
-    let preferences = setKeyPreference([], maria.id, 'alfarero', 'Bb', NOW);
-    preferences = setKeyPreference(preferences, emanuel.id, 'alfarero', 'G', NOW);
+    let preferences = setKeyPreference([], maria.id, 'sencillamente-dios', 'Bb', NOW);
+    preferences = setKeyPreference(preferences, emanuel.id, 'sencillamente-dios', 'G', NOW);
     preferences = setKeyPreference(preferences, maria.id, 'huracan-hakuna', 'A', NOW);
     eq(preferences.length, 3);
     eq(
       preferencesForMember(preferences, maria.id, SONGS_BY_ID).map((entry) => [entry.songTitle, entry.key]),
-      [['Alfarero', 'Bb'], ['Huracán', 'A']]
+      [['Huracán', 'A'], ['Sencillamente Dios', 'Bb']]
     );
-    eq(preferencesForSong(preferences, 'alfarero', new Set([maria.id, emanuel.id])).length, 2);
+    eq(preferencesForSong(preferences, 'sencillamente-dios', new Set([maria.id, emanuel.id])).length, 2);
   });
 
   it('miembro eliminado y canción inexistente no rompen nada', () => {
     const { maria, emanuel } = team();
-    let preferences = setKeyPreference([], maria.id, 'alfarero', 'Bb', NOW);
+    let preferences = setKeyPreference([], maria.id, 'sencillamente-dios', 'Bb', NOW);
     preferences = setKeyPreference(preferences, maria.id, 'cancion-borrada', 'C', NOW);
-    preferences = setKeyPreference(preferences, emanuel.id, 'alfarero', 'G', NOW);
+    preferences = setKeyPreference(preferences, emanuel.id, 'sencillamente-dios', 'G', NOW);
     eq(preferencesForMember(preferences, maria.id, SONGS_BY_ID).length, 1, 'la canción que no existe se ignora');
     const withoutMaria = removeMemberKeyPreferences(preferences, maria.id);
     eq(withoutMaria.map((entry) => entry.memberId), [emanuel.id]);
-    eq(preferencesForSong(preferences, 'alfarero', new Set([emanuel.id])).length, 1, 'solo miembros que existen');
+    eq(preferencesForSong(preferences, 'sencillamente-dios', new Set([emanuel.id])).length, 1, 'solo miembros que existen');
   });
 
   it('se guardan, vuelven, y lo corrupto se descarta', () => {
     const { maria } = team();
     const storage = memoryStorage();
     const repository = createLocalKeyPreferenceRepository(storage);
-    const preferences = setKeyPreference([], maria.id, 'alfarero', 'Bb', NOW);
+    const preferences = setKeyPreference([], maria.id, 'sencillamente-dios', 'Bb', NOW);
     repository.save(preferences);
     eq(JSON.parse(storage.data.get(KEY_PREFERENCES_STORAGE_KEY)!).version, 1);
     eq(repository.load().items, preferences);
@@ -535,25 +535,25 @@ describe('Usar la tonalidad preferida', () => {
 
   it('sugiere solo a quienes están asignados y suenan distinto; con varios, todos', () => {
     const { maria, laura, emanuel } = team();
-    const sections = parseSongSections(ALFARERO.content);
+    const sections = parseSongSections(DELEITE.content);
     let arrangement = createArrangement(sections, idSequence('arr'));
     arrangement = updateArrangementSection(arrangement, 'arr-2', { assignedMemberIds: [maria.id, laura.id] });
-    let preferences = setKeyPreference([], maria.id, 'alfarero', 'E', NOW);
-    preferences = setKeyPreference(preferences, laura.id, 'alfarero', 'C', NOW);
-    preferences = setKeyPreference(preferences, emanuel.id, 'alfarero', 'G', NOW);
+    let preferences = setKeyPreference([], maria.id, 'sencillamente-dios', 'E', NOW);
+    preferences = setKeyPreference(preferences, laura.id, 'sencillamente-dios', 'C', NOW);
+    preferences = setKeyPreference(preferences, emanuel.id, 'sencillamente-dios', 'G', NOW);
     const existing = new Set([maria.id, laura.id, emanuel.id]);
     const settings = { transposeSteps: 0, capoFret: 0 };
 
-    const suggestions = keySuggestionsFor(ALFARERO, { arrangement }, settings, preferences, existing);
+    const suggestions = keySuggestionsFor(DELEITE, { arrangement }, settings, preferences, existing);
     eq(suggestions.map((entry) => entry.key).sort(), ['C', 'E'], 'Emanuel no está asignado');
 
-    const already = keySettingsForKey(ALFARERO, settings, 'E')!;
+    const already = keySettingsForKey(DELEITE, settings, 'E')!;
     eq(
-      keySuggestionsFor(ALFARERO, { arrangement }, already, preferences, existing).map((entry) => entry.key),
+      keySuggestionsFor(DELEITE, { arrangement }, already, preferences, existing).map((entry) => entry.key),
       ['C'],
       'si ya suena en su tonalidad, no se sugiere'
     );
-    eq(keySuggestionsFor(ALFARERO, { arrangement: undefined }, settings, preferences, existing), []);
+    eq(keySuggestionsFor(DELEITE, { arrangement: undefined }, settings, preferences, existing), []);
   });
 });
 

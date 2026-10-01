@@ -79,7 +79,7 @@ function song(id: string) {
 
 const ENTRADA = song('huracan-hakuna'); // G, cejilla recomendada 5
 const GLORIA = song('nadie-te-ama-como-yo'); // C
-const COMUNION = song('alfarero'); // D
+const COMUNION = song('sencillamente-dios'); // D, cejilla recomendada 2
 
 /** Entrada · Gloria · Comunión, en ese orden. */
 function sampleSetlist(makeId = idSequence()): Setlist {

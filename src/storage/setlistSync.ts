@@ -82,7 +82,7 @@ function canonicalItem(item: SetlistItem): unknown[] {
 
 /** Everything portable about a setlist, as one string. Exported so tests can read it. */
 export function canonicalSetlist(setlist: Setlist): string {
-  return JSON.stringify([
+  const partes: unknown[] = [
     setlist.id,
     setlist.name,
     setlist.date,
@@ -90,7 +90,13 @@ export function canonicalSetlist(setlist: Setlist): string {
     setlist.createdAt,
     // The order is the order they are played in, so it is never sorted.
     setlist.items.map(canonicalItem),
-  ]);
+  ];
+  // Una misa escribe exactamente lo que escribía antes de que existieran los
+  // tipos, así que los acuerdos ya guardados siguen valiendo y nadie ve sus
+  // Setlists marcados como cambiados sin haber tocado nada. Una adoración
+  // añade una palabra al final, que es lo que la distingue.
+  if (setlist.kind === 'adoracion') partes.push(setlist.kind);
+  return JSON.stringify(partes);
 }
 
 /**

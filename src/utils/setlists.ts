@@ -3,6 +3,7 @@ import type {
   SetlistArrangement,
   SetlistDetails,
   SetlistItem,
+  SetlistKind,
   SetlistSongTransition,
 } from '../types/setlist';
 import type { Song } from '../types/song';
@@ -34,21 +35,52 @@ export const MASS_MOMENTS = [
   'Aclamación',
   'Ofertorio',
   'Santo',
-  'Paz',
   'Cordero',
   'Comunión',
+  'PostComunión',
   'Salida',
 ];
 
-/** Moments offered as suggestions; any other text can be typed. */
-export const SUGGESTED_MOMENTS = [
-  ...MASS_MOMENTS,
-  'Apertura',
-  'Adoración',
-  'Reflexión',
-  'Dinámica',
-  'Cierre',
+/**
+ * Las partes de una adoración, en el orden en que se viven.
+ *
+ * No son categorías de canción: una misma canción vale para la alabanza de una
+ * adoración y para la comunión de una misa sin tener que llamarse de otra
+ * forma. Son los nombres que se ofrecen al escribir el momento de cada entrada.
+ */
+export const ADORATION_MOMENTS = [
+  'Entrada del Señor',
+  'Momento de alabanza',
+  'Peticiones al Espíritu Santo',
+  'Momento de gracia',
+  'Procesión',
+  'Salida',
 ];
+
+/**
+ * Cómo se llama el modo en vivo de este Setlist.
+ *
+ * Es el mismo modo: la misma pantalla, los mismos controles, el mismo camino.
+ * Lo único que cambia es la palabra, porque llamarle «Modo Misa» a una
+ * adoración es decirle a alguien que está en otra cosa.
+ */
+export const liveModeName = (kind: SetlistKind | undefined): string =>
+  kind === 'adoracion' ? 'Modo Adoración' : 'Modo Misa';
+
+/** Los momentos que se ofrecen, según lo que se esté preparando. */
+export function momentsFor(kind: SetlistKind | undefined): string[] {
+  return kind === 'adoracion' ? ADORATION_MOMENTS : MASS_MOMENTS;
+}
+
+/**
+ * Moments offered as suggestions; any other text can be typed.
+ *
+ * Los de la celebración que se prepara van primero, y detrás los de siempre,
+ * porque un ensayo o un retiro no son ninguna de las dos cosas.
+ */
+export function suggestedMoments(kind: SetlistKind | undefined): string[] {
+  return [...new Set([...momentsFor(kind), 'Apertura', 'Adoración', 'Reflexión', 'Dinámica', 'Cierre'])];
+}
 
 export interface SongCategoryCount {
   name: string;
@@ -128,10 +160,25 @@ export function cleanSetlistDetails(details: Partial<SetlistDetails>): SetlistDe
   };
 }
 
+/** Misa, salvo que alguien diga adoración. Cualquier otra cosa no es un tipo. */
+export const readSetlistKind = (value: unknown): SetlistKind | undefined =>
+  value === 'adoracion' ? 'adoracion' : undefined;
+
 export function createSetlist(details: Partial<SetlistDetails>, { now, createId: makeId = createId }: ChangeOptions): Setlist {
   const clean = cleanSetlistDetails(details);
   if (!clean.name) throw new Error('Un setlist necesita un nombre.');
-  return { id: makeId(), ...clean, participantIds: [], items: [], createdAt: now, updatedAt: now };
+  const kind = readSetlistKind(details.kind);
+  return {
+    id: makeId(),
+    ...clean,
+    // Una misa no lo dice: es lo que siempre fue, y así un Setlist nuevo se
+    // guarda y viaja exactamente igual que los que ya existían.
+    ...(kind ? { kind } : {}),
+    participantIds: [],
+    items: [],
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 export function updateSetlistDetails(setlist: Setlist, details: Partial<SetlistDetails>, now: number): Setlist {
@@ -141,6 +188,8 @@ export function updateSetlistDetails(setlist: Setlist, details: Partial<SetlistD
     description: details.description ?? setlist.description,
   });
   if (!clean.name) throw new Error('Un setlist necesita un nombre.');
+  // El tipo no se edita aquí: cambiarlo renombraría momentos ya escritos, y
+  // eso lo decide una persona, no un formulario de nombre y fecha.
   return { ...setlist, ...clean, updatedAt: now };
 }
 
@@ -163,6 +212,8 @@ export function duplicateSetlist(
   );
   return {
     ...copy,
+    // La copia de una adoración sigue siendo una adoración.
+    ...(setlist.kind ? { kind: setlist.kind } : {}),
     // Same ministry, same people: the team is kept (as a list of its own).
     participantIds: [...setlist.participantIds],
     items: setlist.items.map((item) => ({

@@ -23,6 +23,7 @@ import {
   formatDurationSummary,
   formatSetlistDate,
   formatSongCount,
+  liveModeName,
   summarizeSetlistDuration,
 } from '../../utils/setlists';
 import type { SetlistItemChanges } from '../../utils/setlists';
@@ -296,7 +297,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
             className={secondaryButton}
           >
             <Sparkle className="w-4 h-4" />
-            Modo Misa
+            {liveModeName(setlist.kind)}
           </button>
           <button type="button" onClick={() => setDialog({ kind: 'add' })} className={secondaryButton}>
             <Plus className="w-4 h-4" />
@@ -408,6 +409,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
               : null
           }
           participantIds={setlist.participantIds}
+          setlistKind={setlist.kind}
           onSave={({ newParticipantIds, ...changes }) => {
             // Someone assigned from outside the team joins it, as the editor said.
             if (newParticipantIds.length > 0) onAddParticipants(newParticipantIds);
