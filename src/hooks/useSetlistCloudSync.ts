@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useAuthServices } from '../auth/useSession';
 import type { Setlist } from '../types/setlist';
 import type { CloudSetlistProblem } from '../storage/cloudSetlists';
@@ -58,12 +58,32 @@ export type SetlistVersionsLookup =
 /** Which version somebody chose to keep. */
 export type SetlistKeep = 'local' | 'remote';
 
+/**
+ * Cómo va la sincronización de esta cuenta, en una palabra.
+ *
+ * Es lo que el hook ya sabía, dicho de una forma que una pantalla pueda
+ * mirar: no hay máquina de estados nueva detrás. `conflict` va antes que
+ * `error` porque un conflicto espera a una persona, y eso es lo primero que
+ * alguien necesita saber.
+ */
+export type SetlistSyncState =
+  /** Nada que hacer ahora mismo. */
+  | 'idle'
+  /** Hay una pasada en el aire. */
+  | 'syncing'
+  /** La última pasada encontró Setlists cambiados aquí y en la cuenta. */
+  | 'conflict'
+  /** La última pasada no se pudo hacer: sesión o conexión. */
+  | 'error';
+
 export interface SetlistCloudSync {
   /**
    * Whether there is an account to synchronise with at all. False for a
    * visitor, whose setlists stay exactly where they are.
    */
   available: boolean;
+  /** Cómo va, para quien quiera enseñarlo. */
+  state: SetlistSyncState;
   /** A pass over everything is in the air. */
   busyAll: boolean;
   /**
@@ -231,6 +251,13 @@ export function describeResolution(
   }
 }
 
+/** Cómo va, a partir de lo que el hook ya tiene apuntado. */
+export function syncStateOf(now: { working: boolean; conflicts: number; stopped: boolean }): SetlistSyncState {
+  if (now.working) return 'syncing';
+  if (now.conflicts > 0) return 'conflict';
+  return now.stopped ? 'error' : 'idle';
+}
+
 /** A pass that ran, or the reason there was none. */
 type PassAttempt = { ran: true; report: SetlistSyncPassReport } | { ran: false; message: string };
 
@@ -354,6 +381,19 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
   // Counted up after something reached the cloud, so the menu stops offering
   // what is now up to date.
   const [passes, setPasses] = useState(0);
+  // Si la última pasada no se pudo ni hacer. No es un veredicto: la siguiente
+  // lo cambia, y volver a tener red es motivo para que haya una siguiente.
+  const [stopped, setStopped] = useState(false);
+  /**
+   * Un pase a la vez, de verdad.
+   *
+   * `busy` y `busyAll` son estado de React: no se ven hasta el siguiente
+   * render, así que dos llamadas del mismo tick —el botón y una reconexión que
+   * coinciden— lo leerían a false las dos. Esto se lee en el momento en que se
+   * pregunta. Y se suelta siempre: una pasada que falla no puede dejar
+   * bloqueadas a las siguientes.
+   */
+  const inFlight = useRef(false);
 
   const userId = scope.kind === 'user' ? scope.userId.trim() : '';
   const scopeName = scopeId(scope);
@@ -394,19 +434,26 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
       authorisedUploads: string[],
       resolutions?: Array<readonly [string, { keep: SetlistKeep; seenRevision: number }]>
     ): Promise<PassAttempt> => {
-      const stopped = (message: string): PassAttempt => ({ ran: false, message });
-      if (!services || !userId) return stopped(SESSION_LOST);
+      const halted = (message: string): PassAttempt => {
+        setStopped(true);
+        return { ran: false, message };
+      };
+      if (!services || !userId) return halted(SESSION_LOST);
+      // Una sesión puede necesitar refrescarse justo al volver la red, y de
+      // eso se encarga el adaptador de siempre. Si dice que no hay sesión, no
+      // se sincroniza — y no se toca nada de lo que hay en este dispositivo.
       const capture = await services.auth.authenticated();
-      if (!capture || capture.session.userId.trim() !== userId) return stopped(SESSION_LOST);
+      if (!capture || capture.session.userId.trim() !== userId) return halted(SESSION_LOST);
 
       // Downloaded the first time somebody asks for this, and never for a
       // visitor: the whole of the synchronising machinery is weight that most
       // people never need, like supabase-js itself (see useSession).
       const { runAuthenticatedSetlistSyncPass } = await import('../storage/setlistSyncSession');
       const result = await runAuthenticatedSetlistSyncPass(capture, {}, { authorisedUploads, resolutions });
-      if (result.status !== 'ran') return stopped(SESSION_LOST);
-      if (result.report.status === 'remote-auth-error') return stopped(SESSION_LOST);
-      if (result.report.status === 'remote-read-error') return stopped(NO_CONNECTION);
+      if (result.status !== 'ran') return halted(SESSION_LOST);
+      if (result.report.status === 'remote-auth-error') return halted(SESSION_LOST);
+      if (result.report.status === 'remote-read-error') return halted(NO_CONNECTION);
+      setStopped(false);
       // What still needs a person, as of this pass. Written down whole, so a
       // setlist that was settled stops being offered as a conflict.
       setConflicts(
@@ -422,7 +469,8 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
   );
 
   const syncAll = useCallback(async () => {
-    if (busy || busyAll) return null;
+    if (inFlight.current || busy || busyAll) return null;
+    inFlight.current = true;
     setBusyAll(true);
     try {
       // Nothing is named, so nothing new is created: bringing down and keeping
@@ -432,8 +480,12 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
       setPasses((count) => count + 1);
       return describePass(tally(outcome.report.outcomes.values()));
     } catch {
+      // Nada llegó a la nube, o nada volvió de ella. Lo de este dispositivo
+      // sigue como estaba, y la próxima reconexión puede volver a intentarlo.
+      setStopped(true);
       return { ok: false, message: NO_CONNECTION };
     } finally {
+      inFlight.current = false;
       setBusyAll(false);
     }
   }, [busy, busyAll, runPass]);
@@ -442,7 +494,8 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
     async (setlist: Setlist) => {
       // One at a time: a second press while the first is in the air does
       // nothing rather than sending the same setlist twice.
-      if (busy || busyAll) return null;
+      if (inFlight.current || busy || busyAll) return null;
+      inFlight.current = true;
       const intent = agreed.has(setlist.id) ? 'changed' : 'new';
 
       setBusy(setlist.id);
@@ -458,8 +511,10 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
         return describeSync(outcome.report.outcomes.get(setlist.id), setlist.name, intent);
       } catch {
         // Nothing reached the cloud, or nothing came back from it.
+        setStopped(true);
         return { ok: false, message: NO_CONNECTION };
       } finally {
+        inFlight.current = false;
         setBusy(null);
       }
     },
@@ -506,7 +561,8 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
 
   const resolve = useCallback(
     async (setlist: Setlist, keep: SetlistKeep, seenRevision: number) => {
-      if (busy || busyAll) return null;
+      if (inFlight.current || busy || busyAll) return null;
+      inFlight.current = true;
       setBusy(setlist.id);
       try {
         // The decision names the version it was made about. Nothing else is
@@ -516,8 +572,10 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
         setPasses((count) => count + 1);
         return describeResolution(outcome.report.outcomes.get(setlist.id), setlist.name, keep);
       } catch {
+        setStopped(true);
         return { ok: false, message: NO_CONNECTION };
       } finally {
+        inFlight.current = false;
         setBusy(null);
       }
     },
@@ -526,6 +584,7 @@ export function useSetlistCloudSync(scope: SetlistScope): SetlistCloudSync {
 
   return {
     available: Boolean(userId) && Boolean(services),
+    state: syncStateOf({ working: Boolean(busy) || busyAll, conflicts: conflicts.size, stopped }),
     stateOf,
     busy,
     busyAll,

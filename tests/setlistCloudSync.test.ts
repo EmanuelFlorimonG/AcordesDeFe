@@ -241,7 +241,10 @@ describe('Guardar en la cuenta es siempre una decisión de alguien', () => {
   });
 
   it('una segunda pulsación mientras sincroniza no hace nada', () => {
-    eq(code.includes('if (busy || busyAll) return null;'), true);
+    eq(code.includes('if (inFlight.current || busy || busyAll) return null;'), true);
+    // `busy` y `busyAll` son estado de React y no se ven hasta el siguiente
+    // render; el ref se lee en el momento, que es lo que hace falta cuando
+    // una pulsación y una reconexión coinciden en el mismo tick.
     eq(detail.includes('disabled: syncingToAccount'), true, 'y el menú la deshabilita');
     eq(detail.includes("'Guardando los cambios…'"), true, 'diciendo que está en marcha');
   });
@@ -393,7 +396,10 @@ describe('Resolver un conflicto es siempre una decisión de alguien', () => {
   });
 
   it('una segunda pulsación mientras se resuelve no hace nada', () => {
-    eq(code.includes('if (busy || busyAll) return null;'), true);
+    eq(code.includes('if (inFlight.current || busy || busyAll) return null;'), true);
+    // `busy` y `busyAll` son estado de React y no se ven hasta el siguiente
+    // render; el ref se lee en el momento, que es lo que hace falta cuando
+    // una pulsación y una reconexión coinciden en el mismo tick.
     eq(dialog.includes('disabled={busy}'), true);
     eq(dialog.includes("'Guardando…'"), true);
   });

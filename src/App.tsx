@@ -50,6 +50,7 @@ import { useOnline } from './hooks/useOnline';
 import { useSetlists } from './hooks/useSetlists';
 import { useGuestSetlistImport } from './hooks/useGuestSetlistImport';
 import { useSetlistCloudSync, type SetlistVersions } from './hooks/useSetlistCloudSync';
+import { useSetlistAutoSync } from './hooks/useSetlistAutoSync';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
 import { bindArrangement, withReviewNeeded } from './utils/arrangement';
@@ -257,6 +258,9 @@ export function App() {
   // Keeping one setlist in step with the account, only ever because
   // somebody asked.
   const cloudSync = useSetlistCloudSync(setlistScope);
+  // …o porque vuelve la conexión, que es lo único que sincroniza sin que nadie
+  // pulse nada. Se monta aquí y sólo aquí: una reconexión, una pasada.
+  useSetlistAutoSync(cloudSync, setlists.reload);
   // Lo hecho antes de iniciar sesión, que cambiar de ámbito dejó de mostrar.
   const guestImport = useGuestSetlistImport(setlistScope);
   // The people of the ministry and the keys they usually sing in.
