@@ -1726,6 +1726,7 @@ export function App() {
 
       <div className="flex flex-col flex-grow min-w-0 print:block">
         <Topbar
+          session={sessionState.state === 'signed-in' ? sessionState.session : null}
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
           searchAccessory={

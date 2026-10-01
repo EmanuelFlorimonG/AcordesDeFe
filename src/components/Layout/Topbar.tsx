@@ -1,7 +1,9 @@
 import React, { useEffect } from 'react';
 import { Search, Menu, X } from 'lucide-react';
+import { initialOf, nameOf, type AppSession } from '../../auth/session';
 
 interface TopbarProps {
+  session?: AppSession | null;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onOpenSidebar: () => void;
@@ -27,6 +29,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   activePage,
   inputRef,
   searchAccessory,
+  session = null,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -100,9 +103,9 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         <div
           className="w-9 h-9 rounded-full bg-[#EAF1FF] dark:bg-blue-500/10 text-[#2464ED] flex items-center justify-center font-bold text-sm border border-[#2464ED]/10 flex-shrink-0"
-          title="Ministerio Acordes de Fe"
+          role="img" aria-label={session ? `Usuario: ${nameOf(session)}` : 'Ministerio Acordes de Fe'} title={session ? nameOf(session) : 'Ministerio Acordes de Fe'}
         >
-          A
+          {session ? initialOf(session) : 'A'}
         </div>
       </nav>
     </header>
