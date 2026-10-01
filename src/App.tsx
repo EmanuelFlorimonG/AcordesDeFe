@@ -51,6 +51,9 @@ import { useSetlists } from './hooks/useSetlists';
 import { useGuestSetlistImport } from './hooks/useGuestSetlistImport';
 import { useSetlistCloudSync, type SetlistVersions } from './hooks/useSetlistCloudSync';
 import { useSetlistAutoSync } from './hooks/useSetlistAutoSync';
+import { useOfflineReadyOnce, usePwaState } from './hooks/usePwa';
+import { applyPendingUpdate } from './pwa';
+import { ConnectionStatus } from './components/Layout/ConnectionStatus';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
 import { bindArrangement, withReviewNeeded } from './utils/arrangement';
@@ -261,6 +264,10 @@ export function App() {
   // …o porque vuelve la conexión, que es lo único que sincroniza sin que nadie
   // pulse nada. Se monta aquí y sólo aquí: una reconexión, una pasada.
   useSetlistAutoSync(cloudSync, setlists.reload);
+  // Si hay una versión nueva esperando, y si la aplicación acaba de quedar
+  // guardada para abrir sin conexión. Ninguna de las dos hace nada sola.
+  const pwa = usePwaState();
+  const offlineReady = useOfflineReadyOnce();
   // Lo hecho antes de iniciar sesión, que cambiar de ámbito dejó de mostrar.
   const guestImport = useGuestSetlistImport(setlistScope);
   // The people of the ministry and the keys they usually sing in.
@@ -868,6 +875,9 @@ export function App() {
       ? openSetlistCloudState
       : null;
   const conflictSetlist = conflict ? setlists.getSetlist(conflict.setlistId) : null;
+  // El primero que la última pasada dejó sin decidir, para que el aviso pueda
+  // abrir la pantalla de siempre. Quien elige sigue siendo una persona.
+  const conflictedSetlist = setlists.setlists.find((setlist) => cloudSync.conflicted(setlist)) ?? null;
   const sharingSetlist = sharingId ? setlists.getSetlist(sharingId) : null;
   /** The setlist being played live, when mass mode is open over it. */
   const massSetlist = massSetlistId ? setlists.getSetlist(massSetlistId) : null;
@@ -1832,6 +1842,27 @@ export function App() {
           />
         </Suspense>
       )}
+
+      {/* Una sola línea sobre la conexión, los Setlists y las versiones. En
+          Modo Misa se encoge para no tapar la letra. */}
+      <ConnectionStatus
+        online={online}
+        sync={cloudSync.state}
+        canSync={cloudSync.available}
+        update={pwa.kind === 'update-available'}
+        offlineReady={offlineReady}
+        compact={Boolean(massSetlist)}
+        onResolve={conflictedSetlist ? () => openConflict(conflictedSetlist) : undefined}
+        onRetry={() => {
+          void cloudSync.syncAll().then((answer) => {
+            setlists.reload();
+            if (answer) showToast(answer.message);
+          });
+        }}
+        onUpdate={() => {
+          void applyPendingUpdate();
+        }}
+      />
 
       {toast && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-[#10203A] text-white text-xs font-medium shadow-lg">

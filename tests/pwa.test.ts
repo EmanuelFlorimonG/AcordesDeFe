@@ -115,9 +115,17 @@ describe('Una versión nueva no toma el control sola', () => {
     eq(pwa.includes('export function getPwaState'), true);
   });
 
-  it('todavía no hay ningún aviso en pantalla: eso es de otra fase', () => {
+  it('la pantalla la ofrece, y nadie la aplica por su cuenta', () => {
     const app = sinComentarios(readFileSync('src/App.tsx', 'utf8'));
-    for (const forbidden of ['getPwaState', 'subscribeToPwa', 'update-available', 'Nueva versión']) {
+    // La aplicación mira el estado por el puente de React, no por dentro.
+    eq(app.includes('usePwaState()'), true);
+    eq(app.includes("update={pwa.kind === 'update-available'}"), true);
+    for (const forbidden of ['getPwaState(', 'subscribeToPwa(']) {
+      eq(app.includes(forbidden), false, forbidden);
+    }
+    // Y lo que aplica la versión nueva sólo se llama desde una pulsación.
+    eq(app.includes('void applyPendingUpdate();'), true);
+    for (const forbidden of ['location.reload', 'skipWaiting']) {
       eq(app.includes(forbidden), false, forbidden);
     }
   });
