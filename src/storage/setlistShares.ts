@@ -42,18 +42,37 @@ interface ShareRow {
 const tokenOf = (row: ShareRow | undefined): string | null =>
   typeof row?.token === 'string' ? readShareToken(row.token) : null;
 
+/**
+ * Una fila leída, con lo justo para reconstruir el enlace más adelante sin
+ * volver a preguntar: cuál es y desde cuándo. El dueño no viaja: lo decide
+ * `auth.uid()` en la base de datos.
+ */
+function shareOf(setlistId: string, row: ShareRow | undefined): SetlistShareRecord | null {
+  const token = tokenOf(row);
+  if (!token) return null;
+  const createdAt = typeof row?.created_at === 'string' ? row.created_at : new Date().toISOString();
+  return { setlistId, token, createdAt };
+}
+
+/** Un enlace tal como lo devuelve la nube. */
+export interface SetlistShareRecord {
+  setlistId: string;
+  token: string;
+  createdAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Lo que hace el dueño
 // ---------------------------------------------------------------------------
 
 export interface SetlistShareRepository {
   /** El enlace de este Setlist, o null si todavía no está compartido. */
-  find(setlistId: string): Promise<string | null>;
+  find(setlistId: string): Promise<SetlistShareRecord | null>;
   /**
-   * Crea el enlace y devuelve su token. El token lo pone la base de datos, no
-   * este código: un navegador no elige con qué azar se protege un enlace.
+   * Crea el enlace y lo devuelve. El token lo pone la base de datos, no este
+   * código: un navegador no elige con qué azar se protege un enlace.
    */
-  create(setlistId: string): Promise<string>;
+  create(setlistId: string): Promise<SetlistShareRecord>;
   /** Desactiva el enlace. A partir de ese instante no abre nada. */
   revoke(setlistId: string): Promise<void>;
 }
@@ -70,18 +89,18 @@ export function createSetlistShareRepository(client: SupabaseClient): SetlistSha
     async find(setlistId) {
       const rows = await client.select<ShareRow>(
         SHARES,
-        `select=token&setlist_id=eq.${encodeURIComponent(setlistId)}&limit=1`
+        `select=token,created_at&setlist_id=eq.${encodeURIComponent(setlistId)}&limit=1`
       );
-      return tokenOf(rows[0]);
+      return shareOf(setlistId, rows[0]);
     },
 
     async create(setlistId) {
       // Sólo el Setlist: el token y el dueño los pone la base de datos, y la
       // clave foránea comprueba que ese Setlist existe y es de esta cuenta.
       const rows = await client.insert<ShareRow>(SHARES, { setlist_id: setlistId });
-      const token = tokenOf(rows[0]);
-      if (!token) throw new SupabaseRequestError('No se pudo crear el enlace.', 500, null);
-      return token;
+      const share = shareOf(setlistId, rows[0]);
+      if (!share) throw new SupabaseRequestError('No se pudo crear el enlace.', 500, null);
+      return share;
     },
 
     async revoke(setlistId) {

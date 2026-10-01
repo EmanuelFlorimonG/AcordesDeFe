@@ -27,6 +27,7 @@ const eq = <T>(actual: T, expected: T, message?: string) => {
 after(() => console.log(`setlistShares.test: ${checks} comprobaciones`));
 
 const TOKEN = '0123456789abcdef0123456789abcdef';
+const CREATED = '2026-09-15T12:00:00.000Z';
 const NOW = Date.UTC(2026, 8, 15, 12);
 
 interface Call {
@@ -96,10 +97,10 @@ describe('Un token de compartir', () => {
 
 describe('Los enlaces de quien ha iniciado sesión', () => {
   it('pregunta por el Setlist, nunca por el dueño', async () => {
-    const { calls, client } = fakeClient({ select: [{ token: TOKEN }] });
+    const { calls, client } = fakeClient({ select: [{ token: TOKEN, created_at: CREATED }] });
     const found = await createSetlistShareRepository(client).find('setlist-1');
 
-    eq(found, TOKEN);
+    eq(found, { setlistId: 'setlist-1', token: TOKEN, createdAt: CREATED }, 'el token y desde cuando');
     eq(calls[0].op, 'select');
     eq(calls[0].args[0], 'setlist_shares');
     const query = calls[0].args[1] as string;
@@ -118,8 +119,12 @@ describe('Los enlaces de quien ha iniciado sesión', () => {
   });
 
   it('al crear manda sólo el Setlist: el token y el dueño los pone la base de datos', async () => {
-    const { calls, client } = fakeClient({ insert: [{ token: TOKEN }] });
-    eq(await createSetlistShareRepository(client).create('setlist-1'), TOKEN);
+    const { calls, client } = fakeClient({ insert: [{ token: TOKEN, created_at: CREATED }] });
+    eq(await createSetlistShareRepository(client).create('setlist-1'), {
+      setlistId: 'setlist-1',
+      token: TOKEN,
+      createdAt: CREATED,
+    });
 
     eq(calls[0].op, 'insert');
     eq(calls[0].args[0], 'setlist_shares');

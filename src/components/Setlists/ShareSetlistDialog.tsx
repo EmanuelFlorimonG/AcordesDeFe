@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { Check, Copy, Link2, Link2Off, Loader2, TriangleAlert } from 'lucide-react';
-import { useSetlistShare } from '../../hooks/useSetlistShare';
+import { Check, Copy, Link2, Link2Off, Loader2, TriangleAlert, WifiOff } from 'lucide-react';
+import {
+  NEEDS_INTERNET_TO_CREATE,
+  NEEDS_INTERNET_TO_REVOKE,
+  useSetlistShare,
+} from '../../hooks/useSetlistShare';
 import { Dialog } from './Dialog';
 import { QrCode } from './QrCode';
 import { dangerButton, primaryButton, secondaryButton } from './ui';
@@ -14,7 +18,19 @@ import { dangerButton, primaryButton, secondaryButton } from './ui';
  *
  * Crear el enlace es una decisión, igual que desactivarlo. Abrir esta ventana
  * no comparte nada.
+ *
+ * Sin conexión se puede enseñar y copiar un enlace que ya existía, y su código
+ * QR se dibuja aquí mismo. Lo que no se puede es crear uno ni desactivarlo: eso
+ * lo hace la base de datos, y se dice en vez de fingirlo.
  */
+
+/** Una línea discreta: ni alarma ni error, sólo lo que pasa. */
+const Offline: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+    <WifiOff className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+    <span>{children}</span>
+  </p>
+);
 
 interface ShareSetlistDialogProps {
   setlistId: string;
@@ -111,10 +127,16 @@ export const ShareSetlistDialog: React.FC<ShareSetlistDialogProps> = ({ setlistI
           <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
             Se verá la versión guardada en tu cuenta, así que sincroniza antes si acabas de cambiar algo aquí.
           </p>
-          <button type="button" onClick={share.create} disabled={share.busy} className={`${primaryButton} mt-4`}>
+          <button
+            type="button"
+            onClick={share.create}
+            disabled={share.busy || !share.online}
+            className={`${primaryButton} mt-4`}
+          >
             {share.busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
             {share.busy ? 'Creando…' : 'Crear enlace para compartir'}
           </button>
+          {!share.online && <Offline>{NEEDS_INTERNET_TO_CREATE}</Offline>}
         </div>
       )}
 
@@ -142,14 +164,29 @@ export const ShareSetlistDialog: React.FC<ShareSetlistDialogProps> = ({ setlistI
             </p>
           </div>
 
+          {share.fromMemory && (
+            <Offline>
+              Este enlace está guardado en el dispositivo. Es el último que conocemos: sin conexión no podemos
+              confirmar que siga activo.
+            </Offline>
+          )}
+
           <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
             Se ve la versión guardada en tu cuenta. Si cambias algo en este dispositivo, sincroniza para que lo vean.
           </p>
 
-          <button type="button" onClick={() => setConfirmingRevoke(true)} disabled={share.busy} className={secondaryButton}>
-            {share.busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2Off className="w-4 h-4" />}
-            Desactivar enlace
-          </button>
+          <div>
+            <button
+              type="button"
+              onClick={() => setConfirmingRevoke(true)}
+              disabled={share.busy || !share.online}
+              className={secondaryButton}
+            >
+              {share.busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2Off className="w-4 h-4" />}
+              Desactivar enlace
+            </button>
+            {!share.online && <Offline>{NEEDS_INTERNET_TO_REVOKE}</Offline>}
+          </div>
         </div>
       )}
 
