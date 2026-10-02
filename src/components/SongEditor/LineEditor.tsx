@@ -88,7 +88,12 @@ export const LineEditor: React.FC<LineEditorProps> = ({
     const chip = anchorId ? chipRefs.current.get(anchorId) : null;
     (chip?.isConnected ? chip : inputRef.current)?.focus();
   };
-  const caret = () => inputRef.current?.selectionStart ?? line.text.length;
+  const savedCaret = useRef<number | null>(null);
+  const rememberCaret = (input: HTMLInputElement) => {
+    const position = input.selectionStart;
+    if (position !== null && position >= 0 && position <= input.value.length) savedCaret.current = position;
+  };
+  const caret = () => Math.min(line.text.length, savedCaret.current ?? inputRef.current?.selectionStart ?? line.text.length);
   const movingChord = moving ? line.chords.find((anchor) => anchor.id === moving) ?? null : null;
 
   /** The lane's own measurements, read from the field so the font decides, not a constant. */
@@ -230,7 +235,7 @@ export const LineEditor: React.FC<LineEditorProps> = ({
     <ActionMenu
       label={`Opciones de ${name}`}
       icon={MoreHorizontal}
-      triggerClassName={`${iconButton} w-9 h-9`}
+      triggerClassName={`${iconButton} min-w-[44px] min-h-[44px]`}
       items={[
         line.instrumental
           ? { label: 'Convertir en línea con letra', icon: Rows3, onSelect: () => onChange(setInstrumental(line, false)) }
@@ -315,12 +320,13 @@ export const LineEditor: React.FC<LineEditorProps> = ({
               spellCheck
               autoCapitalize="sentences"
               onChange={(event) => {
+                rememberCaret(event.currentTarget);
                 setMoving(null);
                 onChange(setLineText(line, event.target.value, event.target.selectionEnd ?? undefined));
                 syncScroll();
               }}
               onScroll={syncScroll}
-              onSelect={syncScroll}
+              onSelect={(event) => { rememberCaret(event.currentTarget); syncScroll(); }}
               onClick={(event) => {
                 if (movingChord) landMovingChord(event.currentTarget.selectionStart ?? 0);
               }}
@@ -360,7 +366,7 @@ export const LineEditor: React.FC<LineEditorProps> = ({
             type="button"
             onClick={() => setRequest({ mode: 'add', position: caret() })}
             aria-label={`Agregar acorde en ${name}, en la posición del cursor`}
-            className="mb-0.5 inline-flex h-10 [@media(pointer:coarse)]:h-11 shrink-0 items-center gap-1 rounded-lg border border-slate-200 dark:border-dark-700 px-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-[#2464ED] hover:text-[#2464ED] dark:hover:text-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
+            className="mb-0.5 inline-flex min-w-[44px] h-11 shrink-0 items-center gap-1 rounded-lg border border-slate-200 dark:border-dark-700 px-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-[#2464ED] hover:text-[#2464ED] dark:hover:text-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Acorde</span>
