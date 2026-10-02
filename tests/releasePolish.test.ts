@@ -124,11 +124,17 @@ describe('La cuenta cuenta lo que hace hoy', () => {
     }
   });
 
-  it('y dice lo que hay: opcional, offline, sincronización y conflictos', () => {
-    eq(codigo.includes('lleva tus Setlists de un dispositivo a otro'), true);
-    eq(codigo.includes('siguen estando en este dispositivo'), true);
-    eq(/sin conexión se preparan igual/i.test(codigo), true);
-    eq(/se te\s+pregunta cuál conservar/i.test(codigo.replace(/\s+/g, ' ')), true, 'los conflictos los decide una persona');
+  it('explica la cuenta opcional al registrarse y ofrece Mi cuenta a quien ya entró', () => {
+    eq(/setlists[\s\S]*cancionero funciona igual sin ella/i.test(codigo), true,
+      'registrarse sigue siendo opcional y permite llevar los Setlists');
+    eq(/if \(session\)\s*\{\s*return <AccountProfile\b/.test(codigo), true,
+      'la sesión existente abre el perfil, no otro formulario de acceso');
+    const perfil = sinComentarios('src/components/Account/AccountProfile.tsx');
+    for (const label of ['Mi cuenta', 'Perfil', 'Seguridad', 'Guardar cambios', 'Cambiar contraseña', 'Cerrar sesión']) {
+      eq(perfil.includes(label), true, label);
+    }
+    eq(perfil.includes('session.email'), true, 'identidad de la sesión actual');
+    eq(perfil.includes('Crear una cuenta'), false, 'el perfil no invita a registrarse de nuevo');
   });
 });
 
