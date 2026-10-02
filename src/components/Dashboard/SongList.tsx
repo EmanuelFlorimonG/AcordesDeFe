@@ -73,7 +73,7 @@ export const SongList: React.FC<SongListProps> = ({
                     e.stopPropagation();
                     onSelectSong(song);
                   }}
-                  className="max-w-full truncate text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
+                  className="max-w-full line-clamp-2 sm:line-clamp-none sm:truncate text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
                 >
                   {song.title}
                 </button>

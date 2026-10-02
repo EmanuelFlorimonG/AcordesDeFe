@@ -37,7 +37,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
       .filter((s): s is Song => Boolean(s));
 
     return (
-      <div className="w-full px-5 sm:px-10 py-6 sm:py-8">
+      <div className="w-full px-4 sm:px-10 py-6 sm:py-8">
         <button
           onClick={() => setOpenPlaylistId(null)}
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors mb-6 text-sm font-medium"
@@ -68,7 +68,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
         </div>
 
         {playlistSongs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
+          <div className="flex flex-col items-center justify-center py-8 sm:py-16 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
             <Music4 className="w-8 h-8 text-slate-300 mb-3" />
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Esta lista está vacía. Añade canciones desde el menú de opciones (⋮) del cancionero.
@@ -99,7 +99,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
   };
 
   return (
-    <div className="w-full px-5 sm:px-10 py-6 sm:py-8">
+    <div className="w-full px-4 sm:px-10 py-6 sm:py-8">
       <h1 className="text-2xl font-extrabold text-[#10203A] dark:text-white tracking-tight mb-1">
         Listas
       </h1>
@@ -128,7 +128,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
       </div>
 
       {playlists.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
+        <div className="flex flex-col items-center justify-center py-8 sm:py-16 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
           <ListPlus className="w-8 h-8 text-slate-300 mb-3" />
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">
             Aún no tienes listas. Crea la primera arriba, o añade una canción a una lista nueva desde el menú (⋮) del cancionero. Una lista guarda canciones sueltas; no tiene orden de celebración ni tonos.

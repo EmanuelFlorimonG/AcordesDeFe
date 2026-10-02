@@ -9,8 +9,8 @@ import type { AppSession } from '../src/auth/session';
 const session = (displayName: string | null, email = 'emanuel@example.com'): AppSession => ({
   userId: 'test-user', displayName, email, emailConfirmed: true,
 });
-const render = (user: AppSession | null) => renderToStaticMarkup(createElement(Topbar, {
-  session: user, searchQuery: '', onSearchChange() {}, onOpenSidebar() {},
+const render = (user: AppSession | null, searchQuery = '') => renderToStaticMarkup(createElement(Topbar, {
+  session: user, searchQuery, onSearchChange() {}, onOpenSidebar() {},
   onGoToCancionero() {}, onGoToAbout() {}, onGoToContact() {},
   activePage: 'app', inputRef: { current: null },
 }));
@@ -40,5 +40,21 @@ describe('Topbar account initial', () => {
     assert.match(topbar, /initialOf\(session\)/);
     assert.match(app, /<Topbar\s+session=\{sessionState.state === 'signed-in' \? sessionState.session : null\}/);
     assert.doesNotMatch(topbar, /fetch\(|supabase|AppAuth|useSession|\.select\(|\.rpc\(/i);
+  });
+});
+
+
+describe('Topbar responsive search presentation', () => {
+  it('shows a decorative short mobile prompt without replacing the accessible search name', () => {
+    const html = render(null);
+    assert.match(html, /aria-label="Buscar canciones"/);
+    assert.match(html, /placeholder="Buscar canciones, artistas, momentos…"/);
+    assert.match(html, /<span aria-hidden="true"[^>]*sm:hidden[^>]*>Buscar canciones<\/span>/);
+  });
+  it('removes the decorative prompt when the user types and retains the query and clear action', () => {
+    const html = render(null, 'María');
+    assert.match(html, /value="María"/);
+    assert.match(html, /aria-label="Borrar la búsqueda"/);
+    assert.doesNotMatch(html, /<span aria-hidden="true"[^>]*>Buscar canciones<\/span>/);
   });
 });

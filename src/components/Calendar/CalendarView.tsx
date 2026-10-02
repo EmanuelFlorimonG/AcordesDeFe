@@ -79,7 +79,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           Misas, ensayos y actividades, anotados en este dispositivo.
         </p>
       </div>
-      <button type="button" onClick={() => onCreate(selectedDate)} className={primaryButton}>
+      <button type="button" onClick={() => onCreate(selectedDate)} className={`${primaryButton} ${events.length === 0 ? 'hidden sm:inline-flex' : ''}`}>
         <Plus className="w-4 h-4" />
         Nueva actividad
       </button>
@@ -110,15 +110,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   if (events.length === 0) {
     return (
-      <div className="w-full px-5 sm:px-10 py-6 sm:py-8">
+      <div className="w-full px-4 sm:px-10 py-6 sm:py-8">
         {header}
         {notice}
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
+        <div className="flex flex-col items-center justify-center py-8 sm:py-16 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
           <div className="w-12 h-12 rounded-xl bg-[#EAF1FF] dark:bg-blue-500/10 flex items-center justify-center mb-4">
             <CalendarDays className="w-6 h-6 text-[#2464ED]" />
           </div>
           <h2 className="text-base font-bold text-[#10203A] dark:text-white">No hay actividades programadas.</h2>
-          <p className="mt-1.5 mb-5 max-w-sm text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1.5 mb-4 sm:mb-5 max-w-sm text-sm text-slate-500 dark:text-slate-400">
             Añade la próxima Misa, el ensayo del viernes o cualquier actividad del ministerio.
           </p>
           <button type="button" onClick={() => onCreate(now.date)} className={primaryButton}>
@@ -131,7 +131,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   }
 
   return (
-    <div className="w-full px-5 sm:px-10 py-6 sm:py-8">
+    <div className="w-full px-4 sm:px-10 py-6 sm:py-8">
       {header}
       {notice}
 

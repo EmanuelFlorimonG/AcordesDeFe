@@ -159,7 +159,7 @@ export const SetlistsView: React.FC<SetlistsViewProps> = ({
   ].filter((group) => group.setlists.length > 0);
 
   return (
-    <div className="w-full px-5 sm:px-10 py-6 sm:py-8">
+    <div className="w-full px-4 sm:px-10 py-6 sm:py-8">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-[#10203A] dark:text-white mb-1">Setlists</h1>
@@ -239,17 +239,17 @@ export const SetlistsView: React.FC<SetlistsViewProps> = ({
       )}
 
       {setlists.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-14 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
-          <div className="w-12 h-12 rounded-xl bg-[#EAF1FF] dark:bg-blue-500/10 flex items-center justify-center mb-4">
+        <div className="flex flex-col items-center justify-center py-8 sm:py-14 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
+          <div className="w-12 h-12 rounded-xl bg-[#EAF1FF] dark:bg-blue-500/10 flex items-center justify-center mb-3 sm:mb-4">
             <ListOrdered className="w-6 h-6 text-[#2464ED]" />
           </div>
           <h2 className="text-lg font-bold text-[#10203A] dark:text-white">Aún no tienes Setlists</h2>
-          <p className="mt-1.5 mb-6 max-w-md text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+          <p className="mt-1.5 mb-4 sm:mb-6 max-w-md text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             Un Setlist reúne las canciones de una misa, un ensayo o un retiro en el orden en que se cantan, cada una
             con el tono, la cejilla y las notas de ese día. El cancionero no cambia.
           </p>
           <EmptyPreview />
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+          <div className="mt-4 sm:mt-6 flex flex-wrap items-center justify-center gap-2">
             <button type="button" onClick={() => setIsCreating(true)} className={primaryButton}>
               <Plus className="w-4 h-4" />
               Crear el primer Setlist

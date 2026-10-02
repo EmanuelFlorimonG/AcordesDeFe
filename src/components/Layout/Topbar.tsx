@@ -97,8 +97,13 @@ export const Topbar: React.FC<TopbarProps> = ({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Buscar canciones, artistas, momentos…"
           aria-label="Buscar canciones"
-          className="w-full pl-10 pr-9 lg:pr-16 py-2.5 bg-slate-50 dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#2464ED] focus:ring-1 focus:ring-[#2464ED] transition-shadow text-[#10203A] dark:text-slate-100"
+          className="w-full pl-10 pr-9 lg:pr-16 py-2.5 bg-slate-50 dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-lg text-sm placeholder:text-transparent sm:placeholder:text-slate-400 focus:outline-none focus:border-[#2464ED] focus:ring-1 focus:ring-[#2464ED] transition-shadow text-[#10203A] dark:text-slate-100"
         />
+        {!searchQuery && (
+          <span aria-hidden="true" className="sm:hidden pointer-events-none absolute left-10 right-3 top-1/2 -translate-y-1/2 truncate text-sm text-slate-400">
+            Buscar canciones
+          </span>
+        )}
         {searchQuery ? (
           <button
             onClick={() => onSearchChange('')}

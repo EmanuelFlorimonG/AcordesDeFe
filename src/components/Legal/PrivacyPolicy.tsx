@@ -22,10 +22,10 @@ const linkClass = 'text-blue-600 dark:text-blue-400 hover:underline';
 
 export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-12">
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 hover:border-slate-300 transition-colors mb-8"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 hover:border-slate-300 transition-colors mb-5 sm:mb-8"
       >
         <ArrowLeft className="w-4 h-4 text-blue-600" />
         <span className="text-sm font-medium">Volver al cancionero</span>

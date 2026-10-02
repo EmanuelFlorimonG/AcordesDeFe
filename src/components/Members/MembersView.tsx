@@ -47,7 +47,7 @@ export const MembersView: React.FC<MembersViewProps> = ({ members, onOpen, onCre
     setFilters((current) => ({ ...current, [key]: value }));
 
   return (
-    <div className="w-full px-5 sm:px-10 py-6 sm:py-8">
+    <div className="w-full px-4 sm:px-10 py-6 sm:py-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#10203A] dark:text-white">Miembros</h1>
@@ -55,19 +55,19 @@ export const MembersView: React.FC<MembersViewProps> = ({ members, onOpen, onCre
             Quién canta y quién toca, anotado en este dispositivo: qué hacen, qué tocan y qué voz suelen llevar.
           </p>
         </div>
-        <button type="button" onClick={onCreate} className={primaryButton}>
+        <button type="button" onClick={onCreate} className={`${primaryButton} ${members.length === 0 ? 'hidden sm:inline-flex' : ''}`}>
           <Plus className="w-4 h-4" />
           Añadir miembro
         </button>
       </header>
 
       {members.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
-          <div className="w-12 h-12 rounded-xl bg-[#EAF1FF] dark:bg-blue-500/10 flex items-center justify-center mb-4">
+        <div className="flex flex-col items-center justify-center py-8 sm:py-16 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
+          <div className="w-12 h-12 rounded-xl bg-[#EAF1FF] dark:bg-blue-500/10 flex items-center justify-center mb-3 sm:mb-4">
             <Users className="w-6 h-6 text-[#2464ED]" />
           </div>
           <h2 className="text-base font-bold text-[#10203A] dark:text-white">Aún no hay miembros</h2>
-          <p className="mt-1.5 mb-5 max-w-sm text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1.5 mb-4 sm:mb-5 max-w-sm text-sm text-slate-500 dark:text-slate-400">
             Añade a las personas del ministerio para formar el equipo de cada celebración y asignarlas a partes de
             las canciones.
           </p>
