@@ -15,6 +15,7 @@ import { fieldLabel, primaryButton, secondaryButton, textField } from '../Setlis
 interface AccountDialogProps {
   /** The session there is, or null while nobody is signed in */
   session: AppSession | null;
+  avatarUrl?: string | null;
   /** Whether the database granted this identity an editorial role */
   editorial: boolean;
   onOpenAdmin: () => void;
@@ -32,7 +33,7 @@ type Step = 'sign-in' | 'sign-up' | 'confirm' | 'forgot' | 'sent';
  * decides what anyone may do — the editorial panel appears only because the
  * database said this identity has a role.
  */
-export const AccountDialog: React.FC<AccountDialogProps> = ({ session, editorial, onOpenAdmin, onClose }) => {
+export const AccountDialog: React.FC<AccountDialogProps> = ({ session, avatarUrl, editorial, onOpenAdmin, onClose }) => {
   const { services, absent } = useAuthServices(true);
   const [step, setStep] = useState<Step>('sign-in');
   const [name, setName] = useState('');
@@ -169,7 +170,7 @@ export const AccountDialog: React.FC<AccountDialogProps> = ({ session, editorial
 
   // --- Signed in: the account itself ------------------------------------------------
   if (session) {
-    return <AccountProfile key={session.userId} session={session} auth={services?.auth ?? null} editorial={editorial} onOpenAdmin={onOpenAdmin} onClose={onClose} />;
+    return <AccountProfile key={session.userId} session={session} avatarUrl={avatarUrl} avatars={services?.avatars ?? null} auth={services?.auth ?? null} editorial={editorial} onOpenAdmin={onOpenAdmin} onClose={onClose} />;
   }
 
   // --- After signing up, or after asking for a new password -------------------------

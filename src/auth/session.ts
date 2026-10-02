@@ -24,6 +24,8 @@ export interface AppSession {
   displayName: string | null;
   /** Whether their address is confirmed, as Supabase reports it */
   emailConfirmed: boolean;
+  /** Stable private Storage reference, never a signed URL. */
+  avatarPath?: string | null;
 }
 
 /** Everything that can go wrong on the way in, told apart only to explain it in Spanish. */

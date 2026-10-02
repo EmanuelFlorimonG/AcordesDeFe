@@ -40,6 +40,7 @@ import {
 import { parseSuggestEditHash, suggestEditHash } from './catalog/editAvailability';
 import { adminHash } from './admin/routes';
 import { canOpenAdminPanel, useEditorialRole } from './admin/useEditorialRole';
+import { useAccountAvatar } from './auth/useAvatar';
 import { loadAuthServices, useSession } from './auth/useSession';
 import { GUEST_SETLISTS, userSetlists } from './storage/setlistStorage';
 import { NEW_PASSWORD_HASH } from './auth/recovery';
@@ -178,6 +179,7 @@ export function App() {
   const editorialAccess = useEditorialRole();
   /** Who is reading, if anyone signed in. An account is optional everywhere. */
   const sessionState = useSession();
+  const avatarUrl = useAccountAvatar(sessionState.state === 'signed-in' ? sessionState.session : null);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   /** The code in #/propuesta/<code>, if any */
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
@@ -1719,6 +1721,7 @@ export function App() {
       {isAccountOpen && (
         <Suspense fallback={null}>
           <AccountDialog
+            avatarUrl={avatarUrl}
             session={sessionState.state === 'signed-in' ? sessionState.session : null}
             editorial={canOpenAdminPanel(editorialAccess)}
             onOpenAdmin={() => {
@@ -1733,6 +1736,7 @@ export function App() {
       <div className="flex flex-col flex-grow min-w-0 print:block">
         <Topbar
           session={sessionState.state === 'signed-in' ? sessionState.session : null}
+          avatarUrl={avatarUrl}
           onOpenAccount={() => setIsAccountOpen(true)}
           onSignOut={async () => {
             try {

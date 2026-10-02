@@ -1,12 +1,17 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, Eye, EyeOff, LoaderCircle, LockKeyhole, LogOut, ShieldCheck } from 'lucide-react';
 import { AUTH_MESSAGES, checkDisplayName, checkNewPassword, initialOf, nameOf, type AppAuth, type AppSession, type AuthResult } from '../../auth/session';
+import type { AvatarService } from '../../auth/avatars';
+import { Avatar } from './Avatar';
+import { AvatarEditor } from './AvatarEditor';
 import { Dialog } from '../Setlists/Dialog';
 import { fieldLabel, primaryButton, secondaryButton, textField } from '../Setlists/ui';
 
 type ProfileAuth = Pick<AppAuth, 'updateDisplayName' | 'updatePassword' | 'signOut'>;
 interface Props {
   session: AppSession;
+  avatarUrl?: string | null;
+  avatars?: AvatarService | null;
   auth: ProfileAuth | null;
   editorial: boolean;
   onOpenAdmin: () => void;
@@ -14,14 +19,16 @@ interface Props {
 }
 
 /** The signed-in account, using the same Auth and dialog as signing in. */
-export function AccountProfile({ session, auth, editorial, onOpenAdmin, onClose }: Props) {
+export function AccountProfile({ session, avatarUrl, avatars = null, auth, editorial, onOpenAdmin, onClose }: Props) {
   const [screen, setScreen] = useState<'profile' | 'password'>('profile');
   const [savedName, setSavedName] = useState(session.displayName);
   const [name, setName] = useState(session.displayName ?? '');
   const [password, setPassword] = useState('');
   const [repeat, setRepeat] = useState('');
   const [reveal, setReveal] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [authBusy, setBusy] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const busy = authBusy || avatarBusy;
   const pending = useRef(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
@@ -41,12 +48,12 @@ export function AccountProfile({ session, auth, editorial, onOpenAdmin, onClose 
   const identity = { ...session, displayName: savedName };
   const changed = name.trim() !== (savedName ?? '');
   const move = (next: 'profile' | 'password') => {
-    if (pending.current) return;
+    if (pending.current || avatarBusy) return;
     setScreen(next); setPassword(''); setRepeat(''); setReveal(false);
     setError(''); setNote(''); setProblems({});
   };
   const run = async (action: () => Promise<AuthResult>, success: () => void) => {
-    if (pending.current) return;
+    if (pending.current || avatarBusy) return;
     if (!auth) { setError('No hay conexión con el servidor.'); return; }
     pending.current = true; setBusy(true); setError(''); setNote('');
     try {
@@ -58,7 +65,7 @@ export function AccountProfile({ session, auth, editorial, onOpenAdmin, onClose 
     } finally { pending.current = false; setBusy(false); }
   };
   const saveName = async () => {
-    if (pending.current) return;
+    if (pending.current || avatarBusy) return;
     const problem = checkDisplayName(name);
     setProblems(problem ? { name: problem } : {});
     if (problem || !changed) return;
@@ -68,7 +75,7 @@ export function AccountProfile({ session, auth, editorial, onOpenAdmin, onClose 
     });
   };
   const savePassword = async () => {
-    if (pending.current) return;
+    if (pending.current || avatarBusy) return;
     const found = checkNewPassword(password, repeat);
     setProblems(found);
     if (Object.values(found).some(Boolean)) return;
@@ -115,7 +122,7 @@ export function AccountProfile({ session, auth, editorial, onOpenAdmin, onClose 
         </form>
       </> : <>
         <div className="flex flex-col items-center text-center mb-5">
-          <span aria-hidden="true" className="w-16 h-16 mb-2 rounded-full bg-[#EAF1FF] dark:bg-blue-500/15 text-[#2464ED] dark:text-sky-300 flex items-center justify-center text-2xl font-bold">{initialOf(identity)}</span>
+          <AvatarEditor avatar={<span aria-hidden="true" className="w-16 h-16 mx-auto mb-2 rounded-full bg-[#EAF1FF] dark:bg-blue-500/15 text-[#2464ED] dark:text-sky-300 flex items-center justify-center text-2xl font-bold"><Avatar url={avatarUrl} initial={initialOf(identity)} /></span>} key={session.userId} userId={session.userId} hasPhoto={Boolean(session.avatarPath)} service={avatars} disabled={authBusy} onBusy={setAvatarBusy} />
           <p className="max-w-full break-words text-base font-bold text-[#10203A] dark:text-white">{nameOf(identity)}</p>
           {session.email && <p className="max-w-full break-all text-sm text-slate-500 dark:text-slate-400">{session.email}</p>}
         </div>

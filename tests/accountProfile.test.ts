@@ -37,12 +37,12 @@ function fixture(options: { result?: AuthResult; deferred?: Promise<AuthResult> 
 }
 
 describe('Mi cuenta', () => {
-  it('shows identity, read-only email, useful sections and no photo action', () => {
+  it('shows identity, read-only email, useful sections and the avatar entry', () => {
     const f = fixture(); assert.equal(f.run.current.props.title, 'Mi cuenta');
     assert.match(f.html(), /Emanuel/); assert.match(f.html(), /emanuel@example.com/);
     assert.equal(f.input('email').props.readOnly, true);
     for (const label of ['Perfil', 'Seguridad', 'Cuenta']) assert(f.html().includes(label));
-    assert.doesNotMatch(f.html(), /Cambiar foto/); f.run.unmount();
+    assert.match(f.html(), /Cambiar foto/); f.run.unmount();
   });
   it('does not send an unchanged name', async () => {
     const f = fixture(); f.submit(); await f.run.settle(); assert.deepEqual(f.calls, []); f.run.unmount();

@@ -1,9 +1,11 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Search, Menu, X } from 'lucide-react';
+import { Avatar } from '../Account/Avatar';
 import { initialOf, nameOf, type AppSession } from '../../auth/session';
 
 interface TopbarProps {
   session?: AppSession | null;
+  avatarUrl?: string | null;
   onOpenAccount?: () => void;
   onSignOut?: () => Promise<void>;
   searchQuery: string;
@@ -32,6 +34,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   inputRef,
   searchAccessory,
   session = null,
+  avatarUrl = null,
   onOpenAccount,
   onSignOut,
 }) => {
@@ -143,7 +146,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           title={session ? nameOf(session) : 'Ministerio Acordes de Fe'}
           className="w-9 h-9 rounded-full bg-[#EAF1FF] dark:bg-blue-500/10 text-[#2464ED] flex items-center justify-center font-bold text-sm border border-[#2464ED]/10 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
         >
-          {session ? initialOf(session) : 'A'}
+          <Avatar url={session ? avatarUrl : null} initial={session ? initialOf(session) : 'A'} />
         </button>
         <div
           ref={accountMenu}
@@ -169,9 +172,12 @@ export const Topbar: React.FC<TopbarProps> = ({
           className="fixed left-auto bottom-auto m-0 w-64 max-w-[calc(100vw-2rem)] p-2 rounded-xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 text-[#10203A] dark:text-slate-100 shadow-lg text-sm"
         >
           {session && (
-            <div className="px-3 py-2 mb-1 border-b border-slate-100 dark:border-dark-700">
+            <div className="flex items-center gap-2 px-3 py-2 mb-1 border-b border-slate-100 dark:border-dark-700">
+              <span aria-hidden="true" className="w-9 h-9 shrink-0 rounded-full bg-[#EAF1FF] text-[#2464ED] flex items-center justify-center font-bold"><Avatar url={avatarUrl} initial={initialOf(session)} /></span>
+              <div className="min-w-0">
               {session.displayName?.trim() && <p className="font-semibold break-words">{session.displayName.trim()}</p>}
               {session.email && <p className="text-xs text-slate-500 dark:text-slate-400 break-all">{session.email}</p>}
+              </div>
             </div>
           )}
           <button type="button" onClick={openAccount} className="w-full min-h-11 px-3 py-2 text-left rounded-lg hover:bg-slate-50 dark:hover:bg-dark-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40">

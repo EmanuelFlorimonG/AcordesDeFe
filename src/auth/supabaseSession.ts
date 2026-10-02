@@ -1,5 +1,6 @@
 import { createClient, isAuthApiError, isAuthRetryableFetchError, type Session, type SupabaseClient as SupabaseJsClient } from '@supabase/supabase-js';
 import { createSupabaseClient, getSupabaseStatus, type SupabaseClient, type SupabaseConfig } from '../lib/supabase';
+import { createAvatarService, createAvatarMetadataGate, avatarPathFor, type AvatarService } from './avatars';
 import { AUTH_STORAGE_KEY, MAX_NAME_LENGTH, checkDisplayName, type AppAuth, type AppSession, type AuthFailure } from './session';
 
 /**
@@ -8,7 +9,7 @@ import { AUTH_STORAGE_KEY, MAX_NAME_LENGTH, checkDisplayName, type AppAuth, type
  * The one and only place where a Supabase Auth client is created. Two clients
  * sharing a storage key fight over the same refresh token and end up signing
  * people out at random, so there is exactly one, made on first use and kept:
- *   - the Supabase JS client, used ONLY for Auth (sign-in, sign-up, session
+ *   - the Supabase JS client, used for private avatars and Auth (sign-in, sign-up, session
  *     storage, token refresh, password recovery, sign-out);
  *   - the project's own REST client (src/lib/supabase.ts), the same one the
  *     public side uses, carrying the signed-in user's access token so Row
@@ -37,6 +38,7 @@ function toSession(session: Session | null): AppSession | null {
     email: user.email ?? null,
     displayName: typeof name === 'string' && name.trim() ? name.trim().slice(0, MAX_NAME_LENGTH) : null,
     emailConfirmed: Boolean(user.email_confirmed_at ?? user.confirmed_at),
+    ...(avatarPathFor(user.id, user.user_metadata?.avatar_path) ? { avatarPath: avatarPathFor(user.id, user.user_metadata?.avatar_path) } : {}),
   };
 }
 
@@ -169,6 +171,7 @@ export function createSupabaseAuth(js: SupabaseJsClient): AppAuth {
 
 export interface AppServices {
   auth: AppAuth;
+  avatars?: AvatarService;
   /** REST client acting as the signed-in user: Row Level Security applies to them */
   data: SupabaseClient;
 }
@@ -176,7 +179,9 @@ export interface AppServices {
 let services: AppServices | null | undefined;
 
 export function createAppServices(config: SupabaseConfig): AppServices {
+  const avatarGate = createAvatarMetadataGate(fetch);
   const js = createClient(config.url, config.anonKey, {
+    global: { fetch: avatarGate.fetch },
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -187,7 +192,7 @@ export function createAppServices(config: SupabaseConfig): AppServices {
     },
   });
   const auth = createSupabaseAuth(js);
-  return { auth, data: createSupabaseClient(config, fetch, { accessToken: () => auth.accessToken() }) };
+  return { auth, avatars: createAvatarService(js, avatarGate), data: createSupabaseClient(config, fetch, { accessToken: () => auth.accessToken() }) };
 }
 
 /** The app's Auth and data client, created once; null when this build has no Supabase. */
