@@ -310,9 +310,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   );
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-6 pb-10">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-3 sm:py-6 pb-10">
       {/* Top navigation */}
-      <div className="flex items-center justify-between gap-4 mb-5 print:hidden">
+      <div className="flex items-center justify-between gap-4 mb-3 sm:mb-5 print:hidden">
         <button
           onClick={setlist ? setlist.onBackToSetlist : onBack}
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors"
@@ -407,9 +407,9 @@ export const SongViewer: React.FC<SongViewerProps> = ({
 
       {/* Header banner */}
       <div
-        className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${categoryStyle.from} ${categoryStyle.to} px-6 sm:px-8 py-7 sm:py-9 mb-5 print:hidden`}
+        className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${categoryStyle.from} ${categoryStyle.to} px-4 sm:px-8 py-4 sm:py-9 mb-3 sm:mb-5 print:hidden`}
       >
-        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        <div className="flex flex-wrap items-center gap-1.5 mb-2 sm:mb-3">
           <span className="inline-block px-2.5 py-1 rounded-md text-xs font-bold bg-white/15 text-white">
             {song.categories[0]}
           </span>
@@ -423,7 +423,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
           </p>
         )}
 
-        <div className="mt-5">
+        <div className="mt-3 sm:mt-5">
           <SongInfoChips
             keyInfo={keyInfo}
             // The capo is a guitar-only device: it has no meaning on a keyboard.
@@ -436,11 +436,11 @@ export const SongViewer: React.FC<SongViewerProps> = ({
       </div>
 
       {/* Metadata + Actions row */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 print:hidden">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2 sm:gap-4 mb-3 sm:mb-6 print:hidden">
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => onRehearsalChange(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 hover:border-blue-700 transition-colors"
+            className="flex items-center gap-2 px-2.5 sm:px-3.5 py-2 rounded-lg text-sm font-semibold bg-blue-600 border border-blue-600 text-white hover:bg-blue-700 hover:border-blue-700 transition-colors"
             title="Letra grande, auto-scroll y controles para tocar"
           >
             <MicVocal className="w-4 h-4" />
@@ -449,7 +449,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
 
           {!setlist?.shared && onToggleFavorite && <button
             onClick={() => onToggleFavorite(song.id)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+            className={`flex items-center gap-2 px-2.5 sm:px-3.5 py-2 rounded-lg text-sm font-semibold border transition-colors ${
               isFavorite
                 ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 text-blue-700 dark:text-blue-400'
                 : 'bg-white dark:bg-dark-900 border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800'
@@ -461,7 +461,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
 
           {!setlist?.shared && onShare && <button
             onClick={() => onShare(song)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors"
+            className="flex items-center gap-2 px-2.5 sm:px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors"
           >
             <Share2 className="w-4 h-4" />
             <span>Compartir</span>
@@ -469,7 +469,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
 
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors"
+            className="flex items-center gap-2 px-2.5 sm:px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors"
           >
             <Printer className="w-4 h-4" />
             <span>Imprimir</span>
@@ -481,7 +481,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
               onClick={onSuggestEdit}
               disabled={!online}
               aria-describedby={!online ? 'sugerir-sin-conexion' : undefined}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white dark:disabled:hover:bg-dark-900"
+              className="flex items-center gap-2 px-2.5 sm:px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white dark:disabled:hover:bg-dark-900"
             >
               <Pencil className="w-4 h-4" />
               <span>{hasChords ? 'Sugerir edición' : 'Agregar acordes'}</span>
@@ -515,7 +515,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
       </div>
 
       {/* Tabs + Transpose toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5 print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-5 print:hidden">
         <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-dark-900 rounded-lg border border-slate-200 dark:border-dark-700">
           {([
             { id: 'letra', label: hasChords ? 'Acordes y letra' : 'Letra' },
@@ -525,7 +525,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3.5 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-colors ${
+              className={`px-2 sm:px-3.5 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-colors ${
                 activeTab === tab.id
                   ? 'bg-white dark:bg-dark-800 text-[#2464ED] shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'

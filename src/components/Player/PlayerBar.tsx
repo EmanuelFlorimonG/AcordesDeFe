@@ -62,7 +62,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   });
 
   return (
-    <div className="sticky bottom-0 z-30 border-t border-slate-200 dark:border-dark-800 bg-white dark:bg-dark-950 px-3 sm:px-5 py-2.5 flex items-center gap-3 sm:gap-5 print:hidden">
+    <div className="sticky bottom-0 z-30 border-t border-slate-200 dark:border-dark-800 bg-white dark:bg-dark-950 px-3 sm:px-5 py-2 sm:py-2.5 flex items-center gap-3 sm:gap-5 print:hidden">
       <button
         onClick={onOpenSong}
         className="flex items-center gap-3 min-w-0 flex-shrink text-left"
@@ -86,10 +86,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </button>
 
       <div className="flex-grow flex flex-col items-center gap-1 min-w-0 max-w-xl mx-auto">
-        <div className="flex items-center gap-3 sm:gap-4">
+        <div className="flex items-center gap-1 sm:gap-4">
           <button
             onClick={onPrev}
-            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-[#10203A] dark:hover:text-white transition-colors"
+            className="w-11 h-11 sm:w-auto sm:h-auto flex items-center justify-center p-1.5 text-slate-500 dark:text-slate-400 hover:text-[#10203A] dark:hover:text-white transition-colors"
             title="Canción anterior"
           >
             <SkipBack className="w-4 h-4" />
@@ -97,14 +97,16 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           <button
             onClick={onTogglePlay}
             disabled={playDisabled}
-            className="w-9 h-9 rounded-full bg-[#10203A] dark:bg-[#2464ED] text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-11 h-11 sm:w-9 sm:h-9 rounded-full text-white flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             title={playTitle}
           >
-            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+            <span className="w-9 h-9 rounded-full bg-[#10203A] dark:bg-[#2464ED] flex items-center justify-center">
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+            </span>
           </button>
           <button
             onClick={onNext}
-            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-[#10203A] dark:hover:text-white transition-colors"
+            className="w-11 h-11 sm:w-auto sm:h-auto flex items-center justify-center p-1.5 text-slate-500 dark:text-slate-400 hover:text-[#10203A] dark:hover:text-white transition-colors"
             title="Siguiente canción"
           >
             <SkipForward className="w-4 h-4" />
