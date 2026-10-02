@@ -18,20 +18,20 @@ const render = (user: AppSession | null) => renderToStaticMarkup(createElement(T
 describe('Topbar account initial', () => {
   for (const [name, initial] of [['Juanito', 'J'], ['Emanuel', 'E'], ['  juanito  ', 'J']]) {
     it(`${name} shows ${initial}`, () => {
-      assert.match(render(session(name)), new RegExp(`role="img"[^>]*>${initial}</div>`));
+      assert.match(render(session(name)), new RegExp(`aria-label="Abrir menú de cuenta[^>]*>${initial}</button>`));
     });
   }
   for (const name of [null, '', '   ']) {
     it(`falls back to email for ${JSON.stringify(name)}`, () => {
-      assert.match(render(session(name)), /role="img"[^>]*>E<\/div>/);
+      assert.match(render(session(name)), /aria-label="Abrir menú de cuenta[^>]*>E<\/button>/);
     });
   }
   it('guest retains A and a meaningful accessible label', () => {
-    assert.match(render(null), /role="img" aria-label="Ministerio Acordes de Fe"[^>]*>A<\/div>/);
+    assert.match(render(null), /aria-label="Abrir menú de cuenta"[^>]*>A<\/button>/);
   });
   it('account label describes the user without changing navigation', () => {
     const html = render(session('Juanito'));
-    assert.match(html, /aria-label="Usuario: Juanito"/);
+    assert.match(html, /aria-label="Abrir menú de cuenta de Juanito"/);
     assert.match(html, />Acerca de<\/button>/);
   });
   it('uses the existing session and pure helpers without remote queries', () => {

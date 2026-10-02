@@ -40,7 +40,7 @@ import {
 import { parseSuggestEditHash, suggestEditHash } from './catalog/editAvailability';
 import { adminHash } from './admin/routes';
 import { canOpenAdminPanel, useEditorialRole } from './admin/useEditorialRole';
-import { useSession } from './auth/useSession';
+import { loadAuthServices, useSession } from './auth/useSession';
 import { GUEST_SETLISTS, userSetlists } from './storage/setlistStorage';
 import { NEW_PASSWORD_HASH } from './auth/recovery';
 import { FullScreenFallback, ScreenFallback, SongPendingScreen } from './components/Layout/ScreenFallback';
@@ -1733,6 +1733,16 @@ export function App() {
       <div className="flex flex-col flex-grow min-w-0 print:block">
         <Topbar
           session={sessionState.state === 'signed-in' ? sessionState.session : null}
+          onOpenAccount={() => setIsAccountOpen(true)}
+          onSignOut={async () => {
+            try {
+              const services = await loadAuthServices();
+              if (!services) throw new Error('Cuenta no disponible');
+              await services.auth.signOut();
+            } catch {
+              showToast('No pudimos cerrar la sesión. Inténtalo otra vez.');
+            }
+          }}
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
           searchAccessory={

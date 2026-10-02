@@ -1,9 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { Search, Menu, X } from 'lucide-react';
 import { initialOf, nameOf, type AppSession } from '../../auth/session';
 
 interface TopbarProps {
   session?: AppSession | null;
+  onOpenAccount?: () => void;
+  onSignOut?: () => Promise<void>;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onOpenSidebar: () => void;
@@ -30,7 +32,31 @@ export const Topbar: React.FC<TopbarProps> = ({
   inputRef,
   searchAccessory,
   session = null,
+  onOpenAccount,
+  onSignOut,
 }) => {
+  const accountId = useId();
+  const accountButton = useRef<HTMLButtonElement>(null);
+  const accountMenu = useRef<HTMLDivElement>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const signOutPending = useRef(false);
+  const closeAccount = () => accountMenu.current?.hidePopover();
+  const openAccount = () => {
+    closeAccount();
+    onOpenAccount?.();
+  };
+  const signOut = async () => {
+    if (signOutPending.current || !onSignOut) return;
+    signOutPending.current = true;
+    setSigningOut(true);
+    closeAccount();
+    try { await onSignOut(); }
+    finally {
+      signOutPending.current = false;
+      setSigningOut(false);
+    }
+  };
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -101,11 +127,52 @@ export const Topbar: React.FC<TopbarProps> = ({
           Contacto
         </button>
 
-        <div
-          className="w-9 h-9 rounded-full bg-[#EAF1FF] dark:bg-blue-500/10 text-[#2464ED] flex items-center justify-center font-bold text-sm border border-[#2464ED]/10 flex-shrink-0"
-          role="img" aria-label={session ? `Usuario: ${nameOf(session)}` : 'Ministerio Acordes de Fe'} title={session ? nameOf(session) : 'Ministerio Acordes de Fe'}
+        <button
+          ref={accountButton}
+          type="button"
+          popoverTarget={accountId}
+          aria-haspopup="dialog"
+          aria-expanded={accountOpen}
+          aria-controls={accountId}
+          aria-label={session ? `Abrir menú de cuenta de ${nameOf(session)}` : 'Abrir menú de cuenta'}
+          title={session ? nameOf(session) : 'Ministerio Acordes de Fe'}
+          className="w-9 h-9 rounded-full bg-[#EAF1FF] dark:bg-blue-500/10 text-[#2464ED] flex items-center justify-center font-bold text-sm border border-[#2464ED]/10 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40"
         >
           {session ? initialOf(session) : 'A'}
+        </button>
+        <div
+          ref={accountMenu}
+          id={accountId}
+          popover="auto"
+          role="dialog"
+          aria-label="Cuenta"
+          onBeforeToggle={(event) => {
+            if (event.newState !== 'open') return;
+            const rect = accountButton.current?.getBoundingClientRect();
+            if (!rect) return;
+            Object.assign(event.currentTarget.style, {
+              top: `${rect.bottom + 8}px`,
+              right: `${Math.max(16, document.documentElement.clientWidth - rect.right)}px`,
+            });
+          }}
+          onToggle={(event) => {
+            const open = event.newState === 'open';
+            setAccountOpen(open);
+            if (open) event.currentTarget.querySelector<HTMLButtonElement>('button')?.focus();
+            else if (event.currentTarget.contains(document.activeElement)) accountButton.current?.focus();
+          }}
+          className="fixed left-auto bottom-auto m-0 w-64 max-w-[calc(100vw-2rem)] p-2 rounded-xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 text-[#10203A] dark:text-slate-100 shadow-lg text-sm"
+        >
+          {session && (
+            <div className="px-3 py-2 mb-1 border-b border-slate-100 dark:border-dark-700">
+              {session.displayName?.trim() && <p className="font-semibold break-words">{session.displayName.trim()}</p>}
+              {session.email && <p className="text-xs text-slate-500 dark:text-slate-400 break-all">{session.email}</p>}
+            </div>
+          )}
+          <button type="button" onClick={openAccount} className="w-full min-h-11 px-3 py-2 text-left rounded-lg hover:bg-slate-50 dark:hover:bg-dark-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40">
+            {session ? 'Ver mi cuenta' : 'Iniciar sesión'}
+          </button>
+          {session && <button type="button" disabled={signingOut} onClick={() => void signOut()} className="w-full min-h-11 px-3 py-2 text-left rounded-lg hover:bg-slate-50 dark:hover:bg-dark-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40 disabled:opacity-50">Cerrar sesión</button>}
         </div>
       </nav>
     </header>
