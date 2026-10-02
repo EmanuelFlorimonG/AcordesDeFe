@@ -204,6 +204,7 @@ export interface SetlistStep {
 }
 
 export interface SetlistPlayback {
+  shared?: boolean;
   setlistId: string;
   setlistName: string;
   item: SetlistItem;
@@ -217,7 +218,7 @@ export interface SetlistPlayback {
   /** Opens the same song as it is in the songbook, with no setlist settings. */
   onViewOriginal: () => void;
   /** Saves a new key or capo for this occasion only. */
-  onKeySettingsChange: (settings: { transposeSteps: number; capoFret: number }) => void;
+  onKeySettingsChange?: (settings: { transposeSteps: number; capoFret: number }) => void;
   /**
    * Writes down that a block of this entry's arrangement needs someone to
    * look at it, whichever screen noticed (see withReviewNeeded).

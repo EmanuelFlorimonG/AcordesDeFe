@@ -89,11 +89,13 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
   // Stage preferences, remembered between songs and visits.
   const [storedFontSize, setStoredFontSize] = useLocalStorage<FontSize>(
     'genesaret_rehearsal_font_size',
-    'base'
+    'base',
+    !setlist?.shared
   );
   const [storedSpeed, setStoredSpeed] = useLocalStorage<number>(
     'genesaret_autoscroll_speed',
-    DEFAULT_AUTO_SCROLL_SPEED
+    DEFAULT_AUTO_SCROLL_SPEED,
+    !setlist?.shared
   );
   // Values from storage may be stale or edited by hand; never trust them blindly.
   const fontSize = normalizeStageFontSize(storedFontSize);
@@ -123,7 +125,7 @@ export const RehearsalMode: React.FC<RehearsalModeProps> = ({
     return playable ? resolveArrangement(sections, playable) : null;
   }, [sections, binding]);
   // Rehearsal can be the first place this is noticed (opened straight from a link).
-  useArrangementReview(binding, storedArrangement, setlist?.onArrangementNeedsReview);
+  useArrangementReview(binding, storedArrangement, setlist?.shared ? undefined : setlist?.onArrangementNeedsReview);
 
   const navItems = useMemo<SectionNavItem[]>(() => {
     // Every block of an arrangement is its own place to jump to, so a chorus

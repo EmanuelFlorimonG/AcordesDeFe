@@ -57,11 +57,11 @@ interface SongViewerProps extends SongSetlistActions {
   song: Song;
   onBack: () => void;
   isFavorite: boolean;
-  onToggleFavorite: (id: string) => void;
+  onToggleFavorite?: (id: string) => void;
   playlists: Playlist[];
-  onToggleInPlaylist: (playlistId: string, songId: string) => void;
-  onCreatePlaylist: (name: string, songId: string) => void;
-  onShare: (song: Song) => void;
+  onToggleInPlaylist?: (playlistId: string, songId: string) => void;
+  onCreatePlaylist?: (name: string, songId: string) => void;
+  onShare?: (song: Song) => void;
   /** Rehearsal mode is owned by App, so it can survive moving between songs. */
   isRehearsing: boolean;
   onRehearsalChange: (active: boolean) => void;
@@ -143,15 +143,15 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   // In a setlist the key and capo belong to the setlist, so they are read from
   // it and written back to it: leaving the song and returning finds them, and
   // the song itself is never modified.
-  const settings: ViewSettings = setlist
+  const settings: ViewSettings = setlist && !setlist.shared
     ? { ...localSettings, transposeSteps: setlist.item.transposeSteps, capoFret: setlist.item.capoFret }
     : localSettings;
 
   const settingsRef = useRef(settings);
-  const saveSetlistKeyRef = useRef(setlist?.onKeySettingsChange);
+  const saveSetlistKeyRef = useRef(setlist?.shared ? undefined : setlist?.onKeySettingsChange);
   useLayoutEffect(() => {
     settingsRef.current = settings;
-    saveSetlistKeyRef.current = setlist?.onKeySettingsChange;
+    saveSetlistKeyRef.current = setlist?.shared ? undefined : setlist?.onKeySettingsChange;
   });
 
   const setSettings = useCallback<React.Dispatch<React.SetStateAction<ViewSettings>>>((action) => {
@@ -177,7 +177,8 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   // to switch away from guitar on every song they open.
   const [instrument, setInstrument] = useLocalStorage<Instrument>(
     'genesaret_instrument',
-    'guitarra'
+    'guitarra',
+    !setlist?.shared
   );
 
   const isInSetlist = Boolean(setlist);
@@ -222,7 +223,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
   );
   const arrangementState = arrangementBinding.state;
   // This page can be the first one to notice, opened straight from a link.
-  useArrangementReview(arrangementBinding, setlistArrangement, setlist?.onArrangementNeedsReview);
+  useArrangementReview(arrangementBinding, setlistArrangement, setlist?.shared ? undefined : setlist?.onArrangementNeedsReview);
 
   const transposedContent = useMemo(() => {
     return transposeSongContent(
@@ -364,7 +365,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
 
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
             <span>
-              Configuración de este Setlist
+              {setlist.shared ? 'Ajustes temporales de esta sesión' : 'Configuración de este Setlist'}
               {hasKey && (
                 <>
                   : tono <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">{displayedKey}</span>
@@ -373,13 +374,13 @@ export const SongViewer: React.FC<SongViewerProps> = ({
                 </>
               )}
             </span>
-            <button
+            {!setlist.shared && <button
               type="button"
               onClick={setlist.onViewOriginal}
               className="font-semibold text-[#2464ED] dark:text-sky-400 hover:underline"
             >
               Ver la canción original
-            </button>
+            </button>}
           </div>
 
           {arrangementState === 'pending' ? (
@@ -446,7 +447,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             <span>Modo ensayo</span>
           </button>
 
-          <button
+          {!setlist?.shared && onToggleFavorite && <button
             onClick={() => onToggleFavorite(song.id)}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-colors ${
               isFavorite
@@ -456,15 +457,15 @@ export const SongViewer: React.FC<SongViewerProps> = ({
           >
             <Heart className={`w-4 h-4 ${isFavorite ? 'fill-blue-600 dark:fill-blue-400' : ''}`} />
             <span>{isFavorite ? 'En favoritas' : 'Añadir a favoritas'}</span>
-          </button>
+          </button>}
 
-          <button
+          {!setlist?.shared && onShare && <button
             onClick={() => onShare(song)}
             className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors"
           >
             <Share2 className="w-4 h-4" />
             <span>Compartir</span>
-          </button>
+          </button>}
 
           <button
             onClick={() => window.print()}
@@ -474,7 +475,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             <span>Imprimir</span>
           </button>
 
-          {onSuggestEdit && editsAvailable && (
+          {!setlist?.shared && onSuggestEdit && editsAvailable && (
             <button
               type="button"
               onClick={onSuggestEdit}
@@ -487,7 +488,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             </button>
           )}
 
-          <SongRowMenu
+          {!setlist?.shared && onToggleInPlaylist && onCreatePlaylist && onShare && <SongRowMenu
             song={song}
             playlists={playlists}
             onToggleInPlaylist={onToggleInPlaylist}
@@ -496,7 +497,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
             setlists={setlists}
             onAddToSetlist={onAddToSetlist}
             onCreateSetlistWithSong={onCreateSetlistWithSong}
-          />
+          />}
         </div>
 
         <div className="flex flex-col gap-1 lg:items-end">
@@ -713,7 +714,7 @@ export const SongViewer: React.FC<SongViewerProps> = ({
 
           <TeamKeysCard songId={song.id} />
 
-          {history}
+          {!setlist?.shared && history}
 
           {song.tags.length > 0 && (
             <div className="bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 rounded-lg p-4">

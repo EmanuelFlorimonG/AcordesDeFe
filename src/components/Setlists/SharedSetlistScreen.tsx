@@ -3,7 +3,8 @@ import { CalendarDays, Eye, Link2Off, ListOrdered, Loader2, Music, RotateCcw } f
 import type { Setlist } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import type { SharedSetlistRead } from '../../storage/setlistShares';
-import { formatSetlistDate, formatSongCount } from '../../utils/setlists';
+import { SharedSetlistPlayer } from './SharedSetlistPlayer';
+import { formatSetlistDate, formatSongCount, liveModeName } from '../../utils/setlists';
 import { describeCapo, describeTranspose, describeTransition } from '../../utils/setlistVersions';
 import { primaryButton, secondaryButton } from './ui';
 
@@ -23,6 +24,8 @@ import { primaryButton, secondaryButton } from './ui';
 
 interface SharedSetlistScreenProps {
   token: string;
+  route?: string;
+  onPerformanceChange?: (active: boolean) => void;
   songsById: Map<string, Song>;
   /** Lee el enlace. Se pasa para poder probar esta pantalla sin red. */
   load: (token: string) => Promise<SharedSetlistRead | { state: 'unconfigured' }>;
@@ -40,6 +43,8 @@ const GONE = 'Este Setlist ya no está disponible.';
 
 export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
   token,
+  route = `#/shared/setlist/${token}`,
+  onPerformanceChange,
   songsById,
   load,
   onGoToSongbook,
@@ -124,7 +129,7 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
     );
   }
 
-  return <SharedSetlistView setlist={screen.setlist} songsById={songsById} onGoToSongbook={onGoToSongbook} />;
+  return <SharedSetlistPlayer token={token} route={route} setlist={screen.setlist} songsById={songsById} onGoToSongbook={onGoToSongbook} onPerformanceChange={onPerformanceChange} />;
 };
 
 /**
@@ -132,10 +137,13 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
  * que sale es una página que sólo se lee.
  */
 export const SharedSetlistView: React.FC<{
+  onOpenSong?: (itemId: string) => void;
+  onRehearsal?: () => void;
+  onLive?: () => void;
   setlist: Setlist;
   songsById: Map<string, Song>;
   onGoToSongbook: () => void;
-}> = ({ setlist, songsById, onGoToSongbook }) => {
+}> = ({ setlist, songsById, onGoToSongbook, onOpenSong, onRehearsal, onLive }) => {
   const date = formatSetlistDate(setlist.date, 'long');
 
   return (
@@ -166,6 +174,10 @@ export const SharedSetlistView: React.FC<{
         </p>
       )}
 
+      {setlist.items.some(item => songsById.has(item.songId)) && <div className="mt-4 flex flex-wrap gap-2">
+        {onRehearsal && <button className={secondaryButton} onClick={onRehearsal}>Modo Ensayo</button>}
+        {onLive && <button className={primaryButton} onClick={onLive}>{liveModeName(setlist.kind)}</button>}
+      </div>}
       {setlist.items.length === 0 ? (
         <p className="mt-8 rounded-xl border border-slate-200 dark:border-dark-700 px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
           Todavía no tiene canciones.
@@ -199,7 +211,7 @@ export const SharedSetlistView: React.FC<{
                       </p>
                     )}
                     <p className="font-semibold text-slate-900 dark:text-white">
-                      {song?.title ?? 'Canción no disponible'}
+                      {song && onOpenSong ? <button className="text-left hover:underline" onClick={() => onOpenSong(item.id)}>{song.title}</button> : song?.title ?? 'Canción no disponible'}
                     </p>
                     {song?.artist && <p className="text-sm text-slate-500 dark:text-slate-400">{song.artist}</p>}
 

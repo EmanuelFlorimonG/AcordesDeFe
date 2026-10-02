@@ -5,6 +5,7 @@ import type { Instrument, Song } from '../../types/song';
 import { AUTO_SCROLL_SPEEDS, DEFAULT_AUTO_SCROLL_SPEED } from '../../hooks/useAutoScroll';
 import { useFullscreen } from '../../hooks/useFullscreen';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { createMassSessionRepository } from '../../storage/massSessionStorage';
 import { useMassSession } from '../../hooks/useMassSession';
 import { liveModeName } from '../../utils/setlists';
 import { useMetronome } from '../../hooks/useMetronome';
@@ -26,6 +27,7 @@ import { MassSongScreen } from './MassSongScreen';
 import { MassStartScreen } from './MassStartScreen';
 
 interface MassModeProps {
+  shared?: boolean;
   setlist: Setlist;
   songsById: Map<string, Song>;
   /**
@@ -62,6 +64,7 @@ type Overlay = 'navigator' | 'menu' | 'exit' | null;
  */
 export const MassMode: React.FC<MassModeProps> = ({
   setlist,
+  shared = false,
   songsById,
   onArrangementNeedsReview,
   isPlayable,
@@ -75,7 +78,8 @@ export const MassMode: React.FC<MassModeProps> = ({
   const exitLabel = returnsTo === 'activity' ? 'Volver a la actividad' : 'Volver al Setlist';
   // El mismo modo, con el nombre de lo que se está tocando.
   const modeName = liveModeName(setlist.kind);
-  const session = useMassSession({ setlist, isPlayable });
+  const transientSession = useMemo(() => createMassSessionRepository(null), []);
+  const session = useMassSession({ setlist, isPlayable, repository: shared ? transientSession : undefined });
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [selectedChord, setSelectedChord] = useState<string | null>(null);
   const [showChords, setShowChords] = useState(true);
@@ -84,13 +88,15 @@ export const MassMode: React.FC<MassModeProps> = ({
   // between celebrations. The pace of auto-scroll is the app's single setting.
   const [storedFontSize, setStoredFontSize] = useLocalStorage<StageFontSize>(
     'genesaret_mass_font_size',
-    'lg'
+    'lg',
+    !shared
   );
   const [storedSpeed, setStoredSpeed] = useLocalStorage<number>(
     'genesaret_autoscroll_speed',
-    DEFAULT_AUTO_SCROLL_SPEED
+    DEFAULT_AUTO_SCROLL_SPEED,
+    !shared
   );
-  const [instrument, setInstrument] = useLocalStorage<Instrument>('genesaret_instrument', 'guitarra');
+  const [instrument, setInstrument] = useLocalStorage<Instrument>('genesaret_instrument', 'guitarra', !shared);
 
   const fontSize = normalizeStageFontSize(storedFontSize);
   const speedIndex = Number.isInteger(storedSpeed)
@@ -145,8 +151,8 @@ export const MassMode: React.FC<MassModeProps> = ({
 
   // Opening a song here counts as opening it, exactly like the song page.
   useEffect(() => {
-    if (isPlaying && currentSongId) latest.current.onSongOpened(currentSongId);
-  }, [currentSongId, isPlaying]);
+    if (!shared && isPlaying && currentSongId) latest.current.onSongOpened(currentSongId);
+  }, [currentSongId, isPlaying, shared]);
 
   const isBusy = overlay !== null || selectedChord !== null;
   const isBusyRef = useRef(isBusy);
@@ -257,7 +263,7 @@ export const MassMode: React.FC<MassModeProps> = ({
         key={item.id}
         song={song}
         item={item}
-        onArrangementNeedsReview={onArrangementNeedsReview}
+        onArrangementNeedsReview={shared ? undefined : onArrangementNeedsReview}
         position={position}
         keyInfo={keyInfo}
         content={transposedContent}

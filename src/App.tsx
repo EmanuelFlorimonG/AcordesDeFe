@@ -142,7 +142,7 @@ const SETLIST_SONG_ROUTE = /^#\/setlist\/([^/]+)\/song\/([^/]+)$/;
 /** A setlist being played live: #/setlist/<setlist>/misa */
 const SETLIST_MASS_ROUTE = /^#\/setlist\/([^/]+)\/misa$/;
 /** A setlist shared by link: #/shared/setlist/<token>. No account needed. */
-const SHARED_SETLIST_ROUTE = /^#\/shared\/setlist\/([^/]+)$/;
+const SHARED_SETLIST_ROUTE = /^#\/shared\/setlist\/([^/]+)(?:\/(?:song\/[^/]+|rehearsal|live))?$/;
 /** La hoja para imprimir de un setlist: #/setlist/<id>/pdf */
 const SETLIST_PRINT_ROUTE = /^#\/setlist\/([^/]+)\/pdf(\/letra)?$/;
 /** Routes that show the songbook's home, where search and filters live. */
@@ -324,6 +324,8 @@ export function App() {
   /** Set while a song is open as part of a setlist, instead of on its own. */
   const [setlistSongRoute, setSetlistSongRoute] = useState<{ setlistId: string; itemId: string } | null>(null);
   /** El token del enlace compartido que se está abriendo, o null si no lo es. */
+  const [sharedRoute, setSharedRoute] = useState('');
+  const [sharedPerformance, setSharedPerformance] = useState(false);
   const [sharedToken, setSharedToken] = useState<string | null>(null);
   /** Para quién es la hoja que se está imprimiendo. */
   const [printAudience, setPrintAudience] = useState<PrintAudience>('musicians');
@@ -420,11 +422,13 @@ export function App() {
       if (sharedMatch) {
         const token = readShareToken(sharedMatch[1]);
         setSharedToken(token);
+        setSharedRoute(hash);
         setPage('sharedSetlist');
         setSection('setlists');
         return;
       }
       setSharedToken(null);
+      setSharedPerformance(false);
 
       if (hash === '#/privacidad') {
         setPage('privacy');
@@ -1507,6 +1511,8 @@ export function App() {
         return (
           <SharedSetlistScreen
             token={sharedToken ?? ''}
+            route={sharedRoute}
+            onPerformanceChange={setSharedPerformance}
             songsById={songsById}
             load={loadShared}
             onGoToSongbook={handleBackToDashboard}
@@ -1694,7 +1700,7 @@ export function App() {
     <div
       // While rehearsing, the app underneath can't be reached by keyboard or
       // screen reader; rehearsal mode itself is portalled outside this element.
-      inert={rehearsalActive || massActive}
+      inert={rehearsalActive || massActive || sharedPerformance}
       className="h-screen flex bg-white dark:bg-dark-950 text-[#10203A] dark:text-slate-100 font-sans overflow-hidden print:h-auto print:overflow-visible print:block"
     >
       <Sidebar
@@ -1787,7 +1793,7 @@ export function App() {
             />
             {/* Rehearsal mode shows its own compact controls for this player;
                 mass mode leaves the player out entirely. */}
-            {!rehearsalActive && !massActive && (
+            {!rehearsalActive && !massActive && !sharedPerformance && (
             <PlayerBar
               song={lastOpenedSong}
               isPlaying={isPlayerPlaying}
@@ -1873,7 +1879,7 @@ export function App() {
         canSync={cloudSync.available}
         update={pwa.kind === 'update-available'}
         offlineReady={offlineReady}
-        compact={Boolean(massSetlist)}
+        compact={Boolean(massSetlist) || sharedPerformance}
         onResolve={conflictedSetlist ? () => openConflict(conflictedSetlist) : undefined}
         onRetry={() => {
           void cloudSync.syncAll().then((answer) => {
