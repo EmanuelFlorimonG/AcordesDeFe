@@ -165,14 +165,14 @@ describe('Las canciones del cancionero', () => {
     }
   });
 
-  it('las 106 clasificadas, ninguna pendiente', () => {
+  it('las 105 clasificadas, ninguna pendiente', () => {
     // El ministerio revisó el cancionero entero, canción por canción.
     const unclassified = MOCK_SONGS.filter((song) => getSongSeasons(song).length === 0).map((song) => song.id);
-    eq(MOCK_SONGS.length, 106);
+    eq(MOCK_SONGS.length, 105);
     eq(unclassified, []);
     // «Todo el año» deja de ser el cajón de lo no revisado y pasa a querer
     // decir lo que dice: que se canta en cualquier tiempo.
-    eq(MOCK_SONGS.filter(isAllYearSong).length, 42);
+    eq(MOCK_SONGS.filter(isAllYearSong).length, 41);
   });
 
   it('ejemplos: la espera, la Pascua y el tiempo de siempre', () => {
@@ -205,7 +205,7 @@ describe('Las canciones del cancionero', () => {
 
   it('el filtro de Cuaresma incluye las de Todo el año y ninguna solo de Pascua', () => {
     const lent = filterSongsBySeason(MOCK_SONGS, 'cuaresma');
-    eq(lent.length, 65);
+    eq(lent.length, 64);
     // Una canción de cualquier tiempo también vale en Cuaresma aunque valga
     // en Pascua; lo que no puede colarse es una que sea sólo de Pascua.
     const soloPascua = (song: Song) => {

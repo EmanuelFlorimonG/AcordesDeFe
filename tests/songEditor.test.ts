@@ -429,7 +429,7 @@ describe('Del editor a la canción', () => {
       else failing.push(song.id);
     }
     eq(failing, [], 'letra, acordes y repeticiones idénticos');
-    eq(exact, 106);
+    eq(exact, 105);
   });
 
   it('un documento guardado se lee con cuidado', () => {

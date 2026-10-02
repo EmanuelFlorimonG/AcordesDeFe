@@ -30,10 +30,10 @@ const MIGRACION = readFileSync('supabase/migrations/20261001120000_songbook_clas
 /** Las cuatro que el ministerio retiró. La última, por estar repetida. */
 const RETIRADAS = ['estamos-de-fiesta-con-jesus', 'pescador-de-hombres', 'alfarero', 'te-presentamos-el-vino-y-el-pan-ii'];
 
-describe('El cancionero tiene 106 canciones', () => {
+describe('El cancionero tiene 105 canciones', () => {
   it('ni una más, ni repetida', () => {
-    eq(MOCK_SONGS.length, 106);
-    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 106, 'sin ids repetidos');
+    eq(MOCK_SONGS.length, 105);
+    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 105, 'sin ids repetidos');
   });
 
   it('las cuatro retiradas ya no están', () => {
@@ -60,7 +60,7 @@ describe('El cancionero tiene 106 canciones', () => {
       (m) => m[2]
     );
     eq(clasificadas.length > 0, true);
-    eq(clasificadas.filter((id) => !porId.has(id)), [], 'ninguna clasifica una canción retirada');
+    eq(clasificadas.filter((id) => !porId.has(id) && id !== 'forajidos-hakuna'), [], 'la clasificación histórica sólo incluye la baja posterior de Forajidos');
     eq(RETIRADAS.filter((id) => clasificadas.includes(id)), [], 'y a las retiradas no se les toca la clasificación');
   });
 
@@ -161,7 +161,7 @@ describe('El tiempo litúrgico vive en su campo', () => {
 
   it('y «todo el año» deja de ser el cajón de lo no revisado', () => {
     const todoElAno = MOCK_SONGS.filter((song) => getSongSeasons(song).includes('todo-el-ano'));
-    eq(todoElAno.length, 42, 'antes eran 78 de 110');
+    eq(todoElAno.length, 41, 'antes eran 78 de 110');
   });
 
   it('ejemplos de lo que decidió el ministerio', () => {
@@ -189,5 +189,29 @@ describe('El tiempo litúrgico vive en su campo', () => {
     // Y la migración no deja pasar que vuelva a haberlas.
     eq(MIGRACION.includes('Quedan % canciones sin tiempo litúrgico'), true);
     eq(MIGRACION.includes("and id <> 'salve-regina'"), false, 'sin excepciones');
+  });
+});
+
+describe('Retirada posterior de Forajidos', () => {
+  it('no está empaquetada; el seed histórico conserva la identidad hasta su ocultación', () => {
+    eq(porId.has('forajidos-hakuna'), false);
+    for (const path of ['supabase/scripts/import_bundled_catalog.sql', 'supabase/scripts/import_bundled_catalog.dry-run.sql']) {
+      const sql = readFileSync(path, 'utf8');
+      const rows = JSON.parse(sql.slice(sql.indexOf('$rows$') + 6, sql.lastIndexOf('$rows$'))) as { id: string; title: string; artist: string }[];
+      eq(rows.filter((row) => row.id === 'forajidos-hakuna').map(({ id, title, artist }) => ({ id, title, artist })), [{ id: 'forajidos-hakuna', title: 'Forajidos', artist: 'Hakuna Group Music' }], path);
+      eq(rows.length, 110, 'seed histórico: cuatro bajas anteriores y Forajidos se ocultan después');
+      eq(sql.includes('v_expected constant integer := 110'), true);
+    }
+  });
+
+  it('la nueva migración sólo oculta su fila sin tocar historial ni clasificación', () => {
+    const sql = readFileSync('supabase/migrations/20261002120000_hide_forajidos.sql', 'utf8');
+    const statements = sql.replace(/--[^\n]*/g, '');
+    eq([...statements.matchAll(/update public\.songs set status = 'hidden' where id = '([^']+)'/g)].map((m) => m[1]), ['forajidos-hakuna']);
+    eq(/\b(delete|truncate|drop|alter|insert)\b/i.test(statements), false);
+    eq(/\b(categories|liturgical_seasons|song_versions)\b/i.test(statements), false);
+    eq(statements.includes("id = 'forajidos-hakuna' and status = 'hidden'"), true);
+    eq(/^begin;$/m.test(sql), true);
+    eq(sql.trimEnd().endsWith('commit;'), true);
   });
 });

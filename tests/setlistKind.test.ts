@@ -405,16 +405,21 @@ describe('Las pantallas de siempre sirven para las dos', () => {
   });
 
   it('una canción que este dispositivo no conoce no rompe la hoja', () => {
-    // Las cuatro canciones retiradas del cancionero pueden seguir nombradas en
+    // Las canciones retiradas del cancionero pueden seguir nombradas en
     // un Setlist viejo: se dice que no está, y lo demás se imprime igual.
-    const conHueco: Setlist = {
-      ...adoracion,
-      items: [{ id: 'i1', songId: 'pescador-de-hombres', moment: 'Procesión', transposeSteps: 0, capoFret: 0, notes: '' }],
-    };
-    const documento = buildSetlistDocument(conHueco, songsById);
-    eq(documento.entries.length, 1);
-    eq(documento.entries[0].content, '', 'la canción no está en este dispositivo');
-    eq(documento.moments.length, 1, 'y la hoja se arma igual');
+    for (const songId of ['pescador-de-hombres', 'forajidos-hakuna']) {
+      const conHueco: Setlist = {
+        ...adoracion,
+        items: [{ id: 'i1', songId, moment: 'Procesión', transposeSteps: 0, capoFret: 0, notes: '' }],
+      };
+      const documento = buildSetlistDocument(conHueco, songsById);
+      eq(documento.entries.length, 1);
+      eq(documento.entries[0].content, '', 'la canción no está en este dispositivo');
+      eq(documento.moments.length, 1, 'y la hoja se arma igual');
+      eq(documento.entries[0].missing, true);
+      eq(documento.entries[0].title, 'Canción no disponible');
+      eq(conHueco.items[0].songId, songId, 'la referencia original se conserva');
+    }
   });
 });
 

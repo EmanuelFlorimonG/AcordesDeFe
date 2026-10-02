@@ -306,54 +306,6 @@ mi roca y mi can[F#m]ción por la eterni[D]dad.
 [A]  [E]  [F#m]  [D]  [A]`
   },
   {
-    id: 'forajidos-hakuna',
-    title: 'Forajidos',
-    artist: 'Hakuna Group Music',
-    originalKey: 'Em',
-    recommendedCapo: 0,
-    timeSignature: '4/4',
-    tempo: 104,
-    categories: ['Hakuna'],
-    liturgicalSeasons: ['todo-el-ano'],
-    tags: ['Revolución', 'Amistad', 'Juventud', 'Hakuna'],
-    chordsUsed: ['Em', 'C', 'G', 'D', 'Am', 'B7'],
-    difficulty: 'Intermedio',
-    year: '2022',
-    content: `[Intro]
-[Em]  [C]  [G]  [D]
-
-[Verso 1]
-[Em]  Somos forajidos bus[C]cando la verdad,
-[G]  rompiendo las cadenas [D]en la tempestad.
-[Em]  No nos conformamos con [C]este mundo gris,
-[G]  queremos prender fuego y [D]aprender a vivir.
-
-[Pre-Coro]
-[Am]  Miramos hacia arriba, la [Em]meta no es el suelo,
-[C]  hemos nacido para conquis[B7]tar el cielo.
-
-[Coro]
-[Em]  Forajidos de amor, [C]locos de Dios,
-[G]  cantando a pleno pulmón [D]con una sola voz.
-[Em]  Que el mundo despierte, que [C]arda la ciudad,
-[G]  la locura de la cruz es [D]nuestra libertad.
-
-[Verso 2]
-[Em]  Caminamos juntos, her[C]manos en la sed,
-[G]  donde otros ven ruinas [D]nosotros vemos fe.
-[Em]  No tememos a la noche ni [C]al frío del dolor,
-[G]  porque en cada herida flore[D]ce su perdón.
-
-[Coro]
-[Em]  Forajidos de amor, [C]locos de Dios,
-[G]  cantando a pleno pulmón [D]con una sola voz.
-[Em]  Que el mundo despierte, que [C]arda la ciudad,
-[G]  la locura de la cruz es [D]nuestra libertad.
-
-[Outro]
-[Em]  [C]  [G]  [D]  [Em]`
-  },
-  {
     id: 'en-medio-del-fuego',
     title: 'En Medio del Fuego',
     artist: 'Hakuna Group Music',
