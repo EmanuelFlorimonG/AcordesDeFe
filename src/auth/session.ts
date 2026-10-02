@@ -59,6 +59,7 @@ export interface AppAuth {
   updatePassword(password: string): Promise<AuthResult>;
   /** Takes the session a recovery link carried, so the new password can be set */
   useRecoveryLink(tokens: { accessToken: string; refreshToken: string }): Promise<AuthResult>;
+  updateDisplayName(name: string): Promise<AuthResult>;
   signOut(): Promise<void>;
   /** Called on sign-in, sign-out, refresh and expiry, with the session that holds now */
   subscribe(listener: (session: AppSession | null) => void): () => void;
@@ -194,4 +195,11 @@ export function nameOf(session: AppSession): string {
 /** The letter shown in the round mark next to the name. */
 export function initialOf(session: AppSession): string {
   return nameOf(session).charAt(0).toLocaleUpperCase('es');
+}
+
+/** A display label, with the same limits as registration. */
+export function checkDisplayName(name: string): string | null {
+  const clean = name.trim();
+  if (!clean) return 'Escribe tu nombre.';
+  return clean.length > MAX_NAME_LENGTH ? `Como mucho ${MAX_NAME_LENGTH} caracteres.` : null;
 }

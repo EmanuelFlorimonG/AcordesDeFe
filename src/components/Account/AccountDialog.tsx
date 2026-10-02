@@ -1,15 +1,14 @@
 import React, { useId, useState } from 'react';
-import { Eye, EyeOff, LoaderCircle, LogOut, MailCheck, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, LoaderCircle, MailCheck } from 'lucide-react';
 import {
   AUTH_MESSAGES,
   checkEmailOnly,
   checkSignInForm,
   checkSignUpForm,
-  initialOf,
-  nameOf,
   type AppSession,
 } from '../../auth/session';
 import { useAuthServices } from '../../auth/useSession';
+import { AccountProfile } from './AccountProfile';
 import { Dialog } from '../Setlists/Dialog';
 import { fieldLabel, primaryButton, secondaryButton, textField } from '../Setlists/ui';
 
@@ -170,58 +169,7 @@ export const AccountDialog: React.FC<AccountDialogProps> = ({ session, editorial
 
   // --- Signed in: the account itself ------------------------------------------------
   if (session) {
-    return (
-      <Dialog title="Tu cuenta" size="sm" onClose={onClose}>
-        <div className="flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#EAF1FF] dark:bg-blue-500/15 text-lg font-bold text-[#1D56D6] dark:text-sky-300"
-          >
-            {initialOf(session)}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-base font-bold text-[#10203A] dark:text-white">{nameOf(session)}</p>
-            {session.email && <p className="truncate text-sm text-slate-500 dark:text-slate-400">{session.email}</p>}
-          </div>
-        </div>
-
-        {!session.emailConfirmed && (
-          <p className="mt-4 rounded-lg bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-            Tu correo todavía está sin confirmar. Abre el enlace que te enviamos.
-          </p>
-        )}
-
-        <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-          Tu cuenta lleva tus Setlists de un dispositivo a otro. Los guardas en ella cuando
-          quieres, uno a uno, y siguen estando en este dispositivo: sin conexión se preparan igual
-          y al volver la red se sincronizan solos. Si un Setlist cambió en dos sitios, se te
-          pregunta cuál conservar.
-        </p>
-
-        <div className="mt-5 space-y-2">
-          {editorial && (
-            <button type="button" onClick={onOpenAdmin} className={`${secondaryButton} w-full`}>
-              <ShieldCheck aria-hidden="true" className="h-4 w-4" />
-              Panel editorial
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await services?.auth.signOut();
-              setBusy(false);
-              onClose();
-            }}
-            className={`${secondaryButton} w-full`}
-          >
-            <LogOut aria-hidden="true" className="h-4 w-4" />
-            Cerrar sesión
-          </button>
-        </div>
-      </Dialog>
-    );
+    return <AccountProfile key={session.userId} session={session} auth={services?.auth ?? null} editorial={editorial} onOpenAdmin={onOpenAdmin} onClose={onClose} />;
   }
 
   // --- After signing up, or after asking for a new password -------------------------

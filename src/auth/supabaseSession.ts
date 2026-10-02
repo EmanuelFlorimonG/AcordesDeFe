@@ -1,6 +1,6 @@
 import { createClient, isAuthApiError, isAuthRetryableFetchError, type Session, type SupabaseClient as SupabaseJsClient } from '@supabase/supabase-js';
 import { createSupabaseClient, getSupabaseStatus, type SupabaseClient, type SupabaseConfig } from '../lib/supabase';
-import { AUTH_STORAGE_KEY, MAX_NAME_LENGTH, type AppAuth, type AppSession, type AuthFailure } from './session';
+import { AUTH_STORAGE_KEY, MAX_NAME_LENGTH, checkDisplayName, type AppAuth, type AppSession, type AuthFailure } from './session';
 
 /**
  * Supabase Auth for the whole app, and the data client that goes with it.
@@ -123,6 +123,15 @@ export function createSupabaseAuth(js: SupabaseJsClient): AppAuth {
     async useRecoveryLink({ accessToken, refreshToken }) {
       try {
         const { error } = await js.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        return error ? { ok: false, reason: toFailure(error) } : { ok: true, value: undefined };
+      } catch (error) {
+        return { ok: false, reason: toFailure(error) };
+      }
+    },
+    async updateDisplayName(name) {
+      if (checkDisplayName(name)) return { ok: false, reason: 'unavailable' };
+      try {
+        const { error } = await js.auth.updateUser({ data: { [DISPLAY_NAME]: name.trim() } });
         return error ? { ok: false, reason: toFailure(error) } : { ok: true, value: undefined };
       } catch (error) {
         return { ok: false, reason: toFailure(error) };
