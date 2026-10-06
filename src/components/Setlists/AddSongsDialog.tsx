@@ -3,7 +3,7 @@ import { Check, Plus, Search, X } from 'lucide-react';
 import type { Setlist } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import { normalizeText } from '../../utils/normalizeText';
-import { formatSongCount, listSongCategories } from '../../utils/setlists';
+import { formatSongCount, listSongCategories, momentsFor } from '../../utils/setlists';
 import type { SpecificSeasonId } from '../../data/liturgicalSeasons';
 import {
   SEASON_FILTER_OPTIONS,
@@ -14,13 +14,14 @@ import {
 import { LiturgicalSeasonSelect } from '../Liturgy/LiturgicalSeasonSelect';
 import { CoverTile } from '../Dashboard/CoverTile';
 import { LiturgicalSeasonChips } from '../Liturgy/LiturgicalSeasonChips';
+import { ListboxSelect, type ListboxOption } from '../ui/ListboxSelect';
 import { Dialog } from './Dialog';
 import { primaryButton, textField } from './ui';
 
 interface AddSongsDialogProps {
   songs: Song[];
   setlist: Setlist;
-  /** `moment` is the part of the Mass the song was chosen from, if any */
+  /** El momento de la celebración elegido para lo que se añade, o "" si ninguno */
   onAdd: (song: Song, moment: string) => void;
   onClose: () => void;
 }
@@ -56,9 +57,23 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
     }
     return counts;
   }, [songs]);
-  const selectedCategory = categories.find((entry) => entry.name === category) ?? null;
-  // Songs picked from a part of the Mass enter the setlist already marked with it.
-  const presetMoment = selectedCategory?.isMassMoment ? selectedCategory.name : '';
+  /**
+   * El momento de la celebración, que no es lo mismo que el filtro.
+   *
+   * Una canción vale para cualquier momento, diga lo que diga su categoría:
+   * «Vamos Claretianos» está clasificada como Claretiana y se canta de Entrada
+   * tantas veces como haga falta. El filtro busca en el cancionero; esto dice
+   * en qué parte de esta celebración va lo que se añada.
+   *
+   * Mientras nadie lo toque vale lo que sugiera el filtro, que es el atajo de
+   * siempre: pulsar «Ofertorio» y añadir deja las canciones como Ofertorio. En
+   * cuanto alguien lo elige a mano —incluido «Sin momento»— manda su elección
+   * y ningún chip vuelve a cambiarla por sorpresa.
+   */
+  const momentOptions = momentsFor(setlist.kind);
+  const suggestedByFilter = category && momentOptions.includes(category) ? category : '';
+  const [chosenMoment, setChosenMoment] = useState<string | null>(null);
+  const moment = chosenMoment ?? suggestedByFilter;
 
   const countsBySongId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -82,7 +97,7 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
   }, [songs, query, category, season]);
 
   const handleAdd = (song: Song) => {
-    onAdd(song, presetMoment);
+    onAdd(song, moment);
     setAddedCount((count) => count + 1);
     setJustAdded(song.id);
     if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
@@ -95,6 +110,13 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
         ? 'border-[#2464ED] bg-[#2464ED] text-white'
         : 'border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 text-slate-600 dark:text-slate-300 hover:border-[#2464ED] hover:text-[#2464ED] dark:hover:text-sky-400'
     }`;
+
+  // Los momentos de esta celebración, los que ya tiene el proyecto: los de la
+  // Misa o los de la adoración, según lo que se esté preparando.
+  const momentChoices: Array<ListboxOption<string>> = [
+    ...momentOptions.map((name) => ({ value: name, label: name })),
+    { value: '', label: 'Sin momento', separated: true },
+  ];
 
   const lastMassMomentIndex = categories.reduce(
     (last, entry, index) => (entry.isMassMoment ? index : last),
@@ -196,13 +218,24 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
           </p>
         )}
 
-        {presetMoment && (
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            Las canciones que añadas quedarán marcadas como{' '}
-            <span className="font-semibold text-[#2464ED] dark:text-sky-400">{presetMoment}</span>. Puedes
-            cambiarlo después en cada canción.
+        {/* Hasta aquí, buscar. De aquí para abajo, la celebración: por eso va
+            separado por una línea y no es un chip más. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-slate-100 dark:border-dark-800 pt-3">
+          <ListboxSelect
+            value={moment}
+            options={momentChoices}
+            onChange={setChosenMoment}
+            label="Momento en la celebración"
+            highlighted={moment !== ''}
+            size="sm"
+            className="w-auto"
+          />
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {moment
+              ? 'Las canciones que añadas entran en este momento, sea cual sea su categoría.'
+              : 'Las canciones que añadas entran sin momento. Puedes ponérselo después.'}
           </p>
-        )}
+        </div>
       </div>
 
       {results.length === 0 ? (
@@ -244,8 +277,8 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
                   onClick={() => handleAdd(song)}
                   aria-label={
                     count > 0
-                      ? `Añadir ${song.title} otra vez${presetMoment ? ` como ${presetMoment}` : ''}`
-                      : `Añadir ${song.title}${presetMoment ? ` como ${presetMoment}` : ''}`
+                      ? `Añadir ${song.title} otra vez${moment ? ` como ${moment}` : ''}`
+                      : `Añadir ${song.title}${moment ? ` como ${moment}` : ''}`
                   }
                   className={`shrink-0 inline-flex items-center justify-center gap-1.5 h-10 [@media(pointer:coarse)]:h-11 px-3 rounded-lg border text-sm font-semibold transition-colors touch-manipulation ${
                     isFlashing
