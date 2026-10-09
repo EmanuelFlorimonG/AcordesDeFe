@@ -4,7 +4,8 @@ import {
   createMassSessionRepository,
   type MassSessionRepository,
 } from '../storage/massSessionStorage';
-import { getMassPosition, resolveMassItemId, type MassPosition } from '../utils/massMode';
+import { getMassPosition, resolveMassItemId, runProgressPosition, type MassPosition } from '../utils/massMode';
+import { isBackupItem } from '../utils/setlists';
 
 /**
  * Where we are inside a celebration.
@@ -21,6 +22,13 @@ export interface MassSessionState {
   /** The entry being played, already checked against the setlist */
   currentItemId: string | null;
   position: MassPosition | null;
+  /**
+   * Por dónde va la celebración, para la barra de avance. En una canción del
+   * recorrido es la suya; en una reserva, la de la última que se cantó, que
+   * es lo que hace que ir a buscarla no mueva la barra. Null mientras no se
+   * haya abierto ninguna del recorrido.
+   */
+  runPosition: MassPosition | null;
   start: (itemId?: string) => void;
   goTo: (itemId: string) => void;
   goNext: () => void;
@@ -58,11 +66,24 @@ export function useMassSession({
 
   const [phase, setPhase] = useState<MassPhase>(initial.phase);
   const [requestedItemId, setRequestedItemId] = useState<string | null>(initial.itemId);
+  /**
+   * La última canción del recorrido que se abrió, para la barra de avance.
+   *
+   * Se anota al ir a ella, no al dibujar, y solo cuenta lo que se ha abierto
+   * de verdad: en la pantalla de inicio todavía no se ha cantado nada, así
+   * que entrar por una reserva no da la celebración por empezada. Vive
+   * mientras dura esta pantalla y no se guarda en ninguna parte.
+   */
+  const [lastRunItemId, setLastRunItemId] = useState<string | null>(
+    initial.phase === 'playing' ? initial.itemId : null
+  );
 
   // The setlist can change under us (another tab, an entry removed): the item
   // shown is always re-checked against the setlist as it is now.
   const currentItemId = resolveMassItemId(setlist, requestedItemId, isPlayable);
   const position = setlist && currentItemId ? getMassPosition(setlist, currentItemId, isPlayable) : null;
+
+  const runPosition = setlist ? runProgressPosition(setlist, position, lastRunItemId, isPlayable) : null;
 
   const remember = useCallback(
     (itemId: string | null) => {
@@ -76,14 +97,17 @@ export function useMassSession({
       setRequestedItemId(itemId);
       setPhase('playing');
       remember(itemId);
+      const target = setlist?.items.find((item) => item.id === itemId);
+      if (target && !isBackupItem(target)) setLastRunItemId(itemId);
     },
-    [remember]
+    [remember, setlist]
   );
 
   return {
     phase,
     currentItemId,
     position,
+    runPosition,
     start: (itemId) => goTo(itemId ?? currentItemId ?? ''),
     goTo,
     goNext: () => {

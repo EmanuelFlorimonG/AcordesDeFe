@@ -58,6 +58,20 @@ export const ADORATION_MOMENTS = [
 ];
 
 /**
+ * Las canciones de reserva de una celebración.
+ *
+ * No es una parte de la misa ni de una adoración: es lo que se tiene a mano
+ * por si la comunión se alarga o queda un hueco. Por eso se ofrece en las dos,
+ * se apunta donde haga falta buscarla, y el recorrido en vivo no entra en ella
+ * sola: se va a buscarla cuando hace falta.
+ */
+export const BACKUP_MOMENT = 'Backup';
+
+/** Si una entrada del Setlist es de reserva. Lo dice su momento, nada más. */
+export const isBackupItem = (item: Pick<SetlistItem, 'moment'>): boolean =>
+  item.moment === BACKUP_MOMENT;
+
+/**
  * Cómo se llama el modo en vivo de este Setlist.
  *
  * Es el mismo modo: la misma pantalla, los mismos controles, el mismo camino.
@@ -67,9 +81,14 @@ export const ADORATION_MOMENTS = [
 export const liveModeName = (kind: SetlistKind | undefined): string =>
   kind === 'adoracion' ? 'Modo Adoración' : 'Modo Misa';
 
-/** Los momentos que se ofrecen, según lo que se esté preparando. */
+/**
+ * Los momentos que se ofrecen, según lo que se esté preparando.
+ *
+ * La reserva va detrás de todos, en las dos celebraciones, porque no es una
+ * parte más: es lo que se guarda para cuando la celebración lo pida.
+ */
 export function momentsFor(kind: SetlistKind | undefined): string[] {
-  return kind === 'adoracion' ? ADORATION_MOMENTS : MASS_MOMENTS;
+  return [...(kind === 'adoracion' ? ADORATION_MOMENTS : MASS_MOMENTS), BACKUP_MOMENT];
 }
 
 /**
@@ -268,7 +287,13 @@ export function removeSetlistItem(setlist: Setlist, itemId: string, now: number)
   return { ...setlist, items: setlist.items.filter((item) => item.id !== itemId), updatedAt: now };
 }
 
-/** Moves an entry to a position in the list (clamped to the list). */
+/**
+ * Moves an entry to a position in the list (clamped to the list).
+ *
+ * La reserva no tiene sitio fijo: se coloca donde quien prepara la quiera, y
+ * se mueve como cualquier otra. Lo que la distingue es que la celebración no
+ * entra en ella sola, no dónde está escrita.
+ */
 export function moveSetlistItem(setlist: Setlist, itemId: string, toIndex: number, now: number): Setlist {
   const from = setlist.items.findIndex((item) => item.id === itemId);
   if (from < 0) return setlist;
@@ -395,6 +420,46 @@ export function getFirstPlayableItem(
   return setlist.items.find(isPlayable) ?? null;
 }
 
+/**
+ * Las entradas que se recorren junto a ésta.
+ *
+ * El recorrido de una celebración son sus canciones, y ninguna de reserva,
+ * estén donde estén escritas: después de la Comunión viene la PostComunión
+ * aunque en medio haya una reserva apuntada.
+ *
+ * Y una reserva es un recorrido de una sola canción: se abre a mano desde el
+ * navegador y no lleva a ninguna parte, ni de vuelta a la celebración ni a
+ * otra reserva. Lo siguiente lo decide quien canta, no el programa.
+ */
+export function sameRun(
+  item: SetlistItem,
+  isPlayable: (entry: SetlistItem) => boolean = () => true
+): (entry: SetlistItem) => boolean {
+  if (isBackupItem(item)) return (entry) => entry.id === item.id;
+  return (entry) => isPlayable(entry) && !isBackupItem(entry);
+}
+
+/** Dónde está una entrada dentro de su propio recorrido. */
+export function getSetlistRunPosition(
+  setlist: Setlist,
+  itemId: string,
+  isPlayable: (item: SetlistItem) => boolean = () => true
+): SetlistPosition | null {
+  const item = setlist.items.find((entry) => entry.id === itemId);
+  return item ? getSetlistPosition(setlist, itemId, sameRun(item, isPlayable)) : null;
+}
+
+/** Por dónde se empieza: la primera del recorrido, nunca una de reserva. */
+export function getFirstRunItem(
+  setlist: Setlist,
+  isPlayable: (item: SetlistItem) => boolean = () => true
+): SetlistItem | null {
+  return (
+    setlist.items.find((item) => isPlayable(item) && !isBackupItem(item)) ??
+    getFirstPlayableItem(setlist, isPlayable)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Overview
 // ---------------------------------------------------------------------------
@@ -407,15 +472,20 @@ export interface DurationSummary {
   unknownCount: number;
 }
 
+/**
+ * Cuánto dura la celebración. La reserva no cuenta: son las que quizá no se
+ * canten, y sumarlas daría una misa más larga de la que se ha preparado.
+ */
 export function summarizeSetlistDuration(setlist: Setlist, durations: Record<string, number>): DurationSummary {
+  const items = setlist.items.filter((item) => !isBackupItem(item));
   let knownSeconds = 0;
   let unknownCount = 0;
-  for (const item of setlist.items) {
+  for (const item of items) {
     const seconds = durations[item.songId];
     if (typeof seconds === 'number' && seconds > 0) knownSeconds += seconds;
     else unknownCount++;
   }
-  return { songCount: setlist.items.length, knownSeconds, unknownCount };
+  return { songCount: items.length, knownSeconds, unknownCount };
 }
 
 /** "~24 min", "~24 min + 2 sin duración", or "Duración desconocida". Never a guess. */

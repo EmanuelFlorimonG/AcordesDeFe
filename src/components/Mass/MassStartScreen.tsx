@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, Play } from 'lucide-react';
+import { ChevronRight, LifeBuoy, Play } from 'lucide-react';
 import type { Song } from '../../types/song';
 import type { MassStop } from '../../utils/massMode';
 import { formatSetlistDate, formatSongCount } from '../../utils/setlists';
@@ -41,7 +41,9 @@ export const MassStartScreen: React.FC<MassStartScreenProps> = ({
   // "domingo, 20 de septiembre de 2026" with one capital, like the setlist page.
   const longDate = formatSetlistDate(date, 'long');
   const dateLabel = longDate ? longDate.charAt(0).toUpperCase() + longDate.slice(1) : '';
-  const playable = stops.filter((stop) => stop.isPlayable);
+  // Lo que se va a cantar es la celebración; la reserva se cuenta aparte.
+  const playable = stops.filter((stop) => stop.isPlayable && !stop.isBackup);
+  const backup = stops.filter((stop) => stop.isPlayable && stop.isBackup);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -55,10 +57,11 @@ export const MassStartScreen: React.FC<MassStartScreenProps> = ({
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {dateLabel && <span>{dateLabel} · </span>}
           {formatSongCount(playable.length)}
+          {backup.length > 0 && <span> · {backup.length} de reserva</span>}
         </p>
 
         <ol className="mt-6 rounded-xl border border-slate-200 dark:border-dark-700 divide-y divide-slate-100 dark:divide-dark-800">
-          {stops.map(({ item, position, isPlayable }) => {
+          {stops.map(({ item, position, isPlayable, isBackup }) => {
             const song = songsById.get(item.songId);
             return (
               <li key={item.id}>
@@ -68,19 +71,30 @@ export const MassStartScreen: React.FC<MassStartScreenProps> = ({
                   onClick={() => onStart(item.id)}
                   title={isPlayable ? `Empezar en ${song?.title ?? 'esta canción'}` : undefined}
                   className={`w-full flex items-center gap-3 px-3.5 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2464ED]/40 ${
-                    isPlayable ? 'hover:bg-slate-50 dark:hover:bg-dark-800' : 'opacity-60'
+                    !isPlayable
+                      ? 'opacity-60'
+                      : isBackup
+                        ? 'bg-amber-50/50 dark:bg-amber-500/[0.05] hover:bg-amber-50 dark:hover:bg-amber-500/10'
+                        : 'hover:bg-slate-50 dark:hover:bg-dark-800'
                   }`}
                 >
                   <span
                     aria-hidden="true"
-                    className="w-6 shrink-0 text-center font-mono text-xs tabular-nums text-slate-300 dark:text-dark-600"
+                    className={`w-6 shrink-0 text-center font-mono text-xs tabular-nums ${
+                      isBackup ? 'text-amber-600 dark:text-amber-500' : 'text-slate-300 dark:text-dark-600'
+                    }`}
                   >
-                    {position !== null ? String(position).padStart(2, '0') : '—'}
+                    {position === null ? '—' : isBackup ? `R${position}` : String(position).padStart(2, '0')}
                   </span>
                   <span className="min-w-0 flex-1">
                     {item.moment && (
-                      <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-[#2464ED] dark:text-sky-400">
-                        {item.moment}
+                      <span
+                        className={`flex items-center gap-1 truncate text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                          isBackup ? 'text-amber-700 dark:text-amber-400' : 'text-[#2464ED] dark:text-sky-400'
+                        }`}
+                      >
+                        {isBackup && <LifeBuoy aria-hidden="true" className="w-3 h-3 shrink-0" />}
+                        <span className="truncate">{item.moment}</span>
                       </span>
                     )}
                     <span className="block truncate text-sm font-semibold text-slate-700 dark:text-slate-200">

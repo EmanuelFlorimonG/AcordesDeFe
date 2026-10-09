@@ -1,6 +1,6 @@
 import type { Setlist, SetlistPlayback } from '../types/setlist';
 import type { Song } from '../types/song';
-import { getSetlistPosition } from './setlists';
+import { getSetlistRunPosition } from './setlists';
 import { readShareToken } from '../storage/setlistShares';
 
 export type SharedRoute = { token: string; view: 'root' | 'song' | 'rehearsal' | 'live'; itemId?: string };
@@ -18,7 +18,8 @@ export const sharedSongHash = (token: string, itemId: string) => `${sharedRootHa
 
 /** Public playback has navigation capabilities, never persistence capabilities. */
 export function sharedPlayback(setlist: Setlist, songs: Map<string, Song>, token: string, itemId: string, navigate: (hash: string) => void): SetlistPlayback | null {
-  const position = getSetlistPosition(setlist, itemId, item => songs.has(item.songId));
+  // Dentro de su recorrido: una compartida tampoco cae sola en la reserva.
+  const position = getSetlistRunPosition(setlist, itemId, item => songs.has(item.songId));
   if (!position) return null;
   const root = sharedRootHash(token);
   const step = (item: typeof position.item) => ({

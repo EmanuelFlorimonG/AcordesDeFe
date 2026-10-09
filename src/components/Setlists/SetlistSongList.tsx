@@ -5,6 +5,7 @@ import {
   GripVertical,
   ListMusic,
   MoreVertical,
+  LifeBuoy,
   Music4,
   Pencil,
   Play,
@@ -25,6 +26,7 @@ import { songVersionOf } from '../../catalog/songRepository';
 import { arrangementVersionOf, bindArrangement, withReviewNeeded } from '../../utils/arrangement';
 import { parseSongSections } from '../../utils/chordParser';
 import { ARRANGEMENT_PENDING_TEXT } from './ArrangementPendingNotice';
+import { isBackupItem } from '../../utils/setlists';
 
 interface SetlistSongListProps {
   items: SetlistItem[];
@@ -50,6 +52,11 @@ interface SetlistSongListProps {
  * They can be reordered by dragging the handle (mouse, pen or finger) or, for
  * anyone not using a pointer, with the arrow keys on that same handle and from
  * each row's menu. Reordering is announced out loud for screen readers.
+ *
+ * Las de reserva van donde quien prepara las ponga, mezcladas con las demás,
+ * y se mueven igual que cualquier otra. Se distinguen por su etiqueta, su
+ * fondo y su propia cuenta —R1, R2— porque no son parte del recorrido: la
+ * celebración pasa de largo por ellas y hay que ir a buscarlas.
  */
 export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   items,
@@ -106,6 +113,17 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
     },
   });
 
+  // Dos cuentas, cada una en el orden en que aparecen: 01, 02… y R1, R2…
+  const numbering = new Map<string, { backup: boolean; number: number }>();
+  let sung = 0;
+  let spare = 0;
+  for (const item of items) {
+    const backup = isBackupItem(item);
+    numbering.set(item.id, { backup, number: backup ? ++spare : ++sung });
+  }
+  const mainCount = sung;
+  const backupCount = spare;
+
   return (
     <>
       <p role="status" aria-live="polite" className="sr-only">
@@ -120,7 +138,8 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
           const song = songsById.get(item.songId);
           const isDragged = draggingId === item.id;
           const keyDescription = song ? describeKey(song.originalKey, item, song.recommendedCapo ?? 0) : null;
-          const position = String(index + 1).padStart(2, '0');
+          const { backup, number } = numbering.get(item.id)!;
+          const groupSize = backup ? backupCount : mainCount;
 
           return (
             <li
@@ -128,6 +147,8 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
               ref={attachRow(item.id)}
               style={rowStyle(index, item.id)}
               className={`relative flex items-center gap-1 sm:gap-2 pl-2 pr-1 sm:pr-2 border-b border-slate-100 dark:border-dark-800 last:border-b-0 ${
+                backup ? 'bg-amber-50/40 dark:bg-amber-500/[0.04]' : ''
+              } ${
                 isDragged
                   ? 'z-10 rounded-lg bg-white dark:bg-dark-900 shadow-[0_16px_40px_-16px_rgba(15,23,42,0.45)] ring-1 ring-[#2464ED]/30'
                   : recentlyMovedId === item.id
@@ -137,13 +158,20 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
             >
               <span
                 aria-hidden="true"
-                className="w-7 sm:w-9 shrink-0 text-center font-mono text-xs sm:text-sm font-bold tabular-nums text-slate-300 dark:text-dark-600"
+                className={`w-7 sm:w-9 shrink-0 text-center font-mono text-xs sm:text-sm font-bold tabular-nums ${
+                  backup ? 'text-amber-600 dark:text-amber-500' : 'text-slate-300 dark:text-dark-600'
+                }`}
               >
-                {position}
+                {backup ? `R${number}` : String(number).padStart(2, '0')}
               </span>
 
-              <span className="hidden md:block w-28 shrink-0 truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-[#2464ED] dark:text-sky-400">
-                {item.moment}
+              <span
+                className={`hidden md:flex w-28 shrink-0 items-center gap-1 truncate text-[11px] font-semibold uppercase tracking-[0.1em] ${
+                  backup ? 'text-amber-700 dark:text-amber-400' : 'text-[#2464ED] dark:text-sky-400'
+                }`}
+              >
+                {backup && <LifeBuoy aria-hidden="true" className="w-3 h-3 shrink-0" />}
+                <span className="truncate">{item.moment}</span>
               </span>
 
               {song ? (
@@ -152,10 +180,19 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
                   onClick={() => onOpenItem(item)}
                   className="min-w-0 flex-1 py-2.5 sm:py-3 pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40 rounded-lg"
                 >
-                  <span className="sr-only">{`Canción ${index + 1} de ${items.length}: `}</span>
+                  <span className="sr-only">
+                    {backup
+                      ? `Canción de reserva ${number} de ${groupSize}, fuera del recorrido: `
+                      : `Canción ${number} de ${groupSize}: `}
+                  </span>
                   {item.moment && (
-                    <span className="md:hidden block truncate text-[10px] font-semibold uppercase tracking-[0.1em] text-[#2464ED] dark:text-sky-400">
-                      {item.moment}
+                    <span
+                      className={`md:hidden flex items-center gap-1 truncate text-[10px] font-semibold uppercase tracking-[0.1em] ${
+                        backup ? 'text-amber-700 dark:text-amber-400' : 'text-[#2464ED] dark:text-sky-400'
+                      }`}
+                    >
+                      {backup && <LifeBuoy aria-hidden="true" className="w-3 h-3 shrink-0" />}
+                      <span className="truncate">{item.moment}</span>
                     </span>
                   )}
                   <span className="block truncate text-sm font-semibold text-[#10203A] dark:text-white">
@@ -280,7 +317,9 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
               <button
                 type="button"
                 {...handleProps(item.id, index)}
-                aria-label={`Reordenar ${song?.title ?? 'la canción'}, posición ${index + 1} de ${items.length}. Usa las flechas arriba y abajo.`}
+                aria-label={`Reordenar ${song?.title ?? 'la canción'}${
+                  backup ? ', de reserva' : ''
+                }, posición ${index + 1} de ${items.length}. Usa las flechas arriba y abajo.`}
                 title="Arrastra para reordenar, o usa las flechas"
                 className={`${iconButton} touch-none cursor-grab active:cursor-grabbing ${
                   isDragged ? 'text-[#2464ED] dark:text-sky-400' : 'text-slate-300 dark:text-dark-600'

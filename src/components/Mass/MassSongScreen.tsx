@@ -5,6 +5,7 @@ import { songVersionOf } from '../../catalog/songRepository';
 import { AUTO_SCROLL_SPEEDS, useAutoScroll } from '../../hooks/useAutoScroll';
 import type { MassKeyInfo, MassPosition } from '../../utils/massMode';
 import { STAGE_FONT_LABELS, STAGE_SPEED_SCALE, type StageFontSize } from '../../utils/stageReading';
+import { isBackupItem } from '../../utils/setlists';
 import { AutoScrollPausedNotice } from '../Rehearsal/RehearsalControls';
 import { MassControls } from './MassControls';
 import { MassHeader } from './MassHeader';
@@ -19,6 +20,8 @@ interface MassSongScreenProps {
   /** Writes down that a block of this entry's arrangement needs someone to look at it */
   onArrangementNeedsReview?: (itemId: string, arrangement: SetlistArrangement) => void;
   position: MassPosition;
+  /** Lo que lleva cantado la celebración, de 0 a 1 */
+  progress: number;
   keyInfo: MassKeyInfo | null;
   /** Song text already transposed for this entry and instrument */
   content: string;
@@ -51,6 +54,7 @@ export const MassSongScreen: React.FC<MassSongScreenProps> = ({
   song,
   item,
   position,
+  progress,
   keyInfo,
   content,
   showChords,
@@ -87,7 +91,8 @@ export const MassSongScreen: React.FC<MassSongScreenProps> = ({
         total={position.total}
         keyInfo={keyInfo}
         tempo={song.tempo}
-        isLast={position.isLast}
+        isLast={position.isLast && !isBackupItem(item)}
+        progress={progress}
         onOpenNavigator={onOpenNavigator}
         onOpenMenu={onOpenMenu}
         onExit={onRequestExit}

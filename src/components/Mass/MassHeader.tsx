@@ -14,6 +14,8 @@ interface MassHeaderProps {
   keyInfo: MassKeyInfo | null;
   tempo?: number;
   isLast: boolean;
+  /** Lo que lleva cantado la celebración, de 0 a 1. Una reserva no lo mueve. */
+  progress: number;
   onOpenNavigator: () => void;
   onOpenMenu: () => void;
   onExit: () => void;
@@ -37,6 +39,7 @@ export const MassHeader: React.FC<MassHeaderProps> = ({
   keyInfo,
   tempo,
   isLast,
+  progress,
   onOpenNavigator,
   onOpenMenu,
   onExit,
@@ -109,7 +112,7 @@ export const MassHeader: React.FC<MassHeaderProps> = ({
     <div aria-hidden="true" className="h-0.5 w-full bg-slate-100 dark:bg-dark-800">
       <div
         className="h-full bg-[#2464ED] dark:bg-sky-500 transition-[width] duration-500"
-        style={{ width: `${total > 0 ? (position / total) * 100 : 0}%` }}
+        style={{ width: `${Math.round(progress * 100)}%` }}
       />
     </div>
   </header>

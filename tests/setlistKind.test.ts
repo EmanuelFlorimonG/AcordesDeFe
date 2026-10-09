@@ -5,6 +5,7 @@ import type { Setlist } from '../src/types/setlist';
 import type { Song } from '../src/types/song';
 import {
   ADORATION_MOMENTS,
+  BACKUP_MOMENT,
   MASS_MOMENTS,
   createSetlist,
   liveModeName,
@@ -107,7 +108,7 @@ describe('Lo que ya estaba guardado sigue significando lo mismo', () => {
   it('un Setlist sin tipo es una misa', () => {
     const viejo = sanitizeSetlist({ id: 'viejo', name: 'Vigilia', items: [], createdAt: NOW, updatedAt: NOW }, NOW);
     eq(viejo?.kind, undefined);
-    eq(momentsFor(viejo?.kind), MASS_MOMENTS);
+    eq(momentsFor(viejo?.kind), [...MASS_MOMENTS, BACKUP_MOMENT]);
   });
 
   it('un tipo inventado en el almacenamiento se ignora', () => {
@@ -157,8 +158,10 @@ describe('Cada clase ofrece sus partes', () => {
       'Comunión',
       'PostComunión',
       'Salida',
+      'Backup',
     ]);
     eq(MASS_MOMENTS.includes('Paz'), false, 'la Paz deja de ofrecerse');
+    eq(MASS_MOMENTS.includes(BACKUP_MOMENT), false, 'la reserva no es una parte de la misa');
   });
 
   it('la adoración, los suyos', () => {
@@ -169,16 +172,32 @@ describe('Cada clase ofrece sus partes', () => {
       'Momento de gracia',
       'Procesión',
       'Salida',
+      'Backup',
     ]);
+    eq(ADORATION_MOMENTS.includes(BACKUP_MOMENT), false, 'ni de la adoración');
+  });
+
+  it('la reserva se ofrece en las dos, y siempre la última', () => {
+    // Una canción de reserva no es una parte de la celebración: es lo que se
+    // guarda por si hay que alargar un momento. Por eso está en las dos y no
+    // se mete entre las partes.
+    for (const clase of ['misa', 'adoracion'] as const) {
+      const momentos = momentsFor(clase);
+      eq(momentos[momentos.length - 1], BACKUP_MOMENT, clase);
+      eq(momentos.filter((nombre) => nombre === BACKUP_MOMENT).length, 1, clase);
+    }
+    eq(momentsFor('misa').includes('Adoración'), false, 'y no se inventa un momento «Adoración»');
+    eq(momentsFor('adoracion').includes('Adoración'), false);
   });
 
   it('sin decir nada, los de la misa', () => {
-    eq(momentsFor(undefined), MASS_MOMENTS);
+    eq(momentsFor(undefined), [...MASS_MOMENTS, BACKUP_MOMENT]);
   });
 
   it('y detrás, lo que no es ninguna de las dos cosas', () => {
     const adoracion = suggestedMoments('adoracion');
     eq(adoracion.slice(0, ADORATION_MOMENTS.length), ADORATION_MOMENTS, 'primero lo que se prepara');
+    eq(adoracion.includes(BACKUP_MOMENT), true, 'la reserva también se puede escribir a mano');
     for (const extra of ['Apertura', 'Reflexión', 'Dinámica', 'Cierre']) {
       eq(adoracion.includes(extra), true, extra);
     }

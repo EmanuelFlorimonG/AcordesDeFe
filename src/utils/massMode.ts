@@ -1,7 +1,7 @@
 import type { Setlist, SetlistItem } from '../types/setlist';
 import type { Song } from '../types/song';
 import { describeKey } from './keySettings';
-import { getFirstPlayableItem, getSetlistPosition, type SetlistPosition } from './setlists';
+import { getFirstRunItem, getSetlistRunPosition, isBackupItem, type SetlistPosition } from './setlists';
 
 /**
  * Moving through a setlist while it is being played.
@@ -13,12 +13,17 @@ import { getFirstPlayableItem, getSetlistPosition, type SetlistPosition } from '
 
 export type MassPosition = SetlistPosition;
 
+/**
+ * Dentro de su recorrido: el de la celebración, o el de la propia reserva
+ * cuando se ha ido a buscar una, que es de una sola canción. Por eso la
+ * celebración pasa de largo por las reservas y se acaba en su última canción.
+ */
 export function getMassPosition(
   setlist: Setlist,
   itemId: string,
   isPlayable: (item: SetlistItem) => boolean
 ): MassPosition | null {
-  return getSetlistPosition(setlist, itemId, isPlayable);
+  return getSetlistRunPosition(setlist, itemId, isPlayable);
 }
 
 /**
@@ -36,14 +41,16 @@ export function resolveMassItemId(
     const wanted = setlist.items.find((item) => item.id === itemId);
     if (wanted && isPlayable(wanted)) return wanted.id;
   }
-  return getFirstPlayableItem(setlist, isPlayable)?.id ?? null;
+  return getFirstRunItem(setlist, isPlayable)?.id ?? null;
 }
 
 export interface MassStop {
   item: SetlistItem;
-  /** 1-based among the songs that can be played, or null when this one can't */
+  /** 1-based within its own run, or null when this one can't be played */
   position: number | null;
   isPlayable: boolean;
+  /** De reserva: se abre a mano, y la celebración no cae en ella sola */
+  isBackup: boolean;
 }
 
 /**
@@ -55,12 +62,42 @@ export function listMassStops(
   setlist: Setlist,
   isPlayable: (item: SetlistItem) => boolean
 ): MassStop[] {
-  let position = 0;
+  // Cada recorrido cuenta desde uno: la reserva no continúa la numeración de
+  // la celebración, porque no es su continuación.
+  const counted = { run: 0, backup: 0 };
   return setlist.items.map((item) => {
     const playable = isPlayable(item);
-    if (playable) position++;
-    return { item, position: playable ? position : null, isPlayable: playable };
+    const backup = isBackupItem(item);
+    if (playable) counted[backup ? 'backup' : 'run']++;
+    return {
+      item,
+      position: playable ? counted[backup ? 'backup' : 'run'] : null,
+      isPlayable: playable,
+      isBackup: backup,
+    };
   });
+}
+
+/**
+ * Dónde va la celebración, que no es dónde está la canción abierta.
+ *
+ * Ir a buscar una reserva no adelanta la misa ni la empieza de nuevo: la
+ * barra se queda donde estaba, en la última canción del recorrido que se
+ * abrió. `lastRunItemId` es esa canción, y mientras no haya ninguna —una
+ * reserva abierta antes de empezar— no hay avance que enseñar.
+ */
+export function runProgressPosition(
+  setlist: Setlist,
+  current: MassPosition | null,
+  lastRunItemId: string | null,
+  isPlayable: (item: SetlistItem) => boolean
+): MassPosition | null {
+  if (current && !isBackupItem(current.item)) return current;
+  // Lo recordado también se comprueba: una sesión retomada puede venir de una
+  // reserva, y una reserva nunca dice por dónde va la celebración.
+  const remembered = lastRunItemId ? setlist.items.find((item) => item.id === lastRunItemId) : null;
+  if (!remembered || isBackupItem(remembered)) return null;
+  return getMassPosition(setlist, remembered.id, isPlayable);
 }
 
 /** How far along the setlist we are, as a fraction between 0 and 1. */

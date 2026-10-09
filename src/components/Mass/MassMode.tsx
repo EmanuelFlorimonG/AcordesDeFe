@@ -221,7 +221,7 @@ export const MassMode: React.FC<MassModeProps> = ({
       return (
         <MassEndScreen
           setlistName={setlist.name}
-          total={position?.total ?? stops.filter((stop) => stop.isPlayable).length}
+          total={position?.total ?? stops.filter((stop) => stop.isPlayable && !stop.isBackup).length}
           onBackToSetlist={leave}
           exitLabel={exitLabel}
           onFinishCelebration={
@@ -265,6 +265,7 @@ export const MassMode: React.FC<MassModeProps> = ({
         item={item}
         onArrangementNeedsReview={shared ? undefined : onArrangementNeedsReview}
         position={position}
+        progress={getMassProgress(session.runPosition)}
         keyInfo={keyInfo}
         content={transposedContent}
         showChords={showChords && hasChords}
@@ -366,7 +367,7 @@ export const MassMode: React.FC<MassModeProps> = ({
       )}
 
       {/* Mass mode keeps the progress bar's percentage honest for screen readers. */}
-      <span className="sr-only">{Math.round(getMassProgress(position) * 100)}%</span>
+      <span className="sr-only">{Math.round(getMassProgress(session.runPosition) * 100)}%</span>
     </div>,
     document.body
   );

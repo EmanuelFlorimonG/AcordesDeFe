@@ -56,7 +56,7 @@ import { useOfflineReadyOnce, usePwaState } from './hooks/usePwa';
 import { applyPendingUpdate } from './pwa';
 import { ConnectionStatus } from './components/Layout/ConnectionStatus';
 import { useSongDurations } from './hooks/useSongDurations';
-import { countSetlistsWithMember, getFirstPlayableItem, getSetlistPosition } from './utils/setlists';
+import { countSetlistsWithMember, getFirstRunItem, getSetlistRunPosition, sameRun } from './utils/setlists';
 import { bindArrangement, withReviewNeeded } from './utils/arrangement';
 import { parseSongSections } from './utils/chordParser';
 import { songVersionOf } from './catalog/songRepository';
@@ -898,7 +898,8 @@ export function App() {
    */
   const setlistPlayback: SetlistPlayback | null = (() => {
     if (!setlistSongRoute || !activeSetlist) return null;
-    const position = getSetlistPosition(activeSetlist, setlistSongRoute.itemId, isPlayableItem);
+    // Dentro de su recorrido: el ensayo tampoco cae solo en la reserva.
+    const position = getSetlistRunPosition(activeSetlist, setlistSongRoute.itemId, isPlayableItem);
     if (!position) return null;
     const stepTo = (item: SetlistItem) => ({
       title: songsById.get(item.songId)?.title ?? '',
@@ -947,16 +948,19 @@ export function App() {
   };
 
   const handleStartRehearsal = (setlist: Setlist) => {
-    const first = getFirstPlayableItem(setlist, isPlayableItem);
+    const first = getFirstRunItem(setlist, isPlayableItem);
     if (!first) return;
     setIsRehearsing(true);
     navigateTo(setlistSongHash(setlist.id, first.id));
   };
 
   // While a song of a setlist is open, the player follows the setlist and
-  // stops at its end; everywhere else it cycles through the songbook.
+  // stops at its end; everywhere else it cycles through the songbook. La cola
+  // es la del recorrido que se está tocando, para que coincida con `position`
+  // y para que el reproductor tampoco entre solo en la reserva.
   const setlistQueue: Song[] | null = setlistPlayback && activeSetlist
     ? activeSetlist.items
+        .filter(sameRun(setlistPlayback.item, isPlayableItem))
         .map((item) => songsById.get(item.songId))
         .filter((song): song is Song => Boolean(song))
     : null;

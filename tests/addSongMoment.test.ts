@@ -5,7 +5,7 @@ import React, { type ReactElement, type ReactNode } from 'react';
 import type { Setlist } from '../src/types/setlist';
 import type { Song } from '../src/types/song';
 import { AddSongsDialog } from '../src/components/Setlists/AddSongsDialog';
-import { ADORATION_MOMENTS, MASS_MOMENTS } from '../src/utils/setlists';
+import { ADORATION_MOMENTS, BACKUP_MOMENT, MASS_MOMENTS } from '../src/utils/setlists';
 import { runHook } from './hookHarness';
 
 /**
@@ -315,7 +315,7 @@ describe('Los momentos que se ofrecen son los de esta celebración', () => {
   it('una misa ofrece las partes de la misa, y «Sin momento»', () => {
     const ventana = open();
     try {
-      eq(ventana.options, [...MASS_MOMENTS, 'Sin momento']);
+      eq(ventana.options, [...MASS_MOMENTS, BACKUP_MOMENT, 'Sin momento']);
       eq(ventana.options.includes('Paz'), false, 'la Paz dejó de ofrecerse');
       for (const deAdoracion of ADORATION_MOMENTS.filter((m) => m !== 'Salida')) {
         eq(ventana.options.includes(deAdoracion), false, deAdoracion);
@@ -328,7 +328,7 @@ describe('Los momentos que se ofrecen son los de esta celebración', () => {
   it('una adoración ofrece las suyas, y «Sin momento»', () => {
     const ventana = open('adoracion');
     try {
-      eq(ventana.options, [...ADORATION_MOMENTS, 'Sin momento']);
+      eq(ventana.options, [...ADORATION_MOMENTS, BACKUP_MOMENT, 'Sin momento']);
       for (const deMisa of ['Ofertorio', 'Santo', 'Comunión', 'PostComunión']) {
         eq(ventana.options.includes(deMisa), false, deMisa);
       }

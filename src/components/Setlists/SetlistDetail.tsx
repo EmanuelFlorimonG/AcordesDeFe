@@ -23,6 +23,7 @@ import {
   formatDurationSummary,
   formatSetlistDate,
   formatSongCount,
+  isBackupItem,
   liveModeName,
   summarizeSetlistDuration,
 } from '../../utils/setlists';
@@ -167,6 +168,8 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   }
 
   const summary = summarizeSetlistDuration(setlist, durations);
+  // La reserva se nombra aparte: no es parte de lo que dura la celebración.
+  const backupCount = setlist.items.filter(isBackupItem).length;
   const durationLabel = formatDurationSummary(summary);
   const dateLabel = formatSetlistDate(setlist.date, 'long');
   const playableCount = setlist.items.filter((item) => songsById.has(item.songId)).length;
@@ -195,7 +198,8 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
               {setlist.name}
             </h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {formatSongCount(setlist.items.length)}
+              {formatSongCount(summary.songCount)}
+              {backupCount > 0 && ` · ${backupCount} de reserva`}
               {durationLabel && ` · ${durationLabel}`}
             </p>
           </div>

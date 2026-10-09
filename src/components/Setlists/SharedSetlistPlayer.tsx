@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 import type { Setlist, SetlistItem } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import { parseSharedRoute, sharedRootHash, sharedSongHash, sharedPlayback } from '../../utils/sharedSetlistRoutes';
+import { getFirstRunItem } from '../../utils/setlists';
 import { SharedSetlistView } from './SharedSetlistScreen';
 import { secondaryButton } from './ui';
 
@@ -36,7 +37,7 @@ export const SharedSetlistPlayer: React.FC<{
     return () => onPerformanceChange?.(false);
   }, [live, rehearsing, onPerformanceChange]);
   const playable = (item: SetlistItem) => songsById.has(item.songId);
-  const requested = parsed?.view === 'rehearsal' ? setlist.items.find(playable)?.id : parsed?.itemId;
+  const requested = parsed?.view === 'rehearsal' ? getFirstRunItem(setlist, playable)?.id : parsed?.itemId;
 
   const playback = requested ? sharedPlayback(setlist, songsById, token, requested, navigate) : null;
   const song = playback ? songsById.get(playback.item.songId) : null;
