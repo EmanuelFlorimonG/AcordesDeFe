@@ -3150,5 +3150,29 @@ Fue Claret hombre de fuego,
 testigo del Dios de amor,
 tuvo por madre a María
 y su corazón amó.`
+  },
+  {
+    id: 'mateo-7-7-pidan',
+    title: 'Mateo 7:7 (Pidan)',
+    artist: 'Martín Delgado',
+    categories: [],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: [],
+    content: `Coro: (x2)
+Pidan y se les dará
+Llamen y se les abrirá
+Busquen y encontrarán que hay un Dios que se llama Amor.
+
+Verso 1: (x2)
+Cuando ustedes que son malos saben dar las cosas buenas que será de Dios para ti.
+
+Coro (x2)
+
+Verso 2: (x2)
+Porque Dios no se limita en amor y compasión
+Por eso pide y se te dará.
+
+Coro (x2)`
   }
 ];
