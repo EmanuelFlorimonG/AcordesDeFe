@@ -3174,5 +3174,52 @@ Porque Dios no se limita en amor y compasión
 Por eso pide y se te dará.
 
 Coro (x2)`
+  },
+  {
+    id: 'tu-en-mi-yo-en-ti',
+    title: 'Tú en mí, yo en ti',
+    artist: 'Vale Montes',
+    originalKey: 'G',
+    categories: ['Comunión', 'PostComunión'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: ['G', 'C', 'D', 'Em'],
+    year: '2023',
+    content: `[Verso 1]
+[G]Me amas t[C]anto que te d[G]as para m[D]í
+Te haces pe[C]queño para h[G]abitar en [D]mí
+Tú en m[C]í, y[G]o en [D]ti... Tú en m[C]í, y[G]o en [D]ti
+[C]Me amas tanto que quis[G]iste que[D]darte
+[C]Vives verdaderamente e[G]n Cuerpo[D] y Sangre
+Tú en [C]mí, [G]yo en[D] ti... Tú en [C]mí, [G]yo en[D] ti.
+
+[Coro]
+[C]No soy digno de que [G]entres en mi c[D]asa
+[Em]Pero una palabra basta[C]rá para sana[G]rme quiero que [D]entres
+[Em]Solo una palabra basta[C]rá. Tú en mí[G], yo en [D]ti.
+[Em]Solo una palabra basta[C]rá. Tú en mí[G], yo en [D]ti.
+[Em]Solo una palabra basta[C]rá. [G] [D]
+[C]  [G]  [D]
+
+[Verso 2]
+[C]Me amas tanto que te d[G]as para [D]mí
+[C]Te haces pequeño para [G]habitar [D]en mí
+Tú en [C]mí, [G]yo en[D] ti... Tú en [C]mí, [G]yo en[D] ti
+[C]Me amas tanto que quis[G]iste que[D]darte
+[C]Vives verdaderamente e[G]n Cuerpo[D] y Sangre
+Tú en [C]mí, [G]yo en[D] ti... Tú en [C]mí, [G]yo en[D] ti.
+
+Coro
+
+[Final]
+[C]Solo tu pala[G]bra... B[D]astará Señor.
+[C] Ah... [G] [D]
+
+Coro
+
+[Coda]
+(No soy digno de que entres en mi casa)
+Tú en mí, yo en ti.( Y aun así y aun así)
+Solo una palabra bastará.`
   }
 ];

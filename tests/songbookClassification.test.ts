@@ -30,10 +30,10 @@ const MIGRACION = readFileSync('supabase/migrations/20261001120000_songbook_clas
 /** Las cuatro que el ministerio retiró. La última, por estar repetida. */
 const RETIRADAS = ['estamos-de-fiesta-con-jesus', 'pescador-de-hombres', 'alfarero', 'te-presentamos-el-vino-y-el-pan-ii'];
 
-describe('El cancionero tiene 106 canciones', () => {
+describe('El cancionero tiene 107 canciones', () => {
   it('ni una más, ni repetida', () => {
-    eq(MOCK_SONGS.length, 106);
-    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 106, 'sin ids repetidos');
+    eq(MOCK_SONGS.length, 107);
+    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 107, 'sin ids repetidos');
   });
 
   it('las cuatro retiradas ya no están', () => {
@@ -65,7 +65,7 @@ describe('El cancionero tiene 106 canciones', () => {
   });
 
   it('y comprueba al final todo lo que tenía que pasar', () => {
-    eq(MIGRACION.includes('if cuantas <> 106 then'), true, '106 en el cancionero');
+    eq(MIGRACION.includes('if cuantas <> 106 then'), true, '106 cuando se aplicó');
     eq(MIGRACION.includes("where status = 'published' and id in ("), true, 'ninguna de las cuatro sigue');
     eq(MIGRACION.includes("where status = 'hidden' and id in ("), true, 'y las cuatro están ocultas');
     eq(MIGRACION.includes('Hay % versiones sin su canción'), true, 'sin referencias huérfanas');
@@ -161,7 +161,7 @@ describe('El tiempo litúrgico vive en su campo', () => {
 
   it('y «todo el año» deja de ser el cajón de lo no revisado', () => {
     const todoElAno = MOCK_SONGS.filter((song) => getSongSeasons(song).includes('todo-el-ano'));
-    eq(todoElAno.length, 42, 'antes eran 78 de 110');
+    eq(todoElAno.length, 43, 'antes eran 78 de 110');
   });
 
   it('ejemplos de lo que decidió el ministerio', () => {
