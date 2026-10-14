@@ -6,6 +6,7 @@ import type { SongMeta } from '../../editor/songEditorModel';
 import { parseYouTubeId } from '../../editor/youtube';
 import { MAX_CAPO } from '../../utils/keySettings';
 import { PRACTICAL_MAJOR_KEYS, PRACTICAL_MINOR_KEYS } from '../../utils/keyPreferences';
+import { ListboxSelect } from '../ui/ListboxSelect';
 import { chipButton, chipOff, chipOn, fieldLabel, textField } from '../Setlists/ui';
 
 interface SongMetaFormProps {
@@ -69,47 +70,36 @@ export const SongMetaForm: React.FC<SongMetaFormProps> = ({ meta, categories, on
         <label htmlFor={ids.key} className={fieldLabel}>
           Tonalidad original
         </label>
-        <select
+        <ListboxSelect
           id={ids.key}
+          label="Tonalidad original"
           value={meta.originalKey ?? ''}
-          onChange={(event) => set('originalKey', event.target.value || null)}
-          className={textField}
-        >
-          <option value="">Sin indicar</option>
-          {/* A key kept from a draft with another spelling stays selectable, never rewritten. */}
-          {meta.originalKey && ![...PRACTICAL_MAJOR_KEYS, ...PRACTICAL_MINOR_KEYS].includes(meta.originalKey) && (
-            <option value={meta.originalKey}>{meta.originalKey}</option>
-          )}
-          <optgroup label="Mayores">
-            {PRACTICAL_MAJOR_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {key}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Menores">
-            {PRACTICAL_MINOR_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {key}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+          onChange={(value) => set('originalKey', value || null)}
+          className="w-full"
+          options={[
+            { value: '', label: 'Sin indicar' },
+            // Keep alternative spellings from an existing song or draft.
+            ...(meta.originalKey && ![...PRACTICAL_MAJOR_KEYS, ...PRACTICAL_MINOR_KEYS].includes(meta.originalKey)
+              ? [{ value: meta.originalKey, label: meta.originalKey }] : []),
+            ...PRACTICAL_MAJOR_KEYS.map((key) => ({ value: key, label: key, group: 'Mayores' })),
+            ...PRACTICAL_MINOR_KEYS.map((key) => ({ value: key, label: key, group: 'Menores' })),
+          ]}
+        />
       </div>
 
       <div>
         <label htmlFor={ids.capo} className={fieldLabel}>Capotraste</label>
-        <select
+        <ListboxSelect
           id={ids.capo}
+          label="Capotraste"
           value={meta.recommendedCapo ?? 0}
-          onChange={(event) => set('recommendedCapo', Number(event.target.value))}
-          className={textField}
-        >
-          <option value={0}>Sin capotraste</option>
-          {Array.from({ length: MAX_CAPO }, (_, index) => index + 1).map((fret) => (
-            <option key={fret} value={fret}>Traste {fret}</option>
-          ))}
-        </select>
+          onChange={(value) => set('recommendedCapo', value)}
+          className="w-full"
+          options={[
+            { value: 0, label: 'Sin capotraste' },
+            ...Array.from({ length: MAX_CAPO }, (_, index) => ({ value: index + 1, label: `Traste ${index + 1}` })),
+          ]}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:col-span-2">
@@ -133,15 +123,19 @@ export const SongMetaForm: React.FC<SongMetaFormProps> = ({ meta, categories, on
           <label htmlFor={ids.meter} className={fieldLabel}>
             Compás
           </label>
-          <select id={ids.meter} value={meta.timeSignature ?? ''} onChange={(event) => set('timeSignature', event.target.value || null)} className={textField}>
-            <option value="">Sin indicar</option>
-            {meta.timeSignature && !TIME_SIGNATURES.includes(meta.timeSignature) && <option value={meta.timeSignature}>{meta.timeSignature}</option>}
-            {TIME_SIGNATURES.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
+          <ListboxSelect
+            id={ids.meter}
+            label="Compás"
+            value={meta.timeSignature ?? ''}
+            onChange={(value) => set('timeSignature', value || null)}
+            className="w-full"
+            options={[
+              { value: '', label: 'Sin indicar' },
+              ...(meta.timeSignature && !TIME_SIGNATURES.includes(meta.timeSignature)
+                ? [{ value: meta.timeSignature, label: meta.timeSignature }] : []),
+              ...TIME_SIGNATURES.map((value) => ({ value, label: value })),
+            ]}
+          />
         </div>
       </div>
 

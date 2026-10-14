@@ -19,9 +19,9 @@ it('new songs default to no capo and the form offers exactly frets 0 through 11'
   for (const fret of [null, 0, 5, 11]) {
     const html = renderToStaticMarkup(createElement(SongMetaForm, { meta: { ...meta, recommendedCapo: fret }, categories: [], onChange: () => {} }));
     assert.match(html, /Capotraste/);
-    assert.match(html, new RegExp(`<option value="${fret ?? 0}" selected="">`));
-    assert.match(html, /Sin capotraste/);
-    assert.match(html, /Traste 11/);
+    assert.match(html, new RegExp(`aria-label="Capotraste: ${fret ? `Traste ${fret}` : 'Sin capotraste'}"`));
+    if (!fret) assert.match(html, /Sin capotraste/);
+    assert.match(html, /role="combobox"/);
     assert.doesNotMatch(html, /Traste 12/);
   }
 });

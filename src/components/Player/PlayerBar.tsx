@@ -62,7 +62,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   });
 
   return (
-    <div className="sticky bottom-0 z-30 border-t border-slate-200 dark:border-dark-800 bg-white dark:bg-dark-950 px-3 sm:px-5 py-2 sm:py-2.5 flex items-center gap-3 sm:gap-5 print:hidden">
+    <div data-select-obstacle="" className="sticky bottom-0 z-30 border-t border-slate-200 dark:border-dark-800 bg-white dark:bg-dark-950 px-3 sm:px-5 py-2 sm:py-2.5 flex items-center gap-3 sm:gap-5 print:hidden">
       <button
         onClick={onOpenSong}
         className="flex items-center gap-3 min-w-0 flex-shrink text-left"

@@ -1,6 +1,5 @@
 import React, { useId, useMemo, useState } from 'react';
 import { CalendarDays, History, SlidersHorizontal, TriangleAlert, X } from 'lucide-react';
-import type { MinistryEventType } from '../../types/event';
 import type { PerformanceRecord } from '../../types/performance';
 import { formatMonthTitle, formatShortDate } from '../../utils/dates';
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from '../../utils/ministryEvents';
@@ -21,7 +20,8 @@ import {
   type PerformanceFilters,
 } from '../../utils/performanceHistory';
 import { EventTypeBadge } from '../Calendar/EventTypeBadge';
-import { fieldLabel, primaryButton, secondaryButton, textField } from '../Setlists/ui';
+import { fieldLabel, primaryButton, secondaryButton } from '../Setlists/ui';
+import { ListboxSelect } from '../ui/ListboxSelect';
 import { DatePicker } from '../ui/DatePicker';
 
 interface HistoryViewProps {
@@ -32,8 +32,6 @@ interface HistoryViewProps {
   onGoToCalendar: () => void;
   recoveredFromUnreadableData: boolean;
 }
-
-const selectClass = `${textField} pr-8`;
 
 /**
  * What was really sung, day by day. Only records made on purpose appear here:
@@ -149,45 +147,40 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             <label htmlFor={ids.song} className={fieldLabel}>
               Canción
             </label>
-            <select id={ids.song} value={filters.songId} onChange={(event) => set('songId', event.target.value)} className={selectClass}>
-              <option value="">Todas</option>
-              {songOptions.map((entry) => (
-                <option key={entry.songId} value={entry.songId}>
-                  {entry.title}
-                </option>
-              ))}
-            </select>
+            <ListboxSelect
+              id={ids.song}
+              label="Canción"
+              value={filters.songId}
+              onChange={(value) => set('songId', value)}
+              className="w-full"
+              options={[{ value: '', label: 'Todas' }, ...songOptions.map((entry) => ({ value: entry.songId, label: entry.title }))]}
+            />
           </div>
           <div>
             <label htmlFor={ids.member} className={fieldLabel}>
               Miembro
             </label>
-            <select id={ids.member} value={filters.memberId} onChange={(event) => set('memberId', event.target.value)} className={selectClass}>
-              <option value="">Todos</option>
-              {peopleOptions.map((entry) => (
-                <option key={entry.memberId} value={entry.memberId}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
+            <ListboxSelect
+              id={ids.member}
+              label="Miembro"
+              value={filters.memberId}
+              onChange={(value) => set('memberId', value)}
+              className="w-full"
+              options={[{ value: '', label: 'Todos' }, ...peopleOptions.map((entry) => ({ value: entry.memberId, label: entry.name }))]}
+            />
           </div>
           <div>
             <label htmlFor={ids.type} className={fieldLabel}>
               Tipo de actividad
             </label>
-            <select
+            <ListboxSelect
               id={ids.type}
+              label="Tipo de actividad"
               value={filters.type}
-              onChange={(event) => set('type', event.target.value as MinistryEventType | '')}
-              className={selectClass}
-            >
-              <option value="">Todos</option>
-              {EVENT_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {EVENT_TYPE_LABELS[type]}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => set('type', value)}
+              className="w-full"
+              options={[{ value: '' as const, label: 'Todos' }, ...EVENT_TYPES.map((type) => ({ value: type, label: EVENT_TYPE_LABELS[type] }))]}
+            />
           </div>
           <div>
             <label htmlFor={ids.from} className={fieldLabel}>
