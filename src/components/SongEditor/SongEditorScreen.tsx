@@ -22,6 +22,7 @@ import { ConfirmDialog } from '../Setlists/ConfirmDialog';
 import { ResubmitDialog } from './ResubmitDialog';
 import { primaryButton, secondaryButton, sectionHeading } from '../Setlists/ui';
 import { SectionsEditor } from './SectionsEditor';
+import { SongEditorSplit } from './SongEditorSplit';
 import { SongMetaForm } from './SongMetaForm';
 import { SongPreview, SongPreviewPanel } from './SongPreviewPanel';
 import { SubmissionSuccess } from './SubmissionSuccess';
@@ -542,33 +543,32 @@ export const SongEditorScreen: React.FC<SongEditorScreenProps> = ({
         </p>
       )}
 
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="min-w-0 space-y-6">
-          <section aria-labelledby="informacion-cancion" className="rounded-2xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 p-4 shadow-sm sm:p-5">
-            <h2 id="informacion-cancion" className={`${sectionHeading} mb-4`}>
-              Información
-            </h2>
-            <SongMetaForm meta={doc.meta} categories={categories} onChange={(meta) => edit((current) => ({ ...current, meta }))} />
-          </section>
-
-          <section aria-labelledby="letra-acordes">
-            <div className="mb-3">
-              <h2 id="letra-acordes" className={sectionHeading}>
-                Letra y acordes
+      <SongEditorSplit
+        editor={
+          <div className="min-w-0 space-y-6">
+            <section aria-labelledby="informacion-cancion" className="rounded-2xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 p-4 shadow-sm sm:p-5">
+              <h2 id="informacion-cancion" className={`${sectionHeading} mb-4`}>
+                Información
               </h2>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Escribe la letra línea a línea. Para poner un acorde, coloca el cursor sobre la letra y pulsa «Acorde». Toca un
-                acorde para cambiarlo, moverlo o quitarlo.
-              </p>
-            </div>
-            <SectionsEditor doc={doc} issues={editorIssues} suggestions={suggestions} onChange={edit} />
-          </section>
-        </div>
+              <SongMetaForm meta={doc.meta} categories={categories} onChange={(meta) => edit((current) => ({ ...current, meta }))} />
+            </section>
 
-        <div className="min-w-0 space-y-6 2xl:sticky 2xl:top-4 2xl:self-start">
-          <SongPreviewPanel doc={doc} />
-        </div>
-      </div>
+            <section aria-labelledby="letra-acordes">
+              <div className="mb-3">
+                <h2 id="letra-acordes" className={sectionHeading}>
+                  Letra y acordes
+                </h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Escribe la letra línea a línea. Para poner un acorde, coloca el cursor sobre la letra y pulsa «Acorde». Toca un
+                  acorde para cambiarlo, moverlo o quitarlo.
+                </p>
+              </div>
+              <SectionsEditor doc={doc} issues={editorIssues} suggestions={suggestions} onChange={edit} />
+            </section>
+          </div>
+        }
+        preview={<SongPreviewPanel doc={doc} />}
+      />
 
       <div ref={validationRef} tabIndex={-1} className="mt-6 space-y-4 focus:outline-none">
         <ValidationPanel meta={doc.meta} song={songCheck} editor={editorIssues} onGoToSection={goToSection} />
