@@ -132,7 +132,7 @@ export function createSection(label: string, makeId: IdFactory = createId): Edit
 
 export function emptySongMeta(): SongMeta {
   const { content: _content, chordsUsed: _chords, ...meta } = emptySongDraft();
-  return meta;
+  return { ...meta, recommendedCapo: 0 };
 }
 
 /** A new song: one verse to start writing in. */

@@ -4,6 +4,7 @@ import { LITURGICAL_SEASONS, type LiturgicalSeasonId } from '../../data/liturgic
 import { MAX_SONG_ARTIST_LENGTH, MAX_SONG_TITLE_LENGTH, MAX_TEMPO, MIN_TEMPO } from '../../catalog/validateSongDraft';
 import type { SongMeta } from '../../editor/songEditorModel';
 import { parseYouTubeId } from '../../editor/youtube';
+import { MAX_CAPO } from '../../utils/keySettings';
 import { PRACTICAL_MAJOR_KEYS, PRACTICAL_MINOR_KEYS } from '../../utils/keyPreferences';
 import { chipButton, chipOff, chipOn, fieldLabel, textField } from '../Setlists/ui';
 
@@ -17,11 +18,10 @@ interface SongMetaFormProps {
 const TIME_SIGNATURES = ['2/4', '3/4', '4/4', '6/8', '9/8', '12/8'];
 
 /**
- * What the song is, with the catalog's own fields. Nothing is filled in on
- * the author's behalf: an empty field stays empty ("sin indicar").
+ * What the song is, with the catalog's own fields. Capo defaults to none; other empty fields stay empty ("sin indicar").
  */
 export const SongMetaForm: React.FC<SongMetaFormProps> = ({ meta, categories, onChange }) => {
-  const ids = { title: useId(), artist: useId(), key: useId(), tempo: useId(), meter: useId(), rhythm: useId(), youtube: useId(), youtubeHint: useId(), newCategory: useId() };
+  const ids = { title: useId(), artist: useId(), key: useId(), capo: useId(), tempo: useId(), meter: useId(), rhythm: useId(), youtube: useId(), youtubeHint: useId(), newCategory: useId() };
   const [youtubeInput, setYoutubeInput] = useState(meta.youtubeId ?? '');
   const [newCategory, setNewCategory] = useState('');
   const set = <K extends keyof SongMeta>(key: K, value: SongMeta[K]) => onChange({ ...meta, [key]: value });
@@ -97,7 +97,22 @@ export const SongMetaForm: React.FC<SongMetaFormProps> = ({ meta, categories, on
         </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label htmlFor={ids.capo} className={fieldLabel}>Capotraste</label>
+        <select
+          id={ids.capo}
+          value={meta.recommendedCapo ?? 0}
+          onChange={(event) => set('recommendedCapo', Number(event.target.value))}
+          className={textField}
+        >
+          <option value={0}>Sin capotraste</option>
+          {Array.from({ length: MAX_CAPO }, (_, index) => index + 1).map((fret) => (
+            <option key={fret} value={fret}>Traste {fret}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:col-span-2">
         <div>
           <label htmlFor={ids.tempo} className={fieldLabel}>
             BPM

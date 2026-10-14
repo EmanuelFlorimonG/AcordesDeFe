@@ -409,7 +409,7 @@ describe('Repositorio editorial', () => {
           ...listRow,
           base_version: null,
           revision: 4,
-          proposed_song: { schemaVersion: 1, title: 'T', content: '[G]x', categories: [], tags: [], chordsUsed: ['G'] },
+          proposed_song: { schemaVersion: 1, title: 'T', content: '[G]x', categories: [], tags: [], chordsUsed: ['G'], recommendedCapo: 11 },
           review_note: null,
           reviewed_by: null,
           published_song_id: null,
@@ -423,6 +423,7 @@ describe('Repositorio editorial', () => {
     const repository = createEditorialRepository(client);
     const detail = await repository.getSubmission(SUBMISSION);
     eq(detail?.revision, 4);
+    eq(detail?.proposedSong?.recommendedCapo, 11);
     eq(log[0].includes(',revision,'), true);
     await repository.approve(SUBMISSION, detail!.revision);
     eq(log[1].includes('"p_expected_revision":4'), true);
