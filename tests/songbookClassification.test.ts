@@ -30,10 +30,10 @@ const MIGRACION = readFileSync('supabase/migrations/20261001120000_songbook_clas
 /** Las cuatro que el ministerio retiró. La última, por estar repetida. */
 const RETIRADAS = ['estamos-de-fiesta-con-jesus', 'pescador-de-hombres', 'alfarero', 'te-presentamos-el-vino-y-el-pan-ii'];
 
-describe('El cancionero tiene 107 canciones', () => {
+describe('El cancionero tiene 108 canciones', () => {
   it('ni una más, ni repetida', () => {
-    eq(MOCK_SONGS.length, 107);
-    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 107, 'sin ids repetidos');
+    eq(MOCK_SONGS.length, 108);
+    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 108, 'sin ids repetidos');
   });
 
   it('las cuatro retiradas ya no están', () => {
@@ -115,7 +115,7 @@ describe('Las categorías dicen lo que son', () => {
     eq(categorias.has('Claretiana'), true);
     eq(categorias.has('Otros'), false, 'ninguna canción sigue en «Otros»');
     const claretianas = MOCK_SONGS.filter((song) => song.categories.includes('Claretiana'));
-    eq(claretianas.length, 16);
+    eq(claretianas.length, 17);
     eq(claretianas.some((song) => song.id === 'mi-amigo-claret'), true);
     eq(claretianas.some((song) => song.id === 'claret-cristiano-de-fuego'), true);
     eq('Claretiana' in CATEGORY_STYLE, true, 'con su icono y su color');
@@ -161,7 +161,7 @@ describe('El tiempo litúrgico vive en su campo', () => {
 
   it('y «todo el año» deja de ser el cajón de lo no revisado', () => {
     const todoElAno = MOCK_SONGS.filter((song) => getSongSeasons(song).includes('todo-el-ano'));
-    eq(todoElAno.length, 43, 'antes eran 78 de 110');
+    eq(todoElAno.length, 44, 'antes eran 78 de 110');
   });
 
   it('ejemplos de lo que decidió el ministerio', () => {

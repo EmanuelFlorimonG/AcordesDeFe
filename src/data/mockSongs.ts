@@ -3221,5 +3221,51 @@ Coro
 (No soy digno de que entres en mi casa)
 Tú en mí, yo en ti.( Y aun así y aun así)
 Solo una palabra bastará.`
+  },
+  {
+    id: 'claret-nacio-en-sallent',
+    title: 'Claret nació en Sallent',
+    categories: ['Claretiana'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: ['Claret'],
+    chordsUsed: [],
+    content: `[Verso 1]
+Claret nació en Sallent
+Que está en España
+Trabaja en el Telar
+Con su familia
+Salía a predicar
+Todos los días
+Rezaba en devoción
+Para María
+
+[Coro]
+Claret, Claret, Claret
+Claret, Claret, Claret
+Claret, Claret, Claret
+Claret, Claret, Claret
+
+[Verso 2]
+Encontró dificultad
+En su camino
+Fue Claret hombre de pueblo
+Un Peregrino
+Dejaba a los demás
+Un gran mensaje
+Debemos escuchar
+La palabra de Dios.
+
+[Puente]
+Fue perseguido,
+Fue calumniado
+Y maltratado
+Pero su Fe Como Cristiano le dio valor
+Y continuó con su misión lleno de amor, para fundar la Inmaculada Congregación
+
+[Coro final]
+Claret, Claret, Claret
+Claret, Claret, Claret
+Claret, Claret, Claret
+Claret, Claret, Claret`
   }
 ];
