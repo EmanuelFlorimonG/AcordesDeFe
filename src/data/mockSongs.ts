@@ -3267,5 +3267,208 @@ Claret, Claret, Claret
 Claret, Claret, Claret
 Claret, Claret, Claret
 Claret, Claret, Claret`
+  },
+  {
+    id: 'inundame-espiritu-santo',
+    title: 'Inúndame (Espíritu Santo)',
+    categories: ['Adoración'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: [],
+    content: `[Coro]
+Entra, te abro mi corazón
+Lléname con tu amor
+Inúndame, satúrame
+Ven, Espíritu Santo, ven
+Ven, Espíritu Santo, ven
+
+Coro
+
+[Puente]
+Inúndame, satúrame
+Ven, Espíritu Santo, ven
+Inúndame, satúrame
+Ven, Espíritu Santo, ven
+Ven, Espíritu Santo, ven
+Ven, Espíritu Santo, ven
+
+[Final]
+Ven, Espíritu Santo
+Ven, Espíritu Santo
+Inúndame, ven, Espíritu
+Oh, oh
+Lléname
+Oh, oh
+Ven`
+  },
+  {
+    id: 'noche',
+    title: 'Noche',
+    artist: 'Hakuna Group Music',
+    categories: ['Adoración', 'Hakuna'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: [],
+    content: `[Súplica 1]
+Por tu iglesia, que te espera a oscuras
+Por tu pueblo, que te reza guardando la aurora
+Te rogamos, Te rogamos
+
+[Súplica 2]
+Por las naciones paganas
+Que tienen sed de ti sin saberlo
+Ten piedad, ten piedad
+
+[Súplica 3]
+Por los pueblos oprimidos
+Por el totalitarismo
+Y la opresión de la mentira
+
+[Súplica 4]
+Por aquellos perseguidos por tu nombre
+Que se ocultan para orar
+Y por aquellos extraídos de su hogar
+Por sus perseguidores, cegados por el odio
+Perdónales, Padre, no saben lo que hacen
+
+[Súplica 5]
+Por los que no nos aman
+Por los que no sabemos amar
+Por los que sufren y agonizan y hoy duermen en el hospital
+Por los que hoy es su última noche
+Y cuyos ojos no verán el nuevo día
+Ten piedad, ten piedad
+
+[Súplica 6]
+Por todos los que sufren la tentación del suicidio
+Por los dispuestos a dejar ganar al mal
+Por aquellos cuyas noches son interminables
+Y a los que la angustia les ha quitado la paz
+
+[Kyrie]
+Kyrie Eleison, Kyrie Eleison
+Kyrie Eleison, Kyrie Eleison, Kyrie Eleison
+
+[Súplica 7]
+Por aquellos que trabajan en la prostitución
+Y se ven obligados a vender su amor
+Por los que caen en la trampa, del vicio y las drogas
+
+[Súplica 8]
+Por los que hoy duermen en prisión
+Por los que hoy esperan su ejecución
+Por aquellos a los que torturan
+
+[Súplica 9]
+Por criminales, por los ladrones
+Por los que erran en soledad
+Por los que sufren la indiferencia de los demás
+
+[Kyrie]
+Kyrie Eleison, Kyrie Eleison
+
+[Súplica 10]
+Por la ciudad, por todos sus habitantes
+Que en sus sueños, solo existas Tú
+Por nuestros difuntos, que aún no han visto tu rostro
+Por los alejados entre la multitud
+
+[Súplica 11]
+Por los niños que descansan en el seno de su madre
+Por las mujeres que van a dar a luz
+Para que reine tu paz en cada hogar
+Por los que quieren saciar tu sed de amar
+
+[Kyrie]
+Kyrie Eleison, Kyrie Eleison
+Kyrie Eleison, Kyrie Eleison, Kyrie Eleison
+
+[Final]
+Ten piedad, Ten piedad, Ten piedad
+Ten piedad, Ten piedad, Ten piedad
+Ten piedad, Ten piedad, Ten piedad
+Ten piedad, Señor, Ten piedad`
+  },
+  {
+    id: 'tuyo-es',
+    title: 'Tuyo Es',
+    artist: 'Eduard Muñoz con Génesis Zabala',
+    categories: ['Adoración'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: [],
+    content: `[Verso]
+Reservarme, solo para Ti
+Guárdame para la eternidad
+Una palabra Tuya bastará
+
+Verso
+
+[Coro 1]
+Pues Tuyo es el reino
+Tuyo el poder
+Tuya es la gloria, por siempre
+
+Verso
+
+Coro 1
+
+[Coro 2]
+Pues Tuyo es el reino
+Tuyo el poder (toda majestad)
+Tuya es la gloria, por siempre, por siempre
+
+[Puente]
+Tú serás mi Padre
+Yo seré Tu hijo
+Hechura de Tus manos, hechura de Tus manos
+
+Tú serás mi Dios (Tú serás mi Dios)
+Yo seré Tu pueblo (Tuyo soy Señor)
+Cosa y posesión
+Tuya, Tuya en mi Señor
+
+Coro 2
+
+[Coro 3]
+Pues Tuyo es el reino (Tu reino por siempre)
+Tuyo el poder (Tú)
+Tuya es la gloria, por siempre, por siempre`
+  },
+  {
+    id: 'gracias',
+    title: 'Gracias',
+    artist: 'Tuyo',
+    categories: ['Comunión', 'PostComunión'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: [],
+    content: `[Verso]
+Gracias por dejarme estar tan cerca de Ti
+Que ganas tenía de que llegara este momento
+Gracias por esconderte en este trozo de pan
+Y poderte escuchar en el silencio
+
+[Coro]
+Gracias, Señor
+Muchas gracias, Jesús
+Gracias, Señor
+Muchas gracias, Jesús
+
+Verso
+
+Coro
+
+[Puente]
+Por amarme, escucharme
+Y confiar en mí
+Y por darme lo que tengo
+Aunque no me lo merezco
+
+Puente
+
+Puente
+
+Coro`
   }
 ];

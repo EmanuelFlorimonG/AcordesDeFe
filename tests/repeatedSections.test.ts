@@ -165,7 +165,7 @@ describe('El cancionero', () => {
         }
       }
     }
-    eq(repeated, 41, 'las 41 repeticiones del catálogo, todas resueltas');
+    eq(repeated, 51, 'las 51 repeticiones del catálogo, todas resueltas');
   });
 
   it('Vienen con alegría y Cirineo vuelven a mostrar su coro', () => {
