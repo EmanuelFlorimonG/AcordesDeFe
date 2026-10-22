@@ -40,6 +40,14 @@ export interface SetlistsStore {
   updateDetails: (id: string, details: Partial<SetlistDetails>) => void;
   duplicate: (id: string, details: Partial<SetlistDetails>) => Setlist | null;
   /**
+   * Mete en estos Setlists uno que viene de fuera: la copia de uno que
+   * alguien compartió por enlace.
+   *
+   * Escribirlo dos veces con el mismo id no lo duplica, lo reemplaza. Eso es
+   * lo que hace seguro reintentar cuando una subida se queda sin respuesta.
+   */
+  adopt: (setlist: Setlist) => void;
+  /**
    * Deletes a setlist. False means it could not be written down that this was
    * deliberate, and nothing was deleted: for somebody signed in, that note is
    * the only thing that will ever tell the cloud to let go of their copy, so
@@ -148,6 +156,16 @@ export function useSetlists(
 
   const getSetlist = useCallback((id: string) => setlists.find((setlist) => setlist.id === id) ?? null, [setlists]);
 
+  const adopt = useCallback(
+    (setlist: Setlist) =>
+      setSetlists((current) =>
+        current.some((entry) => entry.id === setlist.id)
+          ? current.map((entry) => (entry.id === setlist.id ? setlist : entry))
+          : [setlist, ...current]
+      ),
+    [setSetlists]
+  );
+
   const create = useCallback((details: Partial<SetlistDetails>) => {
     const setlist = createSetlist(details, { now: Date.now() });
     setSetlists((current) => [...current, setlist]);
@@ -169,6 +187,7 @@ export function useSetlists(
     setlists,
     recoveredFromUnreadableData: store.recoveredFromUnreadableData,
     getSetlist,
+    adopt,
     create,
     duplicate,
     updateDetails: (id, details) => change(id, (setlist, now) => updateSetlistDetails(setlist, details, now)),

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { Link2Off, Loader2, RotateCcw } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Copy, Link2Off, Loader2, MoreHorizontal, RotateCcw, TriangleAlert } from 'lucide-react';
 import type { Setlist } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import type { SharedSetlistRead } from '../../storage/setlistShares';
 import { SharedSetlistPlayer } from './SharedSetlistPlayer';
 import { formatSetlistDate, liveModeName } from '../../utils/setlists';
+import { ActionMenu } from './ActionMenu';
 import { SetlistHeading } from './SetlistHeading';
 import { SetlistItemDetails } from './SetlistItemDetails';
 import { SetlistSongList } from './SetlistSongList';
@@ -33,6 +34,20 @@ interface SharedSetlistScreenProps {
   load: (token: string) => Promise<SharedSetlistRead | { state: 'unconfigured' }>;
   /** Lleva al cancionero, que sí es público y sí es de quien mira. */
   onGoToSongbook: () => void;
+  /**
+   * Guarda una copia del Setlist en la cuenta de quien mira. Recibe el
+   * Setlist porque solo esta pantalla lo tiene: quien decide qué hacer con él
+   * vive más arriba, donde están la sesión y los Setlists de la cuenta.
+   */
+  onSaveCopy?: (shared: Setlist) => void;
+  savingCopy?: boolean;
+  saveCopyError?: string | null;
+  /**
+   * Alguien pidió la copia sin tener sesión, entró, y vuelve. La pantalla es
+   * la única que tiene el Setlist cargado, así que es la que reanuda. Una
+   * vez: lo que se pidió una vez no se guarda dos.
+   */
+  resumeSaveCopy?: boolean;
 }
 
 type Screen =
@@ -50,6 +65,10 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
   songsById,
   load,
   onGoToSongbook,
+  onSaveCopy,
+  savingCopy,
+  saveCopyError,
+  resumeSaveCopy = false,
 }) => {
   const [screen, setScreen] = useState<Screen>({ state: 'loading' });
   // Cada pulsación de "Reintentar" es un intento, y uno solo: se vuelve a
@@ -82,6 +101,15 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
       current = false;
     };
   }, [token, load, attempt]);
+
+  // Reanudar es un efecto, no un render: guardar algo mientras se pinta sería
+  // escribir sin que nadie lo haya vuelto a pedir.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!resumeSaveCopy || resumed.current || screen.state !== 'setlist' || !onSaveCopy) return;
+    resumed.current = true;
+    onSaveCopy(screen.setlist);
+  }, [resumeSaveCopy, screen, onSaveCopy]);
 
   if (screen.state === 'loading') {
     return (
@@ -131,7 +159,10 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
     );
   }
 
-  return <SharedSetlistPlayer token={token} route={route} setlist={screen.setlist} songsById={songsById} onGoToSongbook={onGoToSongbook} onPerformanceChange={onPerformanceChange} />;
+  return <SharedSetlistPlayer token={token} route={route} setlist={screen.setlist} songsById={songsById}
+    onGoToSongbook={onGoToSongbook} onPerformanceChange={onPerformanceChange}
+    onSaveCopy={onSaveCopy ? () => onSaveCopy(screen.setlist) : undefined}
+    savingCopy={savingCopy} saveCopyError={saveCopyError} />;
 };
 
 /**
@@ -159,13 +190,60 @@ export const SharedSetlistView: React.FC<{
   setlist: Setlist;
   songsById: Map<string, Song>;
   onGoToSongbook: () => void;
-}> = ({ setlist, songsById, onGoToSongbook, onOpenSong, onRehearsal, onLive }) => {
+  /**
+   * Guarda una copia en la cuenta de quien mira. Ausente cuando no hay dónde
+   * guardarla —una compilación sin nube— y entonces no hay menú: aquí no se
+   * enseña un botón que no lleva a ninguna parte.
+   */
+  onSaveCopy?: () => void;
+  /** Mientras la copia va camino de la cuenta */
+  savingCopy?: boolean;
+  /** Lo que salió mal al guardarla, para poder reintentar */
+  saveCopyError?: string | null;
+}> = ({
+  setlist,
+  songsById,
+  onGoToSongbook,
+  onOpenSong,
+  onRehearsal,
+  onLive,
+  onSaveCopy,
+  savingCopy = false,
+  saveCopyError = null,
+}) => {
   const hayCanciones = setlist.items.some((item) => songsById.has(item.songId));
 
   return (
     <div className="w-full max-w-5xl mx-auto px-5 sm:px-10 py-6 sm:py-8">
       <header className="mb-6">
-        <SetlistHeading setlist={setlist} dateLabel={formatSetlistDate(setlist.date, 'long')} />
+        <SetlistHeading
+          setlist={setlist}
+          dateLabel={formatSetlistDate(setlist.date, 'long')}
+          action={
+            onSaveCopy && (
+              <ActionMenu
+                label="Opciones del Setlist compartido"
+                icon={MoreHorizontal}
+                triggerClassName="w-10 h-10 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 shrink-0 flex items-center justify-center rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors touch-manipulation"
+                items={[
+                  {
+                    label: savingCopy ? 'Guardando una copia…' : 'Guardar una copia',
+                    icon: savingCopy ? Loader2 : Copy,
+                    disabled: savingCopy,
+                    onSelect: onSaveCopy,
+                  },
+                ]}
+              />
+            )
+          }
+        />
+
+        {saveCopyError && (
+          <p role="alert" className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+            <TriangleAlert aria-hidden="true" className="mt-0.5 w-4 h-4 shrink-0" />
+            <span>{saveCopyError}</span>
+          </p>
+        )}
 
         {setlist.description && (
           <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">

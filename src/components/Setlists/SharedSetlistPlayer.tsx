@@ -13,7 +13,8 @@ const MassMode = lazy(() => import('../Mass/MassMode').then(m => ({ default: m.M
 export const SharedSetlistPlayer: React.FC<{
   token: string; route: string; setlist: Setlist; songsById: Map<string, Song>;
   onGoToSongbook: () => void; onPerformanceChange?: (active: boolean) => void;
-}> = ({ token, route, setlist, songsById, onGoToSongbook, onPerformanceChange }) => {
+  onSaveCopy?: () => void; savingCopy?: boolean; saveCopyError?: string | null;
+}> = ({ token, route, setlist, songsById, onGoToSongbook, onPerformanceChange, onSaveCopy, savingCopy, saveCopyError }) => {
   const root = sharedRootHash(token);
   const navigate = (hash: string) => { window.location.assign(hash); };
   const parsed = parseSharedRoute(route);
@@ -57,5 +58,6 @@ export const SharedSetlistPlayer: React.FC<{
   }
   return <SharedSetlistView setlist={setlist} songsById={songsById} onGoToSongbook={onGoToSongbook}
     onOpenSong={itemId => navigate(sharedSongHash(token, itemId))}
-    onRehearsal={() => navigate(`${root}/rehearsal`)} onLive={() => navigate(`${root}/live`)} />;
+    onRehearsal={() => navigate(`${root}/rehearsal`)} onLive={() => navigate(`${root}/live`)}
+    onSaveCopy={onSaveCopy} savingCopy={savingCopy} saveCopyError={saveCopyError} />;
 };

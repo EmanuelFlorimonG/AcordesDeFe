@@ -213,6 +213,91 @@ export function updateSetlistDetails(setlist: Setlist, details: Partial<SetlistD
 }
 
 /**
+ * El id que tendrá la copia de un Setlist que llegó por un enlace.
+ *
+ * No es azar: sale del id del Setlist original, así que dos copias del mismo
+ * enlace chocan entre sí y una sola de ellas puede existir con ese id. Eso es
+ * lo que permite avisar «ya guardaste este» en cualquier dispositivo y en
+ * cualquier sesión, sin columnas nuevas y sin guardar nada aparte: la pista
+ * va dentro de la clave primaria, que es lo único que viaja seguro.
+ *
+ * Y es lo que hace seguro reintentar. Si una subida llegó a Supabase pero la
+ * respuesta se perdió, el segundo intento escribe el mismo id, choca con la
+ * clave primaria y vuelve como conflicto en vez de dejar dos copias.
+ *
+ * El id del original no es un secreto: viaja en el enlace y no abre nada por
+ * sí mismo —leer una fila ajena exige el token, y editarla exige ser su
+ * dueño—. El token, que sí es el secreto, no se escribe en ninguna parte.
+ *
+ * `attempt` es para cuando alguien quiere una segunda copia a sabiendas.
+ *
+ * Devuelve null cuando el id del original es tan largo que no deja sitio: un
+ * Setlist hecho por esta aplicación nunca llega ahí —un UUID son 36 letras—,
+ * pero la columna admite hasta 64 y más vale no poder copiar uno que copiarlo
+ * encima de otro.
+ */
+export const SHARED_COPY_PREFIX = 'copia-';
+/** Lo que admite la columna `id` de `setlists`: de 8 a 64, sin espacios. */
+const MAX_SETLIST_ID = 64;
+/** Lo que puede ocupar el «-99» de una copia voluntaria. */
+const MAX_COPY_SUFFIX = 3;
+const MAX_COPIES = 99;
+
+export function sharedCopyId(originalId: string, attempt = 1): string | null {
+  if (!Number.isInteger(attempt) || attempt < 1 || attempt > MAX_COPIES) return null;
+  const base = `${SHARED_COPY_PREFIX}${originalId}`;
+  // Nada se recorta. Recortar haría que dos originales que empiezan igual
+  // acabaran con el mismo id, y dos Setlists distintos compartiendo id es
+  // peor que no poder copiar uno: el segundo pisaría al primero y nadie se
+  // enteraría. Si no cabe entero, no hay copia, y se dice.
+  if (base.length + MAX_COPY_SUFFIX > MAX_SETLIST_ID) return null;
+  return attempt > 1 ? `${base}-${attempt}` : base;
+}
+
+/**
+ * La copia de un Setlist que llegó por un enlace, para la cuenta de quien la
+ * guarda.
+ *
+ * Lo que se canta viaja entero: canciones, orden, momentos, reservas, tonos,
+ * cejillas, notas, arreglos con sus saltos ya reescritos, y las transiciones.
+ * Lo que es de otros no viaja: ni el equipo del coro original ni quién cantaba
+ * cada bloque. El enlace tampoco los enseña, así que esto no quita nada que se
+ * pudiera ver; lo deja dicho en el código para que siga siendo verdad aunque
+ * algún día el enlace enseñe más.
+ *
+ * El original no se toca: lo que entra se lee y no se escribe.
+ */
+export function copySharedSetlist(
+  shared: Setlist,
+  { now, createId: makeId = createId, attempt = 1 }: ChangeOptions & { attempt?: number }
+): Setlist {
+  const id = sharedCopyId(shared.id, attempt);
+  if (!id) throw new Error('El id de este Setlist no deja sitio para una copia.');
+  const copy = duplicateSetlist(shared, {}, { now, createId: makeId });
+  return {
+    ...copy,
+    id,
+    // De quien la guarda, no del coro de quien la compartió.
+    participantIds: [],
+    items: copy.items.map((item) =>
+      item.arrangement
+        ? {
+            ...item,
+            arrangement: {
+              ...item.arrangement,
+              sections: item.arrangement.sections.map((section) => {
+                const suya = { ...section };
+                delete suya.assignedMemberIds;
+                return suya;
+              }),
+            },
+          }
+        : item
+    ),
+  };
+}
+
+/**
  * A copy with the same songs, order, keys, capos, moments and notes, but new
  * ids everywhere, so editing the copy never affects the original.
  */

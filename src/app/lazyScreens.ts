@@ -21,6 +21,10 @@ export const SetlistsView = lazy(() =>
  * Two versions of one setlist to choose between. Downloaded only when
  * somebody actually has that problem, which is almost nobody.
  */
+export const SharedCopyExistsDialog = lazy(() =>
+  import('../components/Setlists/SharedCopyExistsDialog').then((module) => ({ default: module.SharedCopyExistsDialog }))
+);
+
 export const SetlistConflictDialog = lazy(() =>
   import('../components/Setlists/SetlistConflictDialog').then((module) => ({ default: module.SetlistConflictDialog }))
 );

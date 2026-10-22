@@ -90,8 +90,6 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   // una posición y mover de una en una son la misma capacidad vista desde el
   // ratón y desde el teclado, y media capacidad no se ofrece.
   const canReorder = Boolean(onMoveItem && onMoveItemBy);
-  const canEdit = Boolean(onEditItem);
-  const canRemove = Boolean(onRemoveItem);
   // Entries whose arrangement waits for review because the song changed.
   // Only a song at another version than its arrangement is parsed.
   const pending = useMemo(() => {

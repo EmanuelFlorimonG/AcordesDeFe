@@ -31,19 +31,22 @@ interface SetlistHeadingProps {
    * dice cuánto dura: un visitante no las tiene y no se le inventa un tiempo.
    */
   durations?: Record<string, number>;
+  /** Lo que va a la derecha del título: el menú, donde haya algo que hacer */
+  action?: React.ReactNode;
 }
 
 export const SetlistHeading: React.FC<SetlistHeadingProps> = ({
   setlist,
   dateLabel,
   durations,
+  action,
 }) => {
   const summary = summarizeSetlistDuration(setlist, durations ?? {});
   // La reserva se nombra aparte: no es parte de lo que dura la celebración.
   const backupCount = setlist.items.filter(isBackupItem).length;
   const durationLabel = durations ? formatDurationSummary(summary) : '';
 
-  return (
+  const encabezado = (
     <div className="min-w-0">
       <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
         <CalendarDays className="w-3.5 h-3.5" />
@@ -57,6 +60,15 @@ export const SetlistHeading: React.FC<SetlistHeadingProps> = ({
         {backupCount > 0 && ` · ${backupCount} de reserva`}
         {durationLabel && ` · ${durationLabel}`}
       </p>
+    </div>
+  );
+
+  // Sin nada al lado no se estrena una fila: la columna va sola.
+  if (!action) return encabezado;
+  return (
+    <div className="flex items-start justify-between gap-3">
+      {encabezado}
+      {action}
     </div>
   );
 };

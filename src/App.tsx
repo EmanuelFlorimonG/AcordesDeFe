@@ -24,6 +24,7 @@ import {
   PrivacyPolicy,
   ProposalEditScreen,
   SetlistConflictDialog,
+  SharedCopyExistsDialog,
   SetlistDetail,
   SetlistPrintScreen,
   ShareSetlistDialog,
@@ -57,6 +58,7 @@ import { applyPendingUpdate } from './pwa';
 import { ConnectionStatus } from './components/Layout/ConnectionStatus';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstRunItem, getSetlistRunPosition, sameRun } from './utils/setlists';
+import { retrySharedCopy, saveSharedCopy } from './storage/sharedSetlistCopy';
 import { bindArrangement, withReviewNeeded } from './utils/arrangement';
 import { parseSongSections } from './utils/chordParser';
 import { songVersionOf } from './catalog/songRepository';
@@ -870,6 +872,102 @@ export function App() {
     return loadSharedSetlist(token);
   }, []);
 
+  /**
+   * Guardar en la cuenta propia la copia de un Setlist que llegó por enlace.
+   *
+   * Vive aquí arriba por dos razones. La sesión y los Setlists de la cuenta
+   * están aquí, y la pantalla pública no tiene por qué conocerlos. Y sobre
+   * todo: iniciar sesión cambia el ámbito de los Setlists y vuelve a montar
+   * media aplicación, así que una intención guardada dentro de la pantalla
+   * compartida no sobreviviría al viaje. Aquí sí.
+   */
+  const [copyState, setCopyState] = useState<'idle' | 'saving' | { error: string }>('idle');
+  /** El enlace cuya copia se pidió antes de iniciar sesión, si se pidió. */
+  const [pendingCopyToken, setPendingCopyToken] = useState<string | null>(null);
+  const [copyExists, setCopyExists] = useState<{ shared: Setlist; existing: Setlist; pending: boolean } | null>(null);
+  // Leído de forma síncrona: `copyState` no se ve hasta el siguiente render, y
+  // entre dos pulsaciones seguidas no hay render que valga.
+  const savingCopyRef = useRef(false);
+
+  const saveSharedCopyHere = useCallback(
+    async (shared: Setlist, attempt = 1) => {
+      const resultado = await saveSharedCopy(
+        shared,
+        {
+          signedIn: Boolean(signedInUserId),
+          find: setlists.getSetlist,
+          cloudStateOf: cloudSync.stateOf,
+          adopt: setlists.adopt,
+          sync: cloudSync.sync,
+          now: Date.now,
+          lock: savingCopyRef,
+        },
+        attempt
+      );
+      switch (resultado.state) {
+        case 'busy':
+          return;
+        case 'needs-account':
+          // Se apunta qué enlace quería copiar y se pide la sesión. Si cierra
+          // sin entrar, la intención se queda sin consumir y no pasa nada.
+          setPendingCopyToken(sharedToken ?? null);
+          setIsAccountOpen(true);
+          return;
+        case 'exists':
+          // Hay una copia. Si la nube todavía no la tiene, lo que hace falta
+          // no es otra copia: es volver a subir ésta.
+          setCopyExists({ shared, existing: resultado.existing, pending: resultado.pending });
+          return;
+        case 'cannot-copy':
+          setCopyState({ error: 'Este Setlist no se puede copiar: su identificador no deja sitio.' });
+          return;
+        case 'saved':
+          setCopyState('idle');
+          setPendingCopyToken(null);
+          setlists.reload();
+          showToast(`«${resultado.setlist.name}» está en tus Setlists`);
+          navigateTo(setlistHash(resultado.setlist.id));
+          return;
+        case 'local-only':
+          // Está en el dispositivo pero la nube no lo confirmó. No se dice que
+          // se guardó: se lleva a ella, donde sus propias opciones ofrecen
+          // subirla, que es el camino que ya existe para esto.
+          setCopyState({ error: resultado.message });
+          showToast(resultado.message);
+          navigateTo(setlistHash(resultado.setlist.id));
+          return;
+      }
+    },
+    [signedInUserId, sharedToken, setlists, cloudSync]
+  );
+
+  /** Vuelve a ofrecer a la cuenta una copia que se quedó en el dispositivo. */
+  const retrySharedCopyHere = useCallback(
+    async (existing: Setlist) => {
+      const resultado = await retrySharedCopy(existing, {
+        signedIn: Boolean(signedInUserId),
+        find: setlists.getSetlist,
+        cloudStateOf: cloudSync.stateOf,
+        adopt: setlists.adopt,
+        sync: cloudSync.sync,
+        now: Date.now,
+        lock: savingCopyRef,
+      });
+      if (resultado.state === 'saved') {
+        setCopyState('idle');
+        setlists.reload();
+        showToast(`«${resultado.setlist.name}» está en tus Setlists`);
+        navigateTo(setlistHash(resultado.setlist.id));
+        return;
+      }
+      if (resultado.state === 'local-only') {
+        setCopyState({ error: resultado.message });
+        showToast(resultado.message);
+      }
+    },
+    [signedInUserId, setlists, cloudSync]
+  );
+
   const openSetlist = openSetlistId ? setlists.getSetlist(openSetlistId) : null;
   // What, if anything, to offer for the setlist on screen: a first upload, a
   // save of what changed since, or nothing at all.
@@ -1522,6 +1620,10 @@ export function App() {
             songsById={songsById}
             load={loadShared}
             onGoToSongbook={handleBackToDashboard}
+            onSaveCopy={cloudSync.available || !signedInUserId ? saveSharedCopyHere : undefined}
+            savingCopy={copyState === 'saving'}
+            saveCopyError={typeof copyState === 'object' ? copyState.error : null}
+            resumeSaveCopy={Boolean(signedInUserId && pendingCopyToken && pendingCopyToken === sharedToken)}
           />
         );
       case 'privacy':
@@ -1721,6 +1823,35 @@ export function App() {
         isSessionLoading={sessionState.state === 'loading'}
         onOpenAccount={() => setIsAccountOpen(true)}
       />
+
+      {copyExists && (
+        <SharedCopyExistsDialog
+          name={copyExists.shared.name}
+          pending={copyExists.pending}
+          onRetry={() => {
+            const { existing } = copyExists;
+            setCopyExists(null);
+            void retrySharedCopyHere(existing);
+          }}
+          onOpenExisting={() => {
+            const destino = copyExists.existing.id;
+            setCopyExists(null);
+            setPendingCopyToken(null);
+            navigateTo(setlistHash(destino));
+          }}
+          onSaveAnother={() => {
+            const { shared } = copyExists;
+            setCopyExists(null);
+            // La segunda copia es voluntaria y tiene id propio, así que no
+            // choca con la primera ni la toca.
+            void saveSharedCopyHere(shared, 2);
+          }}
+          onClose={() => {
+            setCopyExists(null);
+            setPendingCopyToken(null);
+          }}
+        />
+      )}
 
       {isAccountOpen && (
         <Suspense fallback={null}>
