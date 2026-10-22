@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarDays, Eye, Link2Off, ListOrdered, Loader2, Music, RotateCcw } from 'lucide-react';
+import { Link2Off, Loader2, RotateCcw } from 'lucide-react';
 import type { Setlist } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import type { SharedSetlistRead } from '../../storage/setlistShares';
 import { SharedSetlistPlayer } from './SharedSetlistPlayer';
-import { formatSetlistDate, formatSongCount, liveModeName } from '../../utils/setlists';
-import { describeCapo, describeTranspose, describeTransition } from '../../utils/setlistVersions';
+import { formatSetlistDate, liveModeName } from '../../utils/setlists';
+import { SetlistHeading } from './SetlistHeading';
+import { SetlistItemDetails } from './SetlistItemDetails';
+import { SetlistSongList } from './SetlistSongList';
 import { primaryButton, secondaryButton } from './ui';
 
 /**
@@ -135,6 +137,20 @@ export const SharedSetlistScreen: React.FC<SharedSetlistScreenProps> = ({
 /**
  * El Setlist, pintado. Sin red y sin estado: lo que entra es un Setlist y lo
  * que sale es una página que sólo se lee.
+ *
+ * Es la misma página que ve quien lo prepara —la misma cabecera, las mismas
+ * filas, el mismo tono y la misma cejilla—, porque es el mismo Setlist y
+ * quien abre el enlace en el móvil espera reconocerlo.
+ *
+ * No lleva ninguna etiqueta ni ninguna nota que lo anuncie: se abre y se lee,
+ * como cualquier página. Que no se pueda cambiar nada no se dice, se nota,
+ * porque no hay nada que tocar.
+ *
+ * Lo que no es igual son las capacidades. A la lista de canciones no se le
+ * entrega ninguna función de editar, mover ni quitar, así que no hay menú ni
+ * asa de arrastre: no es una pantalla con los botones apagados, es una
+ * pantalla que no los tiene. Tampoco se enseña el equipo: los nombres de
+ * quienes tocan no eligieron salir en un enlace público.
  */
 export const SharedSetlistView: React.FC<{
   onOpenSong?: (itemId: string) => void;
@@ -144,127 +160,56 @@ export const SharedSetlistView: React.FC<{
   songsById: Map<string, Song>;
   onGoToSongbook: () => void;
 }> = ({ setlist, songsById, onGoToSongbook, onOpenSong, onRehearsal, onLive }) => {
-  const date = formatSetlistDate(setlist.date, 'long');
+  const hayCanciones = setlist.items.some((item) => songsById.has(item.songId));
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8">
-      <p className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-dark-800 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
-        <Eye className="w-3.5 h-3.5" aria-hidden="true" />
-        Setlist compartido · sólo lectura
-      </p>
+    <div className="w-full max-w-5xl mx-auto px-5 sm:px-10 py-6 sm:py-8">
+      <header className="mb-6">
+        <SetlistHeading setlist={setlist} dateLabel={formatSetlistDate(setlist.date, 'long')} />
 
-      <h1 className="mt-3 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{setlist.name}</h1>
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
-        {date && (
-          <span className="inline-flex items-center gap-1.5">
-            <CalendarDays className="w-4 h-4" aria-hidden="true" />
-            {date}
-          </span>
+        {setlist.description && (
+          <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            {setlist.description}
+          </p>
         )}
-        <span className="inline-flex items-center gap-1.5">
-          <ListOrdered className="w-4 h-4" aria-hidden="true" />
-          {formatSongCount(setlist.items.length)}
-        </span>
-      </div>
 
-      {setlist.description && (
-        <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-          {setlist.description}
-        </p>
-      )}
+        {hayCanciones && (onRehearsal || onLive) && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {onRehearsal && (
+              <button type="button" className={secondaryButton} onClick={onRehearsal}>
+                Modo Ensayo
+              </button>
+            )}
+            {onLive && (
+              <button type="button" className={primaryButton} onClick={onLive}>
+                {liveModeName(setlist.kind)}
+              </button>
+            )}
+          </div>
+        )}
+      </header>
 
-      {setlist.items.some(item => songsById.has(item.songId)) && <div className="mt-4 flex flex-wrap gap-2">
-        {onRehearsal && <button className={secondaryButton} onClick={onRehearsal}>Modo Ensayo</button>}
-        {onLive && <button className={primaryButton} onClick={onLive}>{liveModeName(setlist.kind)}</button>}
-      </div>}
       {setlist.items.length === 0 ? (
-        <p className="mt-8 rounded-xl border border-slate-200 dark:border-dark-700 px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+        <p className="rounded-xl border border-slate-200 dark:border-dark-700 px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
           Todavía no tiene canciones.
         </p>
       ) : (
-        <ol className="mt-6 space-y-3">
-          {setlist.items.map((item, at) => {
-            const song = songsById.get(item.songId);
-            const blocks = item.arrangement?.sections ?? [];
-            const settings = [
-              item.transposeSteps === 0 ? null : describeTranspose(item.transposeSteps),
-              item.capoFret > 0 ? describeCapo(item.capoFret) : null,
-            ].filter(Boolean) as string[];
-
-            return (
-              <li
-                key={item.id}
-                className="rounded-xl border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-900 px-4 py-3"
-              >
-                <div className="flex items-start gap-3">
-                  <span
-                    aria-hidden="true"
-                    className="mt-0.5 w-7 h-7 shrink-0 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-dark-800 text-xs font-semibold text-slate-500 dark:text-slate-400"
-                  >
-                    {at + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    {item.moment && (
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2464ED] dark:text-sky-400">
-                        {item.moment}
-                      </p>
-                    )}
-                    <p className="font-semibold text-slate-900 dark:text-white">
-                      {song && onOpenSong ? <button className="text-left hover:underline" onClick={() => onOpenSong(item.id)}>{song.title}</button> : song?.title ?? 'Canción no disponible'}
-                    </p>
-                    {song?.artist && <p className="text-sm text-slate-500 dark:text-slate-400">{song.artist}</p>}
-
-                    {settings.length > 0 && (
-                      <p className="mt-1.5 inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
-                        <Music className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
-                        {settings.join(' · ')}
-                      </p>
-                    )}
-
-                    {item.notes && (
-                      <p className="mt-1.5 whitespace-pre-line text-sm text-slate-600 dark:text-slate-300">
-                        {item.notes}
-                      </p>
-                    )}
-
-                    {blocks.length > 0 && (
-                      <div className="mt-2 rounded-lg bg-slate-50 dark:bg-dark-950 px-3 py-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                          Arreglo
-                        </p>
-                        <ol className="mt-1 space-y-0.5 text-sm text-slate-600 dark:text-slate-300">
-                          {blocks.map((block) => (
-                            <li key={block.id}>
-                              {block.label}
-                              {block.repeatCount > 1 && ` ×${block.repeatCount}`}
-                              {block.transition.type === 'jump' && ' · vuelve atrás'}
-                              {block.transition.type === 'end' && ' · final'}
-                              {block.instruction && `. ${block.instruction}`}
-                            </li>
-                          ))}
-                        </ol>
-                      </div>
-                    )}
-
-                    {item.transitionToNext && at < setlist.items.length - 1 && (
-                      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                        Al terminar: {describeTransition(item.transitionToNext)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+        <SetlistSongList
+          items={setlist.items}
+          songsById={songsById}
+          onOpenItem={(item) => onOpenSong?.(item.id)}
+          // Aquí sí se enseña lo que se dijo para cada canción: quien abre el
+          // enlace no tiene otro sitio donde consultarlo.
+          renderDetails={(item, at) => (
+            <SetlistItemDetails item={item} isLast={at === setlist.items.length - 1} />
+          )}
+        />
       )}
 
-      <div className="mt-8 rounded-xl border border-slate-200 dark:border-dark-700 px-4 py-4 text-center">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          Esto es una copia para leer, así que aquí no se puede cambiar nada. Lo que se ve es lo que tenga guardado quien lo compartió.
-        </p>
-        <button type="button" onClick={onGoToSongbook} className={`${primaryButton} mt-3`}>
+      {/* Al final, una salida y nada más: quien quiera seguir mirando tiene
+          a dónde ir, y quien venía a leer el Setlist ya terminó. */}
+      <div className="mt-8 text-center">
+        <button type="button" onClick={onGoToSongbook} className={secondaryButton}>
           Ver el cancionero
         </button>
       </div>

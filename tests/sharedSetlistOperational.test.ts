@@ -41,7 +41,8 @@ describe('operational public setlist', () => {
     it(`offers existing modes for ${kind ?? 'legacy'}`, () => {
       const html = renderToStaticMarkup(createElement(SharedSetlistView, { setlist: { ...list, kind }, songsById: songs, onGoToSongbook() {}, onOpenSong() {}, onRehearsal() {}, onLive() {} }));
       assert.match(html, /Modo Ensayo/); assert.ok(html.includes(kind === 'adoracion' ? 'Modo Adoración' : 'Modo Misa'));
-      assert.match(html, /sólo lectura/); assert.doesNotMatch(html, /Editar|Eliminar|Desactivar enlace|Guardar cambios/);
+      assert.doesNotMatch(html, /Setlist compartido · sólo lectura/);
+      assert.doesNotMatch(html, /Editar|Eliminar|Desactivar enlace|Guardar cambios|Opciones de|Reordenar/);
     });
   }
   it('loads once and keeps the document across subroutes and network loss', async () => {

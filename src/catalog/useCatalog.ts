@@ -81,6 +81,10 @@ export function useCatalog(): CatalogSnapshot {
  */
 export function useSongAvailability(): (songId: string) => SongAvailability {
   const catalog = getCatalogStore();
-  useSyncExternalStore(catalog.subscribe, catalog.getSnapshot);
+  // El tercer argumento es el mismo lector: la foto del catálogo no depende
+  // de que haya navegador, así que sirve igual al pintar en el servidor. Sin
+  // él, cualquier pantalla que liste canciones por id revienta al renderizarse
+  // fuera del navegador, que es como se prueban aquí.
+  useSyncExternalStore(catalog.subscribe, catalog.getSnapshot, catalog.getSnapshot);
   return catalog.availability;
 }

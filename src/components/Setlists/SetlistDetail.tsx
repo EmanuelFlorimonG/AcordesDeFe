@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
-  CalendarDays,
   CloudUpload,
   Copy,
   FileText,
@@ -19,19 +18,13 @@ import {
 import type { Setlist, SetlistDetails, SetlistItem } from '../../types/setlist';
 import type { MinistryMember } from '../../types/ministry';
 import type { Song } from '../../types/song';
-import {
-  formatDurationSummary,
-  formatSetlistDate,
-  formatSongCount,
-  isBackupItem,
-  liveModeName,
-  summarizeSetlistDuration,
-} from '../../utils/setlists';
+import { formatSetlistDate, liveModeName } from '../../utils/setlists';
 import type { SetlistItemChanges } from '../../utils/setlists';
 import { ActionMenu } from './ActionMenu';
 import { AddSongsDialog } from './AddSongsDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SetlistFormDialog } from './SetlistFormDialog';
+import { SetlistHeading } from './SetlistHeading';
 import { SetlistItemEditor } from './SetlistItemEditor';
 import { SetlistSongList } from './SetlistSongList';
 import { SetlistTeam } from './SetlistTeam';
@@ -106,7 +99,6 @@ type OpenDialog =
   | { kind: 'item'; itemId: string }
   | { kind: 'remove-item'; itemId: string };
 
-const capitalize = (value: string) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : value);
 
 export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   setlist,
@@ -167,10 +159,6 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     );
   }
 
-  const summary = summarizeSetlistDuration(setlist, durations);
-  // La reserva se nombra aparte: no es parte de lo que dura la celebración.
-  const backupCount = setlist.items.filter(isBackupItem).length;
-  const durationLabel = formatDurationSummary(summary);
   const dateLabel = formatSetlistDate(setlist.date, 'long');
   const playableCount = setlist.items.filter((item) => songsById.has(item.songId)).length;
   const openItem = dialog?.kind === 'item' || dialog?.kind === 'remove-item'
@@ -189,20 +177,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
 
       <header className="mb-6">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-              <CalendarDays className="w-3.5 h-3.5" />
-              {dateLabel ? capitalize(dateLabel) : 'Sin fecha'}
-            </p>
-            <h1 className="mt-1.5 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#10203A] dark:text-white break-words">
-              {setlist.name}
-            </h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {formatSongCount(summary.songCount)}
-              {backupCount > 0 && ` · ${backupCount} de reserva`}
-              {durationLabel && ` · ${durationLabel}`}
-            </p>
-          </div>
+          <SetlistHeading setlist={setlist} dateLabel={dateLabel} durations={durations} />
 
           <ActionMenu
             label="Opciones del Setlist"

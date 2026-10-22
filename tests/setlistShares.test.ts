@@ -310,15 +310,28 @@ describe('La página pública de un Setlist compartido', () => {
   });
 
   it('con la información musical de esta ocasión', () => {
+    // La página compartida es la misma que ve quien lo prepara, así que
+    // enseña lo mismo y de la misma forma: la fila compacta.
     const html = view();
-    eq(html.includes('2 semitonos más alto'), true, 'el tono');
-    eq(html.includes('Cejilla en el traste 3'), true);
+    eq(html.includes('Cej. 3'), true, 'la cejilla');
     eq(html.includes('Último coro x2'), true, 'las notas');
-    eq(html.includes('Coro'), true, 'el arreglo');
+    eq(html.includes('Arreglo personalizado'), true, 'que hay un arreglo');
+  });
+
+  it('y debajo, lo que se dijo para tocarla', () => {
+    // La fila es la compacta de siempre, pero quien abre el enlace no tiene
+    // dónde consultar el arreglo ni cómo sale de la canción: va debajo.
+    const html = view();
+    eq(html.includes('Arreglo'), true, 'el resumen del arreglo');
+    eq(html.includes('Entrar suave'), true, 'la indicación del bloque');
     eq(html.includes('×2'), true, 'y sus repeticiones');
-    eq(html.includes('Entrar suave'), true);
     eq(html.includes('entra directa en la siguiente'), true, 'la transición');
     eq(html.includes('Sin respirar'), true);
+  });
+
+  it('pero una canción sin tono declarado no enseña su transposición', () => {
+    // Igual que en la vista normal: describeKey() no tiene de qué partir.
+    eq(view().includes('2 semitonos más alto'), false);
   });
 
   it('lo que está como está escrito no se llena de ruido', () => {
@@ -328,13 +341,18 @@ describe('La página pública de un Setlist compartido', () => {
     eq(html.includes('Sin cejilla'), false);
   });
 
-  it('dice que es de otra persona y que sólo se lee', () => {
+  it('no se anuncia de ninguna manera: se abre y se lee', () => {
     const html = view();
-    eq(html.includes('sólo lectura'), true);
-    // Antes decía «los cambios que hagas aquí no llegan», que invitaba a creer
-    // que se podía cambiar algo. No se puede: es una copia para leer.
-    eq(html.includes('aquí no se puede cambiar nada'), true);
-    eq(html.includes('Los cambios que hagas aquí'), false);
+    // La página no lleva avisos. Lo que dice que no se puede cambiar nada es
+    // que no hay nada que tocar, y eso lo sujetan los permisos, no un cartel.
+    for (const aviso of [
+      'Setlist compartido · sólo lectura',
+      'aquí no se puede cambiar nada',
+      'Los cambios que hagas aquí',
+    ]) {
+      eq(html.includes(aviso), false, aviso);
+    }
+    eq(html.includes('Ver el cancionero'), true, 'y al final, la salida');
     eq(html.includes('—'), false, 'y sin raya larga');
   });
 

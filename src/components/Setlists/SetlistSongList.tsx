@@ -32,18 +32,31 @@ interface SetlistSongListProps {
   items: SetlistItem[];
   songsById: Map<string, Song>;
   onOpenItem: (item: SetlistItem) => void;
-  onEditItem: (item: SetlistItem) => void;
-  onRemoveItem: (item: SetlistItem) => void;
-  /** Moves an entry to a position (drag and drop) */
-  onMoveItem: (itemId: string, toIndex: number) => void;
+  /**
+   * Lo que se puede hacer con una entrada, cada cosa por separado. Lo que no
+   * se entrega no se puede hacer, y tampoco se enseña: un enlace compartido
+   * no pasa ninguna y por eso no tiene menú, ni asa, ni nada que tocar. No es
+   * una pantalla con los botones apagados: es una pantalla sin botones.
+   */
+  onEditItem?: (item: SetlistItem) => void;
+  onRemoveItem?: (item: SetlistItem) => void;
+  /** Moves an entry to a position (drag and drop). Va con onMoveItemBy. */
+  onMoveItem?: (itemId: string, toIndex: number) => void;
   /** Moves an entry one place up or down (keyboard and menu) */
-  onMoveItemBy: (itemId: string, delta: number) => void;
+  onMoveItemBy?: (itemId: string, delta: number) => void;
   /**
    * An arrangement whose blocks can no longer say what they play, written
    * down so the obligation to review them isn't forgotten if a later version
    * of the song happens to match again.
    */
   onArrangementNeedsReview?: (itemId: string, arrangement: SetlistArrangement) => void;
+  /**
+   * Lo que va debajo de una fila, si algo va. La página compartida lo usa
+   * para enseñar el arreglo y la transición, que allí no se pueden consultar
+   * de otra forma; la de quien lo prepara no lo necesita porque entra a la
+   * canción. Devolver null no deja hueco.
+   */
+  renderDetails?: (item: SetlistItem, index: number) => React.ReactNode;
 }
 
 /**
@@ -52,6 +65,9 @@ interface SetlistSongListProps {
  * They can be reordered by dragging the handle (mouse, pen or finger) or, for
  * anyone not using a pointer, with the arrow keys on that same handle and from
  * each row's menu. Reordering is announced out loud for screen readers.
+ *
+ * Sin funciones de edición se lee y nada más, que es como se ve un Setlist
+ * compartido: el mismo aspecto, las mismas filas, y ni una forma de tocarlo.
  *
  * Las de reserva van donde quien prepara las ponga, mezcladas con las demás,
  * y se mueven igual que cualquier otra. Se distinguen por su etiqueta, su
@@ -67,12 +83,23 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   onMoveItem,
   onMoveItemBy,
   onArrangementNeedsReview,
+  renderDetails,
 }) => {
   const availability = useSongAvailability();
+  // Cada acción mira su propia función. Reordenar necesita las dos: mover a
+  // una posición y mover de una en una son la misma capacidad vista desde el
+  // ratón y desde el teclado, y media capacidad no se ofrece.
+  const canReorder = Boolean(onMoveItem && onMoveItemBy);
+  const canEdit = Boolean(onEditItem);
+  const canRemove = Boolean(onRemoveItem);
   // Entries whose arrangement waits for review because the song changed.
   // Only a song at another version than its arrangement is parsed.
   const pending = useMemo(() => {
     const waiting = new Map<string, ArrangementBinding>();
+    // Anotar que un arreglo necesita revisión es escribir en el Setlist. Si
+    // no hay dónde anotarlo —un enlace compartido no tiene dónde— ni siquiera
+    // se busca: así no hay efecto que pueda dispararse por descuido.
+    if (!onArrangementNeedsReview) return waiting;
     for (const item of items) {
       const song = songsById.get(item.songId);
       if (!song || !item.arrangement) continue;
@@ -82,7 +109,7 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
       if (binding.state === 'pending') waiting.set(item.id, binding);
     }
     return waiting;
-  }, [items, songsById]);
+  }, [items, songsById, onArrangementNeedsReview]);
 
   // Noticing it is what records it: a block that needed someone keeps needing
   // them, even if a later version of the song says again what it recorded.
@@ -104,8 +131,10 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
     moveBy,
   } = useReorderList({
     ids: items.map((item) => item.id),
-    onMove: onMoveItem,
-    onMoveBy: onMoveItemBy,
+    // El hook se llama siempre, para no alterar el orden de los hooks, pero
+    // sin las dos funciones no mueve nada ni se le engancha ningún asa.
+    onMove: onMoveItem ?? (() => {}),
+    onMoveBy: onMoveItemBy ?? (() => {}),
     describeMove: (itemId, toIndex, total) => {
       const item = items.find((entry) => entry.id === itemId);
       const song = item ? songsById.get(item.songId) : null;
@@ -126,12 +155,14 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
 
   return (
     <>
-      <p role="status" aria-live="polite" className="sr-only">
-        {announcement}
-      </p>
+      {canReorder && (
+        <p role="status" aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
+      )}
 
       <ol
-        ref={attachList}
+        ref={canReorder ? attachList : undefined}
         className={`border-y border-slate-100 dark:border-dark-800 ${draggingId ? 'select-none' : ''}`}
       >
         {items.map((item, index) => {
@@ -140,13 +171,55 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
           const keyDescription = song ? describeKey(song.originalKey, item, song.recommendedCapo ?? 0) : null;
           const { backup, number } = numbering.get(item.id)!;
           const groupSize = backup ? backupCount : mainCount;
+          // Lo que se puede hacer con esta fila además de abrirla. Si no hay
+          // nada, el menú ni se pinta: abrir ya se hace tocando el título, y
+          // un menú de una sola entrada solo sirve para parecer que se edita.
+          const acciones = [
+            ...(song && onEditItem
+              ? [{ label: 'Tono, momento y arreglo', icon: Pencil, onSelect: () => onEditItem(item) }]
+              : []),
+            ...(canReorder
+              ? [
+                  {
+                    label: 'Mover arriba',
+                    icon: ArrowUp,
+                    disabled: index === 0,
+                    separated: Boolean(song),
+                    onSelect: () => moveBy(item.id, index, -1),
+                  },
+                  {
+                    label: 'Mover abajo',
+                    icon: ArrowDown,
+                    disabled: index === items.length - 1,
+                    onSelect: () => moveBy(item.id, index, 1),
+                  },
+                ]
+              : []),
+            ...(onRemoveItem
+              ? [
+                  {
+                    label: 'Quitar del Setlist',
+                    icon: Trash2,
+                    danger: true,
+                    separated: true,
+                    onSelect: () => onRemoveItem(item),
+                  },
+                ]
+              : []),
+          ];
+          const opciones = acciones.length === 0
+            ? []
+            : [
+                ...(song ? [{ label: 'Abrir canción', icon: Play, onSelect: () => onOpenItem(item) }] : []),
+                ...acciones,
+              ];
 
           return (
             <li
               key={item.id}
               ref={attachRow(item.id)}
               style={rowStyle(index, item.id)}
-              className={`relative flex items-center gap-1 sm:gap-2 pl-2 pr-1 sm:pr-2 border-b border-slate-100 dark:border-dark-800 last:border-b-0 ${
+              className={`relative border-b border-slate-100 dark:border-dark-800 last:border-b-0 ${
                 backup ? 'bg-amber-50/40 dark:bg-amber-500/[0.04]' : ''
               } ${
                 isDragged
@@ -156,6 +229,7 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
                     : 'transition-colors hover:bg-[#EAF1FF]/40 dark:hover:bg-dark-900/60'
               }`}
             >
+              <div className="flex items-center gap-1 sm:gap-2 pl-2 pr-1 sm:pr-2">
               <span
                 aria-hidden="true"
                 className={`w-7 sm:w-9 shrink-0 text-center font-mono text-xs sm:text-sm font-bold tabular-nums ${
@@ -280,53 +354,33 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
                 )}
               </span>
 
-              <ActionMenu
-                label={`Opciones de ${song?.title ?? 'la canción'}`}
-                icon={MoreVertical}
-                triggerClassName={iconButton}
-                items={[
-                  ...(song
-                    ? [
-                        { label: 'Abrir canción', icon: Play, onSelect: () => onOpenItem(item) },
-                        { label: 'Tono, momento y arreglo', icon: Pencil, onSelect: () => onEditItem(item) },
-                      ]
-                    : []),
-                  {
-                    label: 'Mover arriba',
-                    icon: ArrowUp,
-                    disabled: index === 0,
-                    separated: Boolean(song),
-                    onSelect: () => moveBy(item.id, index, -1),
-                  },
-                  {
-                    label: 'Mover abajo',
-                    icon: ArrowDown,
-                    disabled: index === items.length - 1,
-                    onSelect: () => moveBy(item.id, index, 1),
-                  },
-                  {
-                    label: 'Quitar del Setlist',
-                    icon: Trash2,
-                    danger: true,
-                    separated: true,
-                    onSelect: () => onRemoveItem(item),
-                  },
-                ]}
-              />
+              {opciones.length > 0 && (
+                <ActionMenu
+                  label={`Opciones de ${song?.title ?? 'la canción'}`}
+                  icon={MoreVertical}
+                  triggerClassName={iconButton}
+                  items={opciones}
+                />
+              )}
 
-              <button
-                type="button"
-                {...handleProps(item.id, index)}
-                aria-label={`Reordenar ${song?.title ?? 'la canción'}${
-                  backup ? ', de reserva' : ''
-                }, posición ${index + 1} de ${items.length}. Usa las flechas arriba y abajo.`}
-                title="Arrastra para reordenar, o usa las flechas"
-                className={`${iconButton} touch-none cursor-grab active:cursor-grabbing ${
-                  isDragged ? 'text-[#2464ED] dark:text-sky-400' : 'text-slate-300 dark:text-dark-600'
-                } disabled:cursor-default`}
-              >
-                <GripVertical className="w-[18px] h-[18px]" />
-              </button>
+              {canReorder && (
+                <button
+                  type="button"
+                  {...handleProps(item.id, index)}
+                  aria-label={`Reordenar ${song?.title ?? 'la canción'}${
+                    backup ? ', de reserva' : ''
+                  }, posición ${index + 1} de ${items.length}. Usa las flechas arriba y abajo.`}
+                  title="Arrastra para reordenar, o usa las flechas"
+                  className={`${iconButton} touch-none cursor-grab active:cursor-grabbing ${
+                    isDragged ? 'text-[#2464ED] dark:text-sky-400' : 'text-slate-300 dark:text-dark-600'
+                  } disabled:cursor-default`}
+                >
+                  <GripVertical className="w-[18px] h-[18px]" />
+                </button>
+              )}
+              </div>
+
+              {renderDetails?.(item, index)}
             </li>
           );
         })}

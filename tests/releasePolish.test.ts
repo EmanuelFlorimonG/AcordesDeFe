@@ -303,10 +303,19 @@ describe('Abrir un enlace compartido que falla', () => {
     eq(pantalla.includes('{!gone && ('), true);
   });
 
-  it('la vista pública dice que es de sólo lectura', () => {
-    eq(pantalla.includes('sólo lectura'), true);
-    eq(pantalla.includes('aquí no se puede cambiar nada'), true);
-    eq(pantalla.includes('Los cambios que hagas aquí'), false);
+  it('la vista pública no se anuncia como de sólo lectura: se nota al usarla', () => {
+    // Ni etiqueta arriba ni nota abajo. Que no se pueda cambiar nada no hace
+    // falta decirlo cuando no hay nada que tocar, y decirlo solo conseguía
+    // que alguien se preguntara qué habría pasado si lo intentara.
+    for (const aviso of [
+      'Setlist compartido · sólo lectura',
+      'aquí no se puede cambiar nada',
+      'Los cambios que hagas aquí',
+    ]) {
+      eq(pantalla.includes(aviso), false, aviso);
+    }
+    // Lo único que queda al final es la salida.
+    eq(pantalla.includes('Ver el cancionero'), true);
   });
 });
 
