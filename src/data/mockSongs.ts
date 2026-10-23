@@ -3470,5 +3470,105 @@ Puente
 Puente
 
 Coro`
+  },
+  {
+    id: 'nadie-que-no-seas-tu',
+    title: 'Nadie que no seas tú',
+    artist: 'Alfareros',
+    originalKey: 'D',
+    recommendedCapo: 1,
+    categories: ['Adoración'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: ['D', 'A', 'Bm', 'G', 'F#', 'E', 'B', 'C#m', 'G#'],
+    content: `[Intro]
+[D]  [A]  [Bm]  [G]
+[D]  [A]  [Bm]  [G]
+[D]  [A]  [Bm]  [G]
+Oh
+Oh, oh, oh
+Oh, oh, oh
+Oh, oh, oh
+Oh
+Oh, oh, oh
+Oh, oh, oh
+Oh, oh, oh
+Oh
+Oh, oh, oh
+Oh, oh, oh
+Oh, oh, oh
+Oh
+Oh, oh, oh
+Oh, oh, oh
+Oh, oh, oh
+
+[Verso 1]
+[Bm]Ya he llorado todo lo que debí llorar
+[G]Ya he esperado todo lo que debí esperar
+[D]No más promesas que arropan la desilusión
+[F#]La boca dice lo que lleva el corazón
+[Bm]Mis esperanzas no las pondré en fantasías
+[G]Siempre que quise llegó la melancolía
+[D]Mis ojos brillan cuando tienen de tu luz
+[F#]No quiero nada, nada que no seas tú
+
+[Coro en D]
+[D]Nada que no seas [A]tú
+Que no seas [Bm]tú, que no seas [G]tú
+Nada de nada, de nada, de na
+[D]Nadie que no seas [A]tú
+Que no seas [Bm]tú, que no seas [G]tú
+Nada de nada, de nada, de na
+
+[Verso 2]
+[Bm]Estoy cansada de mil trescientas dos mentiras
+[G]A ti te imploro que no te salgas de mi vida
+[D]Si estoy contigo, no necesito nada más
+[F#]Si estás conmigo, ¿qué me pudiera faltar?
+[Bm]Señor, perdona a aquellos que hablan de mí
+[G]Ya mis palabras son todas solo para ti
+[D]Mis ojos brillan cuando tienen de tu luz
+[F#]No quiero nada, nada que no seas tú
+
+[Coro en E]
+[E]Nada que no seas [B]tú
+Que no seas [C#m]tú, que no seas [A]tú
+Nada de nada, de nada, de na
+[E]Nadie que no seas [B]tú
+Que no seas [C#m]tú, que no seas tú
+Nada [A]de nada, de nada, de na
+
+[Final]
+[A]  [E]  [B]
+[A]  [E]  [B]
+[C#m]  [A]  [E]  [G#]
+[C#m]  [A]  [E]  [G#]
+[E]  [B]  [C#m]  [A]
+Uh, uh, uh, uh, uh, uh, uh (Oh, oh, no, no, no quiero a nadie)
+Uh, uh, uh, uh, uh, uh, uh (Oh, oh, oh, que no seas tú)
+
+[Oh]
+Oh
+Oh, oh, oh
+Oh, oh, oh
+Oh, oh, oh
+Oh
+Oh, oh, oh
+Oh, oh, oh
+Oh, oh, oh
+Oh
+Oh, oh, oh
+Oh, oh, oh
+Oh, oh, oh
+
+[Coro en E]
+[E]Nada que no seas [B]tú
+Que no seas [C#m]tú, que no seas [A]tú
+Nada de nada, de nada, de na
+[E]Nadie que no seas [B]tú
+Que no seas [C#m]tú, que no seas tú
+Nada [A]de nada, de nada, de na
+[E]Nadie que no seas [B]tú
+Que no seas [C#m]tú, que no seas tú`
   }
 ];

@@ -30,10 +30,10 @@ const MIGRACION = readFileSync('supabase/migrations/20261001120000_songbook_clas
 /** Las cuatro que el ministerio retiró. La última, por estar repetida. */
 const RETIRADAS = ['estamos-de-fiesta-con-jesus', 'pescador-de-hombres', 'alfarero', 'te-presentamos-el-vino-y-el-pan-ii'];
 
-describe('El cancionero tiene 112 canciones', () => {
+describe('El cancionero tiene 113 canciones', () => {
   it('ni una más, ni repetida', () => {
-    eq(MOCK_SONGS.length, 112);
-    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 112, 'sin ids repetidos');
+    eq(MOCK_SONGS.length, 113);
+    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 113, 'sin ids repetidos');
   });
 
   it('las cuatro retiradas ya no están', () => {
@@ -161,7 +161,7 @@ describe('El tiempo litúrgico vive en su campo', () => {
 
   it('y «todo el año» deja de ser el cajón de lo no revisado', () => {
     const todoElAno = MOCK_SONGS.filter((song) => getSongSeasons(song).includes('todo-el-ano'));
-    eq(todoElAno.length, 48, 'antes eran 78 de 110');
+    eq(todoElAno.length, 49, 'antes eran 78 de 110');
   });
 
   it('ejemplos de lo que decidió el ministerio', () => {
