@@ -3570,5 +3570,37 @@ Que no seas [C#m]tú, que no seas tú
 Nada [A]de nada, de nada, de na
 [E]Nadie que no seas [B]tú
 Que no seas [C#m]tú, que no seas tú`
+  },
+  {
+    id: 'piedad-clasico',
+    title: 'Piedad Clásico',
+    categories: ['Piedad'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
+    tags: [],
+    chordsUsed: [],
+    content: `Señor ten piedad (x3) de nosotros
+Cristo ten piedad (x3) de nosotros
+Señor ten piedad (x3) de nosotros`
+  },
+  {
+    id: 'santo-clasico',
+    title: 'Santo Clásico',
+    categories: ['Santo'],
+    liturgicalSeasons: ['adviento', 'navidad', 'tiempo-ordinario', 'cuaresma', 'pascua'],
+    tags: [],
+    chordsUsed: [],
+    content: `Santo es el Señor mi Dios digno de alabanza
+A Él, el poder, el honor y la gloria (x2)
+
+Osanna
+Osanna
+Osanna oh Señor (x2)
+
+Bendito el que viene en nombre del Señor
+Con todos sus santos, cantamos para ti (x2)
+
+Osanna
+Osanna
+Osanna oh Señor (x2)`
   }
 ];

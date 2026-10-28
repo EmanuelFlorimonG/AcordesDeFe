@@ -30,10 +30,10 @@ const MIGRACION = readFileSync('supabase/migrations/20261001120000_songbook_clas
 /** Las cuatro que el ministerio retiró. La última, por estar repetida. */
 const RETIRADAS = ['estamos-de-fiesta-con-jesus', 'pescador-de-hombres', 'alfarero', 'te-presentamos-el-vino-y-el-pan-ii'];
 
-describe('El cancionero tiene 113 canciones', () => {
+describe('El cancionero tiene 115 canciones', () => {
   it('ni una más, ni repetida', () => {
-    eq(MOCK_SONGS.length, 113);
-    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 113, 'sin ids repetidos');
+    eq(MOCK_SONGS.length, 115);
+    eq(new Set(MOCK_SONGS.map((song) => song.id)).size, 115, 'sin ids repetidos');
   });
 
   it('las cuatro retiradas ya no están', () => {
@@ -155,7 +155,7 @@ describe('El tiempo litúrgico vive en su campo', () => {
 
   it('ya hay canciones de Cuaresma, que antes no había ninguna', () => {
     const cuaresma = MOCK_SONGS.filter((song) => getSongSeasons(song).includes('cuaresma'));
-    eq(cuaresma.length, 23);
+    eq(cuaresma.length, 25);
     eq(cuaresma.some((song) => song.id === 'llevame-a-la-cruz'), true);
   });
 
