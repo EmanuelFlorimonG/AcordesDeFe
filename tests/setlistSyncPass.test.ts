@@ -133,7 +133,9 @@ function memorySetlists(initial: Setlist[] = []): SetlistRepository & { current(
     // The tolerant path the screens use: a device that will not keep them
     // still shows them for this visit.
     save: (setlists) => {
-      if (broken === null) stored = [...setlists];
+      if (broken !== null) return false;
+      stored = [...setlists];
+      return true;
     },
     saveOrThrow: (setlists) => {
       if (broken !== null) throw broken;

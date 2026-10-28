@@ -59,7 +59,8 @@ export interface SetlistsStore {
   removeItem: (id: string, itemId: string) => void;
   moveItem: (id: string, itemId: string, toIndex: number) => void;
   moveItemBy: (id: string, itemId: string, delta: number) => void;
-  updateItem: (id: string, itemId: string, changes: SetlistItemChanges) => void;
+  /** Devuelve si el cambio quedó escrito en el almacenamiento. */
+  updateItem: (id: string, itemId: string, changes: SetlistItemChanges) => boolean;
   transposeItem: (id: string, itemId: string, delta: number) => void;
   moveItemCapo: (id: string, itemId: string, delta: number) => void;
   /** Replaces the team of a setlist */
@@ -140,19 +141,32 @@ export function useSetlists(
     return () => window.removeEventListener('storage', handleStorage);
   }, [repo, read]);
 
-  const change = useCallback((id: string, update: (setlist: Setlist, now: number) => Setlist) => {
-    setSetlists((current) => {
+  /**
+   * Cambia un Setlist y dice si quedó escrito.
+   *
+   * Se guarda aquí mismo, y no sólo en el efecto, porque hay quien necesita
+   * la respuesta en el acto: el editor de una canción no retira su borrador
+   * hasta saber que lo guardado llegó al disco. El efecto sigue estando para
+   * los demás caminos, y se salta esta escritura porque ya está hecha.
+   */
+  const change = useCallback(
+    (id: string, update: (setlist: Setlist, now: number) => Setlist): boolean => {
       const now = Date.now();
       let changed = false;
-      const next = current.map((setlist) => {
+      const next = setlists.map((setlist) => {
         if (setlist.id !== id) return setlist;
         const updated = update(setlist, now);
         changed = changed || updated !== setlist;
         return updated;
       });
-      return changed ? next : current;
-    });
-  }, [setSetlists]);
+      if (!changed) return true;
+      const guardado = repo.save(next);
+      // `justRead` marca lo que no hay que volver a escribir: aquí ya se hizo.
+      setStore((current) => ({ ...current, justRead: true, setlists: next }));
+      return guardado;
+    },
+    [setlists, repo]
+  );
 
   const getSetlist = useCallback((id: string) => setlists.find((setlist) => setlist.id === id) ?? null, [setlists]);
 

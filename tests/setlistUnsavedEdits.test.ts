@@ -102,6 +102,49 @@ describe('El borrador se guarda aparte, sin tocar el Setlist', () => {
   });
 });
 
+// --- El borrador no se retira sin confirmar la escritura --------------------
+
+describe('Guardar sólo retira el borrador si de verdad quedó escrito', () => {
+  // Lo que estaba mal en la primera versión: se retiraba el borrador cuando
+  // el Setlist ya tenía el cambio en memoria, y `repo.save` se tragaba los
+  // fallos de localStorage. Con la cuota llena se perdía el trabajo igual,
+  // que es justo lo que esto venía a evitar.
+  it('el repositorio dice que sí cuando escribe', () => {
+    const { almacen, setlist } = preparado();
+    eq(createLocalSetlistRepository(almacen.storage, GUEST_SETLISTS).save([setlist]), true);
+  });
+
+  it('y dice que no cuando el navegador se niega', () => {
+    const roto = memoria({ falla: true });
+    const { setlist } = preparado();
+    eq(createLocalSetlistRepository(roto.storage, GUEST_SETLISTS).save([setlist]), false);
+  });
+
+  it('sin almacenamiento dice que no, que es la verdad', () => {
+    // En modo privado no se escribió nada, y el borrador tampoco podría
+    // guardarse. Decir que sí haría que se retirara un borrador que no
+    // existe, y el trabajo se perdería igual.
+    const { setlist } = preparado();
+    eq(createLocalSetlistRepository(null, GUEST_SETLISTS).save([setlist]), false);
+  });
+
+  it('la decisión de retirar el borrador cuelga de esa respuesta', () => {
+    // La pantalla hace exactamente esto: `if (onUpdateItem(...)) discard(...)`.
+    const { almacen, setlist, item } = preparado();
+    const store = createSetlistDraftStore(almacen.storage);
+    const borrador = { setlistId: setlist.id, itemId: item.id, changes: cambios({ notes: 'mío' }, item), base: itemFingerprint(item), savedAt: NOW };
+    store.write(borrador);
+
+    const roto = createLocalSetlistRepository(memoria({ falla: true }).storage, GUEST_SETLISTS);
+    if (roto.save([setlist])) store.discard(setlist.id, item.id);
+    eq(store.read(setlist.id, item.id)?.changes.notes, 'mío', 'la escritura falló: el borrador sigue');
+
+    const bueno = createLocalSetlistRepository(almacen.storage, GUEST_SETLISTS);
+    if (bueno.save([setlist])) store.discard(setlist.id, item.id);
+    eq(store.read(setlist.id, item.id), null, 'la escritura funcionó: ya no hace falta');
+  });
+});
+
 // --- Contra escrituras viejas ----------------------------------------------
 
 describe('Un borrador no pisa lo que otro cambió mientras tanto', () => {

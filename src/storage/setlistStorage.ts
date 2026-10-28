@@ -86,14 +86,15 @@ export interface SetlistRepository {
   readonly key?: string | null;
   load(): SetlistLoadResult;
   /**
-   * Stores them, and says nothing if it cannot.
+   * Stores them. Devuelve si de verdad quedaron escritos.
    *
-   * This is what the screens use. Somebody with full or blocked storage
-   * should still be able to build a setlist and play from it — it stays in
-   * memory for the visit, and an editor that threw in the middle of a change
-   * would help nobody.
+   * No lanza: quien tiene el almacenamiento lleno o bloqueado tiene que poder
+   * seguir armando un Setlist y tocarlo, y un editor que reventara a mitad de
+   * un cambio no ayudaría a nadie. Pero sí lo dice, porque hay decisiones que
+   * dependen de ello: un borrador no se retira si lo guardado no llegó a
+   * escribirse.
    */
-  save(setlists: Setlist[]): void;
+  save(setlists: Setlist[]): boolean;
   /**
    * The same, for a caller that has to know. **Throws when the write did not
    * land.** Synchronising has to tell "this is now on disk" from "this is
@@ -241,11 +242,13 @@ export function createLocalSetlistRepository(
     }
   };
   const put = (key: string, value: string) => storage?.setItem(key, value);
-  const write = (key: string, value: string) => {
+  const write = (key: string, value: string): boolean => {
     try {
       put(key, value);
+      return Boolean(storage);
     } catch {
       // quota exceeded or storage blocked: the setlists stay in memory for this visit
+      return false;
     }
   };
 
@@ -260,8 +263,10 @@ export function createLocalSetlistRepository(
       return { setlists, recoveredFromUnreadableData: unreadable };
     },
     save(setlists) {
-      if (!keys) return;
-      write(keys.data, serializeSetlists(setlists));
+      // Una identidad sin dónde escribir no tenía nada que guardar: no es un
+      // fallo, es que nunca prometió conservar nada (ver setlistKeys).
+      if (!keys) return true;
+      return write(keys.data, serializeSetlists(setlists));
     },
     saveOrThrow(setlists) {
       // An identity with nowhere to write has nothing to fail at: it never

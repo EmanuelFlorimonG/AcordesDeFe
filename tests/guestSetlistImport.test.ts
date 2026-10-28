@@ -52,7 +52,9 @@ function memory(initial: Setlist[] = []): SetlistRepository & { current(): Setli
     key: 'memoria',
     load: () => ({ setlists: [...stored], recoveredFromUnreadableData: false }),
     save: (setlists) => {
-      if (broken === null) stored = [...setlists];
+      if (broken !== null) return false;
+      stored = [...setlists];
+      return true;
     },
     saveOrThrow: (setlists) => {
       if (broken !== null) throw broken;
