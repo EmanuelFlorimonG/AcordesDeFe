@@ -1,4 +1,4 @@
-import React, { useId, useMemo, useState } from 'react';
+import React, { useId, useMemo, useRef, useState } from 'react';
 import { Check, RotateCcw } from 'lucide-react';
 import type {
   SetlistArrangement,
@@ -34,6 +34,14 @@ import { Stepper } from '../Rehearsal/RehearsalControls';
 import { ArrangementEditor } from './ArrangementEditor';
 import { Dialog } from './Dialog';
 import {
+  type DraftChanges,
+  type SetlistDraftStore,
+  type StoredItemDraft,
+  draftDiffers,
+  draftStatus,
+  itemFingerprint,
+} from '../../storage/setlistDraftStorage';
+import {
   chipButton,
   chipOff,
   chipOn,
@@ -43,6 +51,9 @@ import {
   sectionHeading,
   textField,
 } from './ui';
+
+/** En qué estado está lo que se lleva editado, para decirlo en pantalla. */
+export type DraftState = 'limpio' | 'protegido' | 'error';
 
 export interface SetlistItemDraft {
   moment: string;
@@ -73,11 +84,44 @@ interface SetlistItemEditorProps {
   participantIds?: string[];
   /** Qué se está preparando, que es lo que decide qué momentos se ofrecen. */
   setlistKind?: SetlistKind;
+  /** El Setlist al que pertenece: con el id del ítem, identifica el borrador. */
+  setlistId: string;
   onSave: (changes: SetlistItemDraft) => void;
   onClose: () => void;
+  /** El almacén de borradores. Se inyecta en las pruebas; en la aplicación es el del navegador. */
+  draftStore?: SetlistDraftStore;
+  /** Lo guardado de este ítem, si lo hubiera, para ofrecer recuperarlo al abrir. */
+  savedDraft?: StoredItemDraft | null;
+  /** Reloj, para que las pruebas no dependan de la hora. */
+  now?: () => number;
 }
 
 const MAX_SUGGESTIONS = 8;
+
+/**
+ * Qué ha pasado con lo que se lleva escrito.
+ *
+ * No dice «Guardado» cuando no lo está: mientras el diálogo sigue abierto el
+ * Setlist no ha cambiado, y lo único cierto es que el trabajo está a salvo de
+ * un cierre. Y si el navegador no dejó escribir, lo dice sin prometer que se
+ * recupere después de cerrar, porque no se recuperaría.
+ */
+export const DraftIndicator: React.FC<{ state: DraftState; persistente: boolean }> = ({ state, persistente }) => {
+  if (state === 'limpio') return null;
+  const error = state === 'error' || !persistente;
+  return (
+    <p
+      role="status"
+      className={`mr-auto text-xs font-semibold ${
+        error ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'
+      }`}
+    >
+      {error
+        ? 'Error al guardar: tus cambios siguen aquí mientras no cierres la página.'
+        : 'Borrador protegido'}
+    </p>
+  );
+};
 
 /**
  * Everything that belongs to one song *in this setlist*: when it is sung, in
@@ -90,13 +134,26 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   nextSongTitle,
   participantIds = [],
   setlistKind,
+  setlistId,
   onSave,
   onClose,
+  draftStore,
+  savedDraft = null,
+  now = Date.now,
 }) => {
-  const [newParticipantIds, setNewParticipantIds] = useState<string[]>([]);
-  const [moment, setMoment] = useState(item.moment);
-  const [notes, setNotes] = useState(item.notes);
-  const [key, setKey] = useState<KeySettings>({ transposeSteps: item.transposeSteps, capoFret: item.capoFret });
+  // El borrador que se puede ofrecer: el guardado, si de verdad cambia algo y
+  // si el ítem sigue como estaba cuando se escribió. Si alguien lo cambió por
+  // otro camino, no se aplica solo.
+  const recuperable = draftStatus(savedDraft, item) === 'recuperable' ? savedDraft : null;
+  const inicial = recuperable?.changes;
+  const [newParticipantIds, setNewParticipantIdsRaw] = useState<string[]>(inicial?.newParticipantIds ?? []);
+  const [moment, setMomentRaw] = useState(inicial?.moment ?? item.moment);
+  const [notes, setNotesRaw] = useState(inicial?.notes ?? item.notes);
+  const [key, setKeyRaw] = useState<KeySettings>(
+    inicial
+      ? { transposeSteps: inicial.transposeSteps, capoFret: inicial.capoFret }
+      : { transposeSteps: item.transposeSteps, capoFret: item.capoFret }
+  );
   // The song as it is written now. The catalog can refresh while this dialog
   // is open, so it is not what the arrangement is reviewed against: that is
   // the version this session opened on (see `session` below).
@@ -106,7 +163,7 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   // An arrangement made on another version opens re-pointed where there is no
   // doubt, with the doubtful blocks marked for someone to choose.
   const [session, setSession] = useState(() => {
-    const binding = bindArrangement(currentSections, item.arrangement, currentVersion);
+    const binding = bindArrangement(currentSections, inicial ? inicial.arrangement ?? undefined : item.arrangement, currentVersion);
     return {
       version: currentVersion,
       sections: currentSections,
@@ -115,8 +172,11 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   });
   const { sections: songSections, arrangement } = session;
   const songVersion = session.version;
-  const setArrangement = (next: SetlistArrangement | undefined | ((current: SetlistArrangement | undefined) => SetlistArrangement | undefined)) =>
-    setSession((current) => ({ ...current, arrangement: typeof next === 'function' ? next(current.arrangement) : next }));
+  const setArrangement = (next: SetlistArrangement | undefined | ((current: SetlistArrangement | undefined) => SetlistArrangement | undefined)) => {
+    const valor = typeof next === 'function' ? next(session.arrangement) : next;
+    setSession((current) => ({ ...current, arrangement: valor }));
+    protege({ arrangement: valor && !matchesSongStructure(session.sections, valor) ? valor : null });
+  };
   // Which blocks are still waiting is read from the blocks themselves, never
   // from a list kept beside them: duplicating, removing or reordering blocks
   // can't turn an unchecked one into a checked one.
@@ -143,9 +203,125 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
       arrangement: next.state === 'none' ? undefined : next.arrangement,
     });
   };
-  const [transition, setTransition] = useState<SetlistSongTransition | null>(
-    item.transitionToNext ?? null
+  const [transition, setTransitionRaw] = useState<SetlistSongTransition | null>(
+    (inicial ? inicial.transitionToNext ?? null : item.transitionToNext) ?? null
   );
+
+  // ---------------------------------------------------------------------
+  // El borrador
+  // ---------------------------------------------------------------------
+  // Se escribe en el momento, dentro del mismo manejador que cambia el campo,
+  // no en un efecto ni tras una espera: lo último que alguien teclea antes de
+  // cerrar tiene que estar guardado cuando el cierre ocurra.
+  const base = useRef(itemFingerprint(item)).current;
+  const draftRef = useRef<DraftChanges>({
+    moment: inicial?.moment ?? item.moment,
+    notes: inicial?.notes ?? item.notes,
+    transposeSteps: inicial?.transposeSteps ?? item.transposeSteps,
+    capoFret: inicial?.capoFret ?? item.capoFret,
+    arrangement: inicial ? inicial.arrangement ?? null : item.arrangement ?? null,
+    transitionToNext: inicial ? inicial.transitionToNext : item.transitionToNext,
+    newParticipantIds: inicial?.newParticipantIds ?? [],
+  });
+  const [draftState, setDraftState] = useState<DraftState>(recuperable ? 'protegido' : 'limpio');
+  /** Lo que no se pudo escribir sigue aquí mientras la página no se cierre. */
+  const [almacenFallo, setAlmacenFallo] = useState(false);
+
+  const protege = (patch: Partial<DraftChanges>) => {
+    draftRef.current = { ...draftRef.current, ...patch };
+    if (!draftStore) return;
+    if (!draftDiffers(draftRef.current, item)) {
+      // Volver a dejarlo como estaba no es un cambio pendiente.
+      draftStore.discard(setlistId, item.id);
+      setDraftState('limpio');
+      setAlmacenFallo(false);
+      return;
+    }
+    const ok = draftStore.write({
+      setlistId,
+      itemId: item.id,
+      changes: draftRef.current,
+      base,
+      savedAt: now(),
+    });
+    setDraftState(ok ? 'protegido' : 'error');
+    setAlmacenFallo(!ok);
+  };
+
+  /** Hay algo escrito que el Setlist todavía no tiene. */
+  const hayPendiente = () => draftDiffers(draftRef.current, item);
+
+  // Cada cambio escribe el borrador dentro del mismo manejador. Se envuelven
+  // los setters y no cada punto de uso: así no hay forma de añadir mañana un
+  // control nuevo que cambie algo sin protegerlo.
+  type Siguiente<T> = T | ((current: T) => T);
+  const resolver = <T,>(valor: Siguiente<T>, actual: T): T =>
+    typeof valor === 'function' ? (valor as (current: T) => T)(actual) : valor;
+
+  const setMoment = (valor: Siguiente<string>) => {
+    const next = resolver(valor, moment);
+    setMomentRaw(next);
+    protege({ moment: next });
+  };
+  const setNotes = (valor: Siguiente<string>) => {
+    const next = resolver(valor, notes);
+    setNotesRaw(next);
+    protege({ notes: next });
+  };
+  const setKey = (valor: Siguiente<KeySettings>) => {
+    const next = resolver(valor, key);
+    setKeyRaw(next);
+    protege({ transposeSteps: next.transposeSteps, capoFret: next.capoFret });
+  };
+  const setTransition = (valor: Siguiente<SetlistSongTransition | null>) => {
+    const next = resolver(valor, transition);
+    setTransitionRaw(next);
+    protege({ transitionToNext: nextSongTitle ? next : undefined });
+  };
+  const setNewParticipantIds = (valor: Siguiente<string[]>) => {
+    const next = resolver(valor, newParticipantIds);
+    setNewParticipantIdsRaw(next);
+    protege({ newParticipantIds: next });
+  };
+  const [confirmando, setConfirmando] = useState(false);
+
+  /** Entrega los cambios al Setlist. El borrador lo retira quien confirme la escritura. */
+  const guardar = () => {
+    if (blocked) return;
+    onSave({
+      moment,
+      notes,
+      ...key,
+      // An arrangement that is still the song's own structure is not stored:
+      // nothing was actually decided for this occasion. Anything else is
+      // stamped with the version it was checked against, whole.
+      arrangement: storedArrangement ? certifyArrangement(storedArrangement, songVersion, songSections) : null,
+      // While this entry is the last one there is nothing to go into, so
+      // whatever it had stays stored, untouched, for when it isn't.
+      transitionToNext: nextSongTitle ? transition : undefined,
+      newParticipantIds,
+    });
+  };
+
+  /**
+   * Cerrar con cambios sin guardar pregunta. Sin ellos cierra y ya: avisar
+   * cuando no hay nada que perder enseña a ignorar los avisos.
+   */
+  const pedirCierre = () => {
+    if (!hayPendiente()) {
+      onClose();
+      return;
+    }
+    setConfirmando(true);
+  };
+
+  /** Descartar es explícito: sólo aquí se borra el borrador sin guardarlo. */
+  const descartar = () => {
+    draftStore?.discard(setlistId, item.id);
+    setConfirmando(false);
+    onClose();
+  };
+
   const momentId = useId();
   const notesId = useId();
   const transitionId = useId();
@@ -171,27 +347,13 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   }).slice(0, MAX_SUGGESTIONS);
 
   return (
+    <>
     <Dialog
       title={song.title}
       description={song.artist}
       size="lg"
-      onClose={onClose}
-      onSubmit={() => {
-        if (blocked) return;
-        onSave({
-          moment,
-          notes,
-          ...key,
-          // An arrangement that is still the song's own structure is not stored:
-          // nothing was actually decided for this occasion. Anything else is
-          // stamped with the version it was checked against, whole.
-          arrangement: storedArrangement ? certifyArrangement(storedArrangement, songVersion, songSections) : null,
-          // While this entry is the last one there is nothing to go into, so
-          // whatever it had stays stored, untouched, for when it isn't.
-          transitionToNext: nextSongTitle ? transition : undefined,
-          newParticipantIds,
-        });
-      }}
+      onClose={pedirCierre}
+      onSubmit={guardar}
       footer={
         <>
           {blocked && (
@@ -201,7 +363,8 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
                 : 'Elige la sección de cada bloque pendiente (o quítalo) para poder guardar.'}
             </p>
           )}
-          <button type="button" onClick={onClose} className={secondaryButton}>
+          <DraftIndicator state={draftState} persistente={!almacenFallo} />
+          <button type="button" onClick={pedirCierre} className={secondaryButton}>
             Cancelar
           </button>
           <button type="submit" disabled={blocked} className={primaryButton}>
@@ -472,5 +635,42 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
         </div>
       </div>
     </Dialog>
+      {confirmando && (
+        <Dialog
+          size="sm"
+          role="alertdialog"
+          title="Tienes cambios sin guardar"
+          description={`Lo que llevas editado de «${song.title}» está protegido, pero el Setlist todavía no lo tiene.`}
+          onClose={() => setConfirmando(false)}
+          footer={
+            <>
+              <button type="button" onClick={descartar} className={secondaryButton}>
+                Descartar
+              </button>
+              <button type="button" onClick={() => setConfirmando(false)} className={secondaryButton}>
+                Seguir editando
+              </button>
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => {
+                  setConfirmando(false);
+                  guardar();
+                }}
+                className={primaryButton}
+              >
+                Guardar
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            {almacenFallo
+              ? 'No se pudieron guardar tus cambios en este navegador, así que si cierras ahora se perderán.'
+              : 'Si descartas, se pierden. Si cierras sin decidir, los encontrarás al volver a abrir esta canción.'}
+          </p>
+        </Dialog>
+      )}
+    </>
   );
 };

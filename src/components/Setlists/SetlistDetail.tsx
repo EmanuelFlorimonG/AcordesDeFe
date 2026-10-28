@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -26,11 +26,19 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { SetlistFormDialog } from './SetlistFormDialog';
 import { SetlistHeading } from './SetlistHeading';
 import { SetlistItemEditor } from './SetlistItemEditor';
+import {
+  createSetlistDraftStore,
+  itemFingerprint,
+  type SetlistDraftStore,
+} from '../../storage/setlistDraftStorage';
+import { getBrowserStorage } from '../../storage/setlistStorage';
 import { SetlistSongList } from './SetlistSongList';
 import { SetlistTeam } from './SetlistTeam';
 import { primaryButton, secondaryButton } from './ui';
 
 interface SetlistDetailProps {
+  /** El almacén de borradores. Se inyecta en las pruebas. */
+  draftStore?: SetlistDraftStore;
   /** Null when the setlist no longer exists (an old link, or deleted elsewhere) */
   setlist: Setlist | null;
   songs: Song[];
@@ -129,9 +137,33 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   onAddParticipants,
   onGoToMembers,
   activities,
+  draftStore: draftStoreProp,
 }) => {
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
   const closeDialog = () => setDialog(null);
+
+  // El almacén de borradores del editor. Uno por pantalla, no por apertura.
+  const draftStore = useMemo(
+    () => draftStoreProp ?? createSetlistDraftStore(getBrowserStorage()),
+    [draftStoreProp]
+  );
+  /**
+   * Un borrador entregado al Setlist, esperando a que la escritura se note.
+   *
+   * No se borra al pulsar Guardar: se borra cuando el Setlist que llega por
+   * props ya contiene lo guardado. Si la escritura fallara, el borrador sigue
+   * ahí y la próxima apertura lo ofrece. `useSetlists` guarda de forma
+   * síncrona, así que esto es cuestión de un render.
+   */
+  const [entregado, setEntregado] = useState<{ itemId: string; huella: string } | null>(null);
+  useEffect(() => {
+    if (!entregado || !setlist) return;
+    const actual = setlist.items.find((entry) => entry.id === entregado.itemId);
+    if (actual && itemFingerprint(actual) === entregado.huella) {
+      draftStore.discard(setlist.id, entregado.itemId);
+      setEntregado(null);
+    }
+  }, [entregado, setlist, draftStore]);
 
   const backButton = (
     <button
@@ -411,10 +443,27 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
           }
           participantIds={setlist.participantIds}
           setlistKind={setlist.kind}
+          setlistId={setlist.id}
+          draftStore={draftStore}
+          savedDraft={draftStore.read(setlist.id, openItem.id)}
           onSave={({ newParticipantIds, ...changes }) => {
             // Someone assigned from outside the team joins it, as the editor said.
             if (newParticipantIds.length > 0) onAddParticipants(newParticipantIds);
             onUpdateItem(openItem.id, changes);
+            // El borrador no se retira aquí: se retira cuando el Setlist que
+            // llega por props ya tiene lo guardado.
+            setEntregado({
+              itemId: openItem.id,
+              huella: itemFingerprint({
+                ...openItem,
+                ...changes,
+                arrangement: changes.arrangement ?? undefined,
+                transitionToNext:
+                  changes.transitionToNext === undefined
+                    ? openItem.transitionToNext
+                    : changes.transitionToNext ?? undefined,
+              }),
+            });
             closeDialog();
           }}
           onClose={closeDialog}
