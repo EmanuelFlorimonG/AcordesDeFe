@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "catalog:report": "vite build --config scripts/generate-catalog-import.config.ts && node .import-dist/verify-remote-catalog.js",
+    "catalog:export": "vite build --config scripts/generate-catalog-import.config.ts && node .import-dist/export-remote-catalog.js",
     "test": "vite build --config vite.test.config.ts && node --test \".test-dist/*.test.js\"",
     "preview": "vite preview"
   },

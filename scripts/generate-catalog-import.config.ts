@@ -13,6 +13,7 @@ export default defineConfig({
       input: {
         'generate-catalog-import': 'scripts/generate-catalog-import.ts',
         'verify-remote-catalog': 'scripts/verify-remote-catalog.ts',
+        'export-remote-catalog': 'scripts/export-remote-catalog.ts',
       },
       output: { format: 'es', entryFileNames: '[name].js' },
     },
