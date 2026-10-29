@@ -28,6 +28,13 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,woff2,png,svg,webmanifest,ico}'],
         // Las rutas son hash, así que cualquier navegación es la raíz.
         navigateFallback: 'index.html',
+        // Las rutas de la aplicación son hash, así que ninguna navegación de
+        // verdad empieza por /assets/. Sin esto, pedir un trozo que ya no
+        // existe devuelve el HTML con estado 200, y el navegador intenta
+        // ejecutarlo como JavaScript: el error que sale entonces no dice nada
+        // de lo que pasó. Con la lista, un trozo que falta falla como lo que
+        // es, y el límite de error puede reconocerlo.
+        navigateFallbackDenylist: [/^\/assets\//],
         // Un service worker viejo no debe sobrevivir a uno nuevo.
         cleanupOutdatedCaches: true,
         // Sin `runtimeCaching` a propósito: ni Supabase ni YouTube pasan por

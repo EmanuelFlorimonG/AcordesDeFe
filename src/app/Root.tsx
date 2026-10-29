@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useSyncExternalStore } from 'react';
 import App from '../App';
 import { isAdminHash } from '../admin/routes';
 import { FullScreenFallback } from '../components/Layout/ScreenFallback';
+import { LazyScreenBoundary } from '../components/Layout/LazyScreenBoundary';
 
 // The editorial panel is a separate, lazily loaded app: the songbook never downloads it.
 const AdminApp = lazy(() => import('../components/Admin/AdminApp'));
@@ -15,10 +16,14 @@ const subscribeToHash = (onChange: () => void) => {
 export const Root: React.FC = () => {
   const admin = useSyncExternalStore(subscribeToHash, () => isAdminHash(window.location.hash));
   return admin ? (
-    <Suspense fallback={<FullScreenFallback />}>
-      <AdminApp />
-    </Suspense>
+    <LazyScreenBoundary>
+      <Suspense fallback={<FullScreenFallback />}>
+        <AdminApp />
+      </Suspense>
+    </LazyScreenBoundary>
   ) : (
-    <App />
+    <LazyScreenBoundary>
+      <App />
+    </LazyScreenBoundary>
   );
 };
