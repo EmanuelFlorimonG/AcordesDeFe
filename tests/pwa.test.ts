@@ -97,10 +97,22 @@ describe('Una versión nueva no toma el control sola', () => {
     eq(main.includes('applyPendingUpdate'), false);
   });
 
-  it('no hay recargas automáticas por ninguna parte', () => {
-    for (const forbidden of ['location.reload', 'window.location.href =', 'skipWaiting()']) {
+  it('ninguna recarga ocurre sin que alguien la haya pedido', () => {
+    // Antes aquí no había ni una recarga. Ahora hay dos, y las dos son
+    // necesarias: la biblioteca recargaba ella sola —y en todas las pestañas,
+    // porque `controlling` llega a todas— así que hubo que quitarle esa
+    // decisión y tomarla aquí. Lo que no puede haber es una recarga suelta.
+    for (const forbidden of ['window.location.href =', 'skipWaiting()']) {
       eq(pwa.includes(forbidden), false, forbidden);
     }
+    const recargas = (pwa.match(/window\.location\.reload\(\)/g) ?? []).length;
+    eq(recargas, 2, 'ni una más de las previstas');
+    // Una para cuando otra pestaña ya actualizó y ésta sigue con lo viejo.
+    eq(/if \(stale\) \{\s*window\.location\.reload\(\)/.test(pwa), true, 'la primera, condicionada');
+    // Y otra sólo si esta pestaña lo pidió y no hay nada en marcha.
+    eq(/if \(shouldReloadNow\([\s\S]{0,90}\)\) \{\s*window\.location\.reload\(\)/.test(pwa), true, 'la segunda, condicionada');
+    // Y la regla que decide no vive aquí, para poder probarla sola.
+    eq(pwa.includes("from './pwa/updatePolicy'"), true);
   });
 
   it('se puede distinguir listo, actualización y error', () => {
