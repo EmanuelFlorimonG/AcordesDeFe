@@ -1,5 +1,7 @@
 import { isSessionActive } from './pwa/sessionActivity';
-import { shouldReloadNow } from './pwa/updatePolicy';
+import { createUpdateCoordinator, type UpdateCoordinator } from './pwa/updatePolicy';
+import { hasPendingDrafts } from './pwa/chunkRecovery';
+import { SETLIST_DRAFTS_KEY } from './storage/setlistDraftStorage';
 
 /**
  * El service worker: registrarlo, y saber en qué estado está.
@@ -37,9 +39,7 @@ let state: PwaState = { kind: 'idle' };
  * pestaña, el service worker nuevo toma el control de todas las demás a la
  * vez. Sin esto, todas recargaban, incluida la que tuviera una misa abierta.
  */
-let requestedHere = false;
-/** El service worker nuevo ya manda, pero esta pestaña sigue con el código viejo. */
-let stale = false;
+let coordinator: UpdateCoordinator | null = null;
 const listeners = new Set<Listener>();
 /** Lo que aplicará la versión nueva cuando alguien lo pida. */
 let applyUpdate: (() => Promise<void>) | null = null;
@@ -73,22 +73,17 @@ export function hasPendingUpdate(): boolean {
  * este archivo.
  */
 export async function applyPendingUpdate(): Promise<void> {
-  requestedHere = true;
-  // Si el service worker nuevo ya tomó el control —porque otra pestaña
-  // actualizó— no queda nada que activar: lo único que hace falta aquí es
-  // recargar para dejar de usar el código viejo.
-  if (stale) {
-    window.location.reload();
-    return;
-  }
-  await applyUpdate?.();
+  await coordinator?.request();
 }
 
-/** Sólo para las pruebas: deja el módulo como estaba al empezar. */
-export function resetPwaForTests(): void {
-  requestedHere = false;
-  stale = false;
-  state = { kind: 'idle' };
+/** Si queda algo escrito sin guardar, mirando donde el editor lo deja. */
+function hayBorradores(): boolean {
+  try {
+    return hasPendingDrafts(window.localStorage.getItem(SETLIST_DRAFTS_KEY));
+  } catch {
+    // Almacenamiento bloqueado: no hay borradores que respetar.
+    return false;
+  }
 }
 
 /**
@@ -117,16 +112,7 @@ export function registerPwa(): void {
          * Dándole esta función, la recarga la decidimos nosotros.
          */
         onNeedReload() {
-          stale = true;
-          if (shouldReloadNow({ requestedHere, sessionActive: isSessionActive() })) {
-            window.location.reload();
-            return;
-          }
-          // No se recarga: o no fue esta pestaña quien lo pidió, o hay algo
-          // en marcha. Se vuelve a ofrecer y decide la persona. Mientras
-          // tanto, si una pantalla no se descarga, la recuperación de trozos
-          // ya sabe qué hacer.
-          publish({ kind: 'update-available' });
+          coordinator?.tookControl();
         },
         onOfflineReady() {
           publish({ kind: 'ready' });
@@ -138,6 +124,15 @@ export function registerPwa(): void {
       // `registerSW` devuelve la función que aplica la actualización; se
       // guarda, no se llama.
       applyUpdate = () => update(true);
+      coordinator = createUpdateCoordinator({
+        sessionActive: isSessionActive,
+        draftsPending: hayBorradores,
+        reload: () => window.location.reload(),
+        offerUpdate: () => publish({ kind: 'update-available' }),
+        skipWaiting: async () => {
+          await applyUpdate?.();
+        },
+      });
     })
     .catch((error: unknown) => {
       // Sin service worker la aplicación funciona igual, sólo que necesita

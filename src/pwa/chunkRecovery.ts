@@ -40,6 +40,7 @@
  */
 
 import { MASS_SESSION_KEY, parseMassSession } from '../storage/massSessionStorage';
+import { SETLIST_DRAFTS_KEY } from '../storage/setlistDraftStorage';
 import { type SessionKind, activeSession } from './sessionActivity';
 
 export const RECOVERY_KEY = 'genesaret_chunk_recovery';
@@ -141,7 +142,14 @@ export interface Busy {
   drafts: boolean;
 }
 
-const HAY_ALGO = (crudo: string | null): boolean => {
+/**
+ * Si queda algo escrito en un editor y todavía sin guardar en su Setlist.
+ *
+ * Se exporta porque lo necesitan los dos caminos que pueden recargar: éste,
+ * cuando una pantalla no se descarga, y el de actualizar a mano. Si sólo lo
+ * mirara uno, el otro recargaría encima del trabajo de alguien.
+ */
+export const hasPendingDrafts = (crudo: string | null): boolean => {
   if (!crudo) return false;
   try {
     const datos = JSON.parse(crudo) as { drafts?: Record<string, unknown> };
@@ -176,7 +184,7 @@ export function whatIsBusy(env: RecoveryEnv): Busy {
   return {
     session: Boolean(live) || fresca,
     live,
-    drafts: HAY_ALGO(env.data?.getItem('genesaret_setlist_item_drafts') ?? null),
+    drafts: hasPendingDrafts(env.data?.getItem(SETLIST_DRAFTS_KEY) ?? null),
   };
 }
 
