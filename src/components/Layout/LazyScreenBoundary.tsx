@@ -6,6 +6,7 @@ import {
   markRecoveryAttempt,
   planRecovery,
 } from '../../pwa/chunkRecovery';
+import { activeSession } from '../../pwa/sessionActivity';
 
 /**
  * El muro que impide que una pantalla que no se descarga se lleve por delante
@@ -43,6 +44,7 @@ const navegador = (): RecoveryEnv => ({
   data: typeof window === 'undefined' ? null : safeStorage(() => window.localStorage),
   buildId: typeof document === 'undefined' ? 'desconocida' : currentBuildId(document),
   now: Date.now,
+  liveSession: activeSession,
 });
 
 /** Un almacenamiento bloqueado no debe tumbar el arranque. */
@@ -110,7 +112,9 @@ export class LazyScreenBoundary extends React.Component<Props, State> {
               ? 'Esta pantalla no se pudo abrir y el navegador no deja recordar el intento, así que no se recarga sola. Pulsa Recargar.'
               : porTrabajo
               ? ocupado?.session
-                ? 'La aplicación se actualizó mientras tenías una celebración en marcha. No se recarga sola para no cortarla: hazlo cuando puedas soltar la pantalla.'
+                ? ocupado.live === 'ensayo'
+                  ? 'La aplicación se actualizó mientras estabas ensayando. No se recarga sola para no cortarte: hazlo cuando puedas soltar la pantalla.'
+                  : 'La aplicación se actualizó mientras tenías una celebración en marcha. No se recarga sola para no cortarla: hazlo cuando puedas soltar la pantalla.'
                 : 'La aplicación se actualizó y tienes cambios sin guardar en un editor. Están protegidos y seguirán ahí después de recargar.'
               : 'Ya se intentó recargar por esta versión y la pantalla sigue sin abrirse. Puede que no haya conexión.'}
         </p>

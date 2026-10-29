@@ -55,6 +55,7 @@ import { useSetlistCloudSync, type SetlistVersions } from './hooks/useSetlistClo
 import { useSetlistAutoSync } from './hooks/useSetlistAutoSync';
 import { useOfflineReadyOnce, usePwaState } from './hooks/usePwa';
 import { applyPendingUpdate } from './pwa';
+import { useSessionActivity } from './pwa/sessionActivity';
 import { ConnectionStatus } from './components/Layout/ConnectionStatus';
 import { useSongDurations } from './hooks/useSongDurations';
 import { countSetlistsWithMember, getFirstRunItem, getSetlistRunPosition, sameRun } from './utils/setlists';
@@ -1802,6 +1803,11 @@ export function App() {
   const showPlayerBar = Boolean(lastOpenedSong);
   const rehearsalActive = isRehearsing && page === 'song' && Boolean(viewerSong);
   const massActive = Boolean(massSetlist);
+  // Mientras una de las dos esté abierta, la recuperación de una pantalla que
+  // no se descargó no recarga sola: avisa y espera. La limpieza del efecto
+  // apaga la señal al salir, al cambiar de ruta y al desmontar.
+  useSessionActivity('ensayo', rehearsalActive);
+  useSessionActivity('misa', massActive);
 
   return (
     <MinistryContext.Provider value={ministryData}>

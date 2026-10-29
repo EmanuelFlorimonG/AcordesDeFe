@@ -15,6 +15,14 @@ import {
   whatIsBusy,
 } from '../src/pwa/chunkRecovery';
 import { LazyScreenBoundary } from '../src/components/Layout/LazyScreenBoundary';
+import {
+  activeSession,
+  isSessionActive,
+  resetSessionActivity,
+  setSessionActive,
+  useSessionActivity,
+} from '../src/pwa/sessionActivity';
+import { runHook } from './hookHarness';
 
 /**
  * Qué pasa cuando una pantalla no se descarga tras un despliegue.
@@ -60,12 +68,14 @@ const AHORA = Date.UTC(2026, 9, 28, 12);
 const sesion = (updatedAt: number) =>
   JSON.stringify({ version: 1, setlistId: 's1', itemId: 'i1', updatedAt });
 
-function entorno(opciones: { intentos?: ReturnType<typeof memoria>; datos?: Record<string, string>; buildId?: string } = {}): RecoveryEnv {
+function entorno(opciones: { intentos?: ReturnType<typeof memoria>; datos?: Record<string, string>; buildId?: string; live?: 'misa' | 'ensayo' | null } = {}): RecoveryEnv {
   return {
     attempts: (opciones.intentos ?? memoria()).api,
     data: memoria({ inicial: opciones.datos ?? {} }).api,
     buildId: opciones.buildId ?? 'index-aaa111.js',
     now: () => AHORA,
+    // Sin señal por defecto: cada prueba dice si hay pantalla abierta.
+    liveSession: () => opciones.live ?? null,
   };
 }
 
@@ -393,6 +403,108 @@ describe('Un error normal de React no provoca ninguna recarga', () => {
   });
 });
 
+// --- La señal de sesión en memoria -----------------------------------------
+
+describe('La señal sigue el ciclo de vida de las pantallas', () => {
+  it('entrar la enciende y salir la apaga', () => {
+    resetSessionActivity();
+    eq(isSessionActive(), false);
+    setSessionActive('ensayo', true);
+    eq([isSessionActive(), activeSession()], [true, 'ensayo']);
+    setSessionActive('ensayo', false);
+    eq([isSessionActive(), activeSession()], [false, null]);
+  });
+
+  it('con las dos abiertas manda la Misa, y apagar una no apaga la otra', () => {
+    resetSessionActivity();
+    setSessionActive('ensayo', true);
+    setSessionActive('misa', true);
+    eq(activeSession(), 'misa');
+    setSessionActive('misa', false);
+    eq(activeSession(), 'ensayo', 'el ensayo sigue');
+    resetSessionActivity();
+  });
+
+  it('el hook la enciende al montar y la apaga al desmontar', () => {
+    resetSessionActivity();
+    const run = runHook(() => useSessionActivity('ensayo', true));
+    eq(isSessionActive(), true, 'montado');
+    run.unmount();
+    eq(isSessionActive(), false, 'desmontado');
+  });
+
+  it('y la apaga al cambiar de ruta, sin desmontar', () => {
+    // Salir de la canción deja `active` en falso: la limpieza del efecto
+    // corre igual, que es lo que hace que no haya falsos positivos.
+    resetSessionActivity();
+    let activo = true;
+    const run = runHook(() => useSessionActivity('ensayo', activo));
+    eq(isSessionActive(), true);
+    activo = false;
+    run.flush();
+    eq(isSessionActive(), false, 'al dejar de estar activa');
+    run.unmount();
+  });
+
+  it('no deja rastro: no se guarda en ningún sitio', () => {
+    const fuente = readFileSync('src/pwa/sessionActivity.ts', 'utf8');
+    eq(/localStorage|sessionStorage|indexedDB|fetch\(/.test(fuente), false);
+  });
+});
+
+describe('Un fallo de carga durante una sesión no recarga nada', () => {
+  it('con el Ensayo abierto, pregunta y lo dice por su nombre', () => {
+    const plan = planRecovery(CHUNK, entorno({ live: 'ensayo' }));
+    eq(plan.action, 'ask');
+    eq(plan.action === 'ask' && plan.reason, 'busy');
+    eq(plan.action === 'ask' && plan.busy.live, 'ensayo');
+  });
+
+  it('con el Modo Misa abierto, igual', () => {
+    const plan = planRecovery(CHUNK, entorno({ live: 'misa' }));
+    eq(plan.action, 'ask');
+    eq(plan.action === 'ask' && plan.busy.live, 'misa');
+  });
+
+  it('la pantalla abierta manda aunque no haya sesión guardada', () => {
+    // El Ensayo no se guarda en ninguna parte: sin la señal no se vería.
+    eq(whatIsBusy(entorno({ live: 'ensayo' })), { session: true, live: 'ensayo', drafts: false });
+  });
+
+  it('y el límite de error no recarga: ofrece el botón con el texto del Ensayo', () => {
+    const recargas: number[] = [];
+    const env = entorno({ live: 'ensayo' });
+    const instancia = new LazyScreenBoundary({ env, reload: () => recargas.push(1) });
+    instancia.state = LazyScreenBoundary.getDerivedStateFromError(CHUNK) as never;
+    (instancia as unknown as { setState: (s: object) => void }).setState = (s) => {
+      instancia.state = { ...instancia.state, ...s } as never;
+    };
+    instancia.componentDidCatch(CHUNK);
+    eq(recargas.length, 0, 'no recargó');
+    const html = renderToStaticMarkup(instancia.render() as React.ReactElement);
+    eq(html.includes('mientras estabas ensayando'), true, html.slice(0, 200));
+    eq(html.includes('Recargar'), true);
+  });
+});
+
+describe('Al salir de los modos se puede volver a recuperar', () => {
+  it('sin falsos positivos: apagada la señal, recarga como siempre', () => {
+    // El riesgo de una señal en memoria es que se quede encendida y deje a
+    // alguien sin recuperación para el resto de la visita.
+    resetSessionActivity();
+    const run = runHook(() => useSessionActivity('ensayo', true));
+    eq(planRecovery(CHUNK, { ...entorno(), liveSession: activeSession }).action, 'ask');
+    run.unmount();
+    eq(planRecovery(CHUNK, { ...entorno(), liveSession: activeSession }).action, 'reload', 'ya se puede');
+  });
+
+  it('y una sesión guardada que caducó tampoco estorba', () => {
+    resetSessionActivity();
+    const vieja = { genesaret_mass_session: sesion(AHORA - SESSION_FRESH_MS - 1) };
+    eq(planRecovery(CHUNK, entorno({ datos: vieja })).action, 'reload');
+  });
+});
+
 // --- Lo que no se rompe -----------------------------------------------------
 
 describe('Nada de esto toca los datos ni el enrutado', () => {
@@ -438,7 +550,7 @@ describe('Nada de esto toca los datos ni el enrutado', () => {
     // Sin almacenamiento no hay forma de anotar el intento, así que tampoco
     // de garantizar que no haya bucle: se ofrece el botón.
     const sinNada: RecoveryEnv = { attempts: null, data: null, buildId: 'x', now: () => AHORA };
-    eq(whatIsBusy(sinNada), { session: false, drafts: false });
+    eq(whatIsBusy({ ...sinNada, liveSession: () => null }), { session: false, live: null, drafts: false });
     const plan = planRecovery(CHUNK, sinNada);
     eq(plan.action, 'ask');
     eq(plan.action === 'ask' && plan.reason, 'cannot-remember');

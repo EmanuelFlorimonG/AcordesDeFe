@@ -40,6 +40,7 @@
  */
 
 import { MASS_SESSION_KEY, parseMassSession } from '../storage/massSessionStorage';
+import { type SessionKind, activeSession } from './sessionActivity';
 
 export const RECOVERY_KEY = 'genesaret_chunk_recovery';
 
@@ -62,6 +63,13 @@ export interface RecoveryEnv {
   /** Identifica la versión cargada ahora: el nombre del archivo del script principal. */
   buildId: string;
   now: () => number;
+  /**
+   * Qué pantalla de sesión está abierta ahora mismo, si alguna.
+   *
+   * Es lo único que delata un Ensayo, que no se guarda en ninguna parte. Se
+   * inyecta para poder probarlo; en la aplicación es la señal en memoria.
+   */
+  liveSession?: () => SessionKind | null;
 }
 
 /**
@@ -125,8 +133,10 @@ function leerIntentos(env: RecoveryEnv): Attempts | null {
 
 /** Qué está haciendo la persona ahora mismo, por si no se la puede interrumpir. */
 export interface Busy {
-  /** Una misa o un ensayo en marcha. */
+  /** Una misa o un ensayo en marcha, por pantalla abierta o por sesión guardada. */
   session: boolean;
+  /** Cuál está abierta ahora mismo, para poder decirlo con su nombre. */
+  live: SessionKind | null;
   /** Algo escrito en un editor y todavía no guardado en su Setlist. */
   drafts: boolean;
 }
@@ -158,10 +168,14 @@ const HAY_ALGO = (crudo: string | null): boolean => {
  * falla es ir a una pantalla que todavía no se cargó.
  */
 export function whatIsBusy(env: RecoveryEnv): Busy {
+  // Una pantalla abierta ahora mismo manda sobre cualquier otra señal: es lo
+  // único que delata un Ensayo, y es lo más seguro que hay sobre una Misa.
+  const live = (env.liveSession ?? activeSession)();
   const session = parseMassSession(env.data?.getItem(MASS_SESSION_KEY) ?? null);
   const fresca = Boolean(session) && env.now() - (session?.updatedAt ?? 0) < SESSION_FRESH_MS;
   return {
-    session: fresca,
+    session: Boolean(live) || fresca,
+    live,
     drafts: HAY_ALGO(env.data?.getItem('genesaret_setlist_item_drafts') ?? null),
   };
 }
