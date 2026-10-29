@@ -27,9 +27,31 @@
  * editor abierto y cosas escritas sin guardar. Ahí no se recarga nunca sola.
  * Se avisa y decide la persona, que es quien sabe si puede soltar la pantalla
  * ahora mismo.
+ *
+ * ## Lo que esto todavía no hace
+ *
+ * Cada pestaña se arregla sola, cuando le toca. No hay mensajería entre
+ * pestañas: una que lleve abierta desde antes del despliegue no se entera de
+ * nada hasta que intenta abrir una pantalla que no tiene descargada, y
+ * entonces es cuando sale el aviso. Es deliberado: avisar a las demás
+ * significaría poder recargarlas, y recargar la pestaña donde alguien está
+ * dirigiendo una misa es exactamente lo que no puede pasar. Hacerlo bien
+ * —avisar sin recargar, y que cada pestaña decida— es trabajo aparte.
  */
 
+import { MASS_SESSION_KEY, parseMassSession } from '../storage/massSessionStorage';
+
 export const RECOVERY_KEY = 'genesaret_chunk_recovery';
+
+/**
+ * Cuánto hace falta que una celebración lleve parada para no contarla.
+ *
+ * La sesión se reescribe cada vez que alguien pasa de canción, así que una
+ * de hace horas es una que nadie cerró, no una en marcha. Seis horas dan de
+ * sobra para la misa más larga, y evitan que una sesión olvidada en enero
+ * impida recuperarse en marzo.
+ */
+export const SESSION_FRESH_MS = 6 * 60 * 60 * 1000;
 
 /** Lo que hace falta saber para decidir. Se inyecta, para poder probarlo. */
 export interface RecoveryEnv {
@@ -50,6 +72,21 @@ export interface RecoveryEnv {
  * error cualquiera de React escondería fallos de verdad detrás de una
  * recarga, y nadie los vería nunca.
  */
+/**
+ * Qué trozo concreto falló, para no confundir dos fallos distintos.
+ *
+ * Los reintentos se cuentan por trozo y por versión: que el Modo Misa no se
+ * descargue no debe gastar el intento del editor, que puede fallar por otro
+ * motivo y arreglarse recargando.
+ */
+export function chunkKeyOf(error: unknown): string {
+  const texto = `${(error as { message?: string })?.message ?? error ?? ''}`;
+  const url = /https?:\/\/\S+?\/([A-Za-z0-9_.-]+\.js)/.exec(texto)?.[1];
+  if (url) return url;
+  const chunk = /chunk (\S+) failed/i.exec(texto)?.[1];
+  return chunk ?? 'desconocido';
+}
+
 export function isChunkLoadError(error: unknown): boolean {
   if (!error) return false;
   const texto = `${(error as { name?: string }).name ?? ''} ${(error as { message?: string }).message ?? error}`;
@@ -63,18 +100,24 @@ export function isChunkLoadError(error: unknown): boolean {
   );
 }
 
-interface Attempt {
+/** Qué trozos ya se intentaron recuperar, y de qué versión. */
+interface Attempts {
   buildId: string;
-  at: number;
+  /** Nombre del trozo -> cuándo se intentó. */
+  failures: Record<string, number>;
 }
 
-function leerIntento(env: RecoveryEnv): Attempt | null {
+function leerIntentos(env: RecoveryEnv): Attempts | null {
   try {
     const crudo = env.attempts?.getItem(RECOVERY_KEY);
     if (!crudo) return null;
-    const datos = JSON.parse(crudo) as Partial<Attempt>;
-    if (typeof datos?.buildId !== 'string' || typeof datos?.at !== 'number') return null;
-    return { buildId: datos.buildId, at: datos.at };
+    const datos = JSON.parse(crudo) as Partial<Attempts>;
+    if (typeof datos?.buildId !== 'string') return null;
+    const failures = datos.failures;
+    return {
+      buildId: datos.buildId,
+      failures: failures && typeof failures === 'object' ? (failures as Record<string, number>) : {},
+    };
   } catch {
     return null;
   }
@@ -101,9 +144,24 @@ const HAY_ALGO = (crudo: string | null): boolean => {
   }
 };
 
+/**
+ * Si hay de verdad una celebración en marcha.
+ *
+ * Que exista la clave no basta: puede llevar texto ilegible, de una versión
+ * que ya no se entiende, o sin la canción apuntada, y `parseMassSession` ya
+ * devuelve null en los tres casos. Y una sesión que nadie tocó en horas no
+ * es una en marcha, es una que nadie cerró.
+ *
+ * El Ensayo no se guarda en ninguna parte, así que desde aquí no se puede
+ * saber si hay uno. En la práctica importa poco: para estar ensayando hay
+ * que haber abierto esa pantalla, y entonces su trozo ya se descargó. Lo que
+ * falla es ir a una pantalla que todavía no se cargó.
+ */
 export function whatIsBusy(env: RecoveryEnv): Busy {
+  const session = parseMassSession(env.data?.getItem(MASS_SESSION_KEY) ?? null);
+  const fresca = Boolean(session) && env.now() - (session?.updatedAt ?? 0) < SESSION_FRESH_MS;
   return {
-    session: Boolean(env.data?.getItem('genesaret_mass_session')),
+    session: fresca,
     drafts: HAY_ALGO(env.data?.getItem('genesaret_setlist_item_drafts') ?? null),
   };
 }
@@ -114,7 +172,7 @@ export type RecoveryPlan =
   /** Se puede recargar sin pisar nada. */
   | { action: 'reload' }
   /** Hay algo que no se puede interrumpir, o ya se intentó: que decida la persona. */
-  | { action: 'ask'; reason: 'busy' | 'already-tried'; busy: Busy };
+  | { action: 'ask'; reason: 'busy' | 'already-tried' | 'cannot-remember'; busy: Busy };
 
 /**
  * Qué hacer ante un fallo al cargar una pantalla.
@@ -128,36 +186,53 @@ export function planRecovery(error: unknown, env: RecoveryEnv): RecoveryPlan {
   const busy = whatIsBusy(env);
   if (busy.session || busy.drafts) return { action: 'ask', reason: 'busy', busy };
 
-  const intento = leerIntento(env);
-  // Un intento por versión. Si ya se recargó por esta misma versión y vuelve
-  // a fallar, recargar otra vez no va a arreglarlo.
-  if (intento && intento.buildId === env.buildId) return { action: 'ask', reason: 'already-tried', busy };
+  // Sin dónde anotar el intento no hay forma de evitar el bucle, así que no
+  // se recarga sola: se ofrece el botón y decide la persona.
+  if (!canRemember(env)) return { action: 'ask', reason: 'cannot-remember', busy };
+
+  const intentos = leerIntentos(env);
+  // Un intento por trozo y por versión. Si ya se recargó por este mismo
+  // trozo de esta misma versión y vuelve a fallar, recargar otra vez no va a
+  // arreglarlo: sólo dejaría la aplicación dando vueltas.
+  //
+  // Los intentos de otra versión no cuentan: desplegar de nuevo devuelve a
+  // todo el mundo su recuperación automática.
+  if (intentos && intentos.buildId === env.buildId && chunkKeyOf(error) in intentos.failures) {
+    return { action: 'ask', reason: 'already-tried', busy };
+  }
 
   return { action: 'reload' };
 }
 
-/** Deja constancia de que se recargó por esta versión, justo antes de hacerlo. */
-export function markRecoveryAttempt(env: RecoveryEnv): void {
+/**
+ * Deja constancia de que se recargó por este trozo, justo antes de hacerlo.
+ *
+ * Al cambiar de versión se empieza de cero: los intentos de la anterior ya
+ * no dicen nada de ésta. Eso, y no borrar la marca al arrancar, es lo que
+ * devuelve la recuperación automática tras una actualización.
+ */
+export function markRecoveryAttempt(env: RecoveryEnv, error: unknown): void {
   try {
-    env.attempts?.setItem(RECOVERY_KEY, JSON.stringify({ buildId: env.buildId, at: env.now() }));
+    const previos = leerIntentos(env);
+    const base: Attempts =
+      previos && previos.buildId === env.buildId ? previos : { buildId: env.buildId, failures: {} };
+    base.failures[chunkKeyOf(error)] = env.now();
+    env.attempts?.setItem(RECOVERY_KEY, JSON.stringify(base));
   } catch {
-    // Sin dónde anotarlo no se puede garantizar que no haya bucle, así que
-    // quien llame a esto debe tratarlo como «ya se intentó».
+    // Sin dónde anotarlo no se puede prometer que no haya bucle. Quien llama
+    // a esto lo sabe: `canRemember` lo dice antes de decidir.
   }
 }
 
-/**
- * Borra la marca porque la aplicación cargó bien.
- *
- * Es lo que permite que la próxima vez vuelva a haber un intento: sin esto,
- * una recarga de hace semanas dejaría a la persona sin recuperación
- * automática para siempre.
- */
-export function clearRecoveryMark(env: RecoveryEnv): void {
+/** Si se puede anotar el intento. Sin esto no hay forma de evitar el bucle. */
+export function canRemember(env: RecoveryEnv): boolean {
+  if (!env.attempts) return false;
   try {
-    env.attempts?.removeItem(RECOVERY_KEY);
+    env.attempts.setItem(RECOVERY_KEY + '_probe', '1');
+    env.attempts.removeItem(RECOVERY_KEY + '_probe');
+    return true;
   } catch {
-    // Nada que hacer, y nada que romper.
+    return false;
   }
 }
 

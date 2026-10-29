@@ -2,7 +2,6 @@ import React from 'react';
 import {
   type RecoveryEnv,
   type RecoveryPlan,
-  clearRecoveryMark,
   currentBuildId,
   markRecoveryAttempt,
   planRecovery,
@@ -26,7 +25,8 @@ import {
  */
 
 interface Props {
-  children: React.ReactNode;
+  /** Opcional: un límite sin nada dentro no pinta nada, y así se puede probar. */
+  children?: React.ReactNode;
   /** Se inyecta en las pruebas; en la aplicación sale del navegador. */
   env?: RecoveryEnv;
   /** Para probar el componente sin que recargue de verdad. */
@@ -61,11 +61,11 @@ export class LazyScreenBoundary extends React.Component<Props, State> {
     return { error };
   }
 
-  componentDidMount(): void {
-    // Llegar hasta aquí significa que la aplicación cargó. Se borra la marca
-    // para que la próxima vez vuelva a haber un intento disponible.
-    clearRecoveryMark(this.props.env ?? navegador());
-  }
+  // Aquí NO se borra la marca al montar. Este límite envuelve la aplicación
+  // entera, que monta bien siempre: borrarla al arrancar devolvía el intento
+  // en cada recarga y el mismo trozo podía recargar sin fin. Lo que devuelve
+  // la recuperación es cambiar de versión, que es cuando de verdad hay algo
+  // nuevo que probar.
 
   componentDidCatch(error: unknown): void {
     const env = this.props.env ?? navegador();
@@ -73,15 +73,15 @@ export class LazyScreenBoundary extends React.Component<Props, State> {
     this.setState({ plan });
     if (plan.action === 'reload') {
       // Se anota ANTES de recargar: si la recarga vuelve a fallar, la marca
-      // ya está puesta y no habrá una segunda.
-      markRecoveryAttempt(env);
+      // ya está puesta y no habrá una segunda por el mismo trozo.
+      markRecoveryAttempt(env, error);
       (this.props.reload ?? (() => window.location.reload()))();
     }
   }
 
   private recargarAhora = () => {
     const env = this.props.env ?? navegador();
-    markRecoveryAttempt(env);
+    markRecoveryAttempt(env, this.state.error);
     (this.props.reload ?? (() => window.location.reload()))();
   };
 
@@ -106,7 +106,9 @@ export class LazyScreenBoundary extends React.Component<Props, State> {
         <p className="max-w-sm text-sm leading-relaxed text-slate-600 dark:text-slate-300">
           {plan?.action === 'show-error'
             ? 'Algo falló al abrirla. Si vuelve a pasar, recarga la página.'
-            : porTrabajo
+            : plan?.action === 'ask' && plan.reason === 'cannot-remember'
+              ? 'Esta pantalla no se pudo abrir y el navegador no deja recordar el intento, así que no se recarga sola. Pulsa Recargar.'
+              : porTrabajo
               ? ocupado?.session
                 ? 'La aplicación se actualizó mientras tenías una celebración en marcha. No se recarga sola para no cortarla: hazlo cuando puedas soltar la pantalla.'
                 : 'La aplicación se actualizó y tienes cambios sin guardar en un editor. Están protegidos y seguirán ahí después de recargar.'

@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs';
 import {
   RECOVERY_KEY,
   type RecoveryEnv,
-  clearRecoveryMark,
+  SESSION_FRESH_MS,
+  chunkKeyOf,
   currentBuildId,
   isChunkLoadError,
   markRecoveryAttempt,
@@ -54,6 +55,10 @@ function memoria({ falla = false, inicial = {} as Record<string, string> } = {})
 }
 
 const AHORA = Date.UTC(2026, 9, 28, 12);
+
+/** Una sesión de Misa tal como la guarda la aplicación. */
+const sesion = (updatedAt: number) =>
+  JSON.stringify({ version: 1, setlistId: 's1', itemId: 'i1', updatedAt });
 
 function entorno(opciones: { intentos?: ReturnType<typeof memoria>; datos?: Record<string, string>; buildId?: string } = {}): RecoveryEnv {
   return {
@@ -107,7 +112,7 @@ describe('Sólo se recupera de lo que de verdad es un trozo que falta', () => {
 
 describe('No se recarga sola si hay algo en marcha', () => {
   it('con una celebración abierta, pregunta', () => {
-    const plan = planRecovery(CHUNK, entorno({ datos: { genesaret_mass_session: '{"setlistId":"x"}' } }));
+    const plan = planRecovery(CHUNK, entorno({ datos: { genesaret_mass_session: sesion(AHORA) } }));
     eq(plan.action, 'ask');
     eq(plan.action === 'ask' && plan.reason, 'busy');
     eq(plan.action === 'ask' && plan.busy.session, true);
@@ -118,6 +123,20 @@ describe('No se recarga sola si hay algo en marcha', () => {
     const plan = planRecovery(CHUNK, entorno({ datos: { genesaret_setlist_item_drafts: borradores } }));
     eq(plan.action, 'ask');
     eq(plan.action === 'ask' && plan.busy.drafts, true);
+  });
+
+  it('una clave de sesión con basura dentro NO es una sesión activa', () => {
+    // Que exista la clave no prueba nada: puede llevar texto ilegible, una
+    // versión que ya no se entiende o faltarle la canción.
+    for (const basura of ['{roto', '{}', '{"version":99,"setlistId":"s","itemId":"i"}', '{"version":1,"setlistId":"","itemId":""}', 'null']) {
+      eq(whatIsBusy(entorno({ datos: { genesaret_mass_session: basura } })).session, false, basura);
+    }
+  });
+
+  it('y una sesión que nadie tocó en horas tampoco', () => {
+    // Se reescribe al pasar de canción, así que una vieja es una olvidada.
+    eq(whatIsBusy(entorno({ datos: { genesaret_mass_session: sesion(AHORA - SESSION_FRESH_MS - 1) } })).session, false);
+    eq(whatIsBusy(entorno({ datos: { genesaret_mass_session: sesion(AHORA - 60_000) } })).session, true, 'una de hace un minuto sí');
   });
 
   it('un archivo de borradores vacío no es trabajo pendiente', () => {
@@ -138,43 +157,70 @@ describe('No se recarga sola si hay algo en marcha', () => {
 
 // --- Un intento, y sólo uno -------------------------------------------------
 
-describe('Una recarga por versión, nunca un bucle', () => {
-  it('la segunda vez con la misma versión ya no recarga', () => {
+describe('Un intento por trozo y versión, nunca un bucle', () => {
+  it('la segunda vez con el mismo trozo ya no recarga', () => {
     const intentos = memoria();
     const env = entorno({ intentos });
     eq(planRecovery(CHUNK, env).action, 'reload');
-    markRecoveryAttempt(env);
+    markRecoveryAttempt(env, CHUNK);
     const segundo = planRecovery(CHUNK, env);
     eq(segundo.action, 'ask');
     eq(segundo.action === 'ask' && segundo.reason, 'already-tried');
   });
 
-  it('pero una versión nueva vuelve a tener su intento', () => {
-    // Desplegar otra vez no debe dejar a nadie sin recuperación.
+  it('NO se repite aunque la aplicación haya vuelto a montar entremedias', () => {
+    // El fallo que tenía la primera versión: la marca se borraba al montar, y
+    // como este límite envuelve la aplicación entera —que monta bien siempre—
+    // el intento volvía en cada recarga y el mismo trozo recargaba sin fin.
     const intentos = memoria();
-    markRecoveryAttempt(entorno({ intentos, buildId: 'index-vieja.js' }));
+    const env = entorno({ intentos });
+    for (let vuelta = 0; vuelta < 5; vuelta++) {
+      const plan = planRecovery(CHUNK, env);
+      if (plan.action === 'reload') markRecoveryAttempt(env, CHUNK);
+      // Aquí la página recarga, la aplicación monta y vuelve a fallar.
+      eq(vuelta === 0 ? plan.action : plan.action, vuelta === 0 ? 'reload' : 'ask', `vuelta ${vuelta}`);
+    }
+  });
+
+  it('el intento de un trozo no gasta el de otro', () => {
+    // Que no se descargue el Modo Misa no debe dejar sin recuperación al
+    // editor, que puede fallar por otra causa y arreglarse recargando.
+    const intentos = memoria();
+    const env = entorno({ intentos });
+    const misa = new TypeError('Failed to fetch dynamically imported module: https://x/assets/MassMode-AAA.js');
+    const editor = new TypeError('Failed to fetch dynamically imported module: https://x/assets/SetlistDetail-BBB.js');
+    markRecoveryAttempt(env, misa);
+    eq(planRecovery(misa, env).action, 'ask');
+    eq(planRecovery(editor, env).action, 'reload', 'el otro conserva el suyo');
+  });
+
+  it('pero una versión nueva devuelve todos los intentos', () => {
+    // Desplegar otra vez es lo que de verdad da algo nuevo que probar.
+    const intentos = memoria();
+    markRecoveryAttempt(entorno({ intentos, buildId: 'index-vieja.js' }), CHUNK);
     eq(planRecovery(CHUNK, entorno({ intentos, buildId: 'index-nueva.js' })).action, 'reload');
   });
 
-  it('y una carga que va bien borra la marca', () => {
-    // Esto es lo que impide que una recarga de hace semanas deje a alguien
-    // sin recuperación automática para siempre.
+  it('y los intentos de la versión vieja no se arrastran', () => {
     const intentos = memoria();
-    const env = entorno({ intentos });
-    markRecoveryAttempt(env);
-    eq(Boolean(intentos.datos.get(RECOVERY_KEY)), true);
-    clearRecoveryMark(env);
-    eq(intentos.datos.get(RECOVERY_KEY), undefined);
-    eq(planRecovery(CHUNK, env).action, 'reload', 'vuelve a haber intento');
+    markRecoveryAttempt(entorno({ intentos, buildId: 'vieja.js' }), CHUNK);
+    markRecoveryAttempt(entorno({ intentos, buildId: 'nueva.js' }), CHUNK);
+    const guardado = JSON.parse(intentos.datos.get(RECOVERY_KEY)!) as { buildId: string; failures: Record<string, number> };
+    eq(guardado.buildId, 'nueva.js');
+    eq(Object.keys(guardado.failures).length, 1, 'sólo el de la versión actual');
   });
 
-  it('sin dónde anotar, no se puede garantizar que no haya bucle', () => {
-    // Si no se puede escribir la marca, no se promete una recarga segura: el
-    // componente la pide a mano.
+  it('sin dónde anotar no se recarga sola: no habría forma de evitar el bucle', () => {
     const env = entorno({ intentos: memoria({ falla: true }) });
-    markRecoveryAttempt(env);
-    eq(planRecovery(CHUNK, env).action, 'reload', 'el plan no cambia');
-    eq(entorno({ intentos: memoria({ falla: true }) }).attempts !== null, true);
+    const plan = planRecovery(CHUNK, env);
+    eq(plan.action, 'ask');
+    eq(plan.action === 'ask' && plan.reason, 'cannot-remember');
+  });
+
+  it('el trozo se identifica por su nombre de archivo', () => {
+    eq(chunkKeyOf(CHUNK), 'a.js');
+    eq(chunkKeyOf(new TypeError('Loading chunk 42 failed.')), '42');
+    eq(chunkKeyOf(new TypeError('vaya')), 'desconocido');
   });
 });
 
@@ -199,7 +245,7 @@ describe('La versión cargada se reconoce por el archivo principal', () => {
 
 describe('El límite de error pinta algo con lo que se puede seguir', () => {
   const pinta = (hijo: React.ReactNode) =>
-    renderToStaticMarkup(createElement(LazyScreenBoundary, { reload() {}, children: hijo }));
+    renderToStaticMarkup(createElement(LazyScreenBoundary, { reload() {} }, hijo));
 
   it('mientras nada falla, no estorba', () => {
     eq(pinta(createElement('p', null, 'la pantalla')).includes('la pantalla'), true);
@@ -222,18 +268,128 @@ describe('El límite de error pinta algo con lo que se puede seguir', () => {
     eq(fuente.includes('Ya se intentó recargar por esta versión'), true, 'tras el primer intento');
   });
 
-  it('borra la marca al montar: una carga buena devuelve el intento', () => {
+  it('NO borra la marca al montar, que era el bucle', () => {
+    // Este límite envuelve la aplicación entera, que monta bien siempre. Si
+    // borrara la marca al arrancar, cada recarga devolvería el intento y el
+    // mismo trozo podría recargar sin fin.
     const fuente = readFileSync('src/components/Layout/LazyScreenBoundary.tsx', 'utf8');
-    eq(/componentDidMount[\s\S]{0,200}clearRecoveryMark/.test(fuente), true);
+    eq(fuente.includes('componentDidMount'), false);
+    eq(fuente.includes('clearRecoveryMark'), false);
+    eq(fuente.includes('Lo que devuelve'), true, 'y explica qué sí la devuelve');
   });
 
   it('anota el intento ANTES de recargar', () => {
     // Si se anotara después, una recarga que vuelve a fallar no dejaría
     // constancia y habría bucle.
     const fuente = readFileSync('src/components/Layout/LazyScreenBoundary.tsx', 'utf8');
-    const i = fuente.indexOf('markRecoveryAttempt(env);');
+    const i = fuente.indexOf('markRecoveryAttempt(env, error);');
     const j = fuente.indexOf('reload ?? (() => window.location.reload())', i);
     eq(i > 0 && j > i, true, 'la marca va primero');
+  });
+});
+
+// --- El componente, con un fallo de verdad ---------------------------------
+
+describe('Ante un React.lazy rechazado de verdad, el límite reacciona', () => {
+  /** Monta el límite a mano y le pasa el error, como hace React. */
+  function conFallo(error: unknown, opciones: { datos?: Record<string, string>; intentos?: ReturnType<typeof memoria> } = {}) {
+    const recargas: number[] = [];
+    const env = entorno(opciones);
+    const instancia = new LazyScreenBoundary({ env, reload: () => recargas.push(1) });
+    instancia.state = LazyScreenBoundary.getDerivedStateFromError(error) as never;
+    // setState no existe fuera de React: se sustituye por lo que hace.
+    (instancia as unknown as { setState: (s: object) => void }).setState = (s) => {
+      instancia.state = { ...instancia.state, ...s } as never;
+    };
+    instancia.componentDidCatch(error);
+    return { instancia, recargas, env, html: () => renderToStaticMarkup(instancia.render() as React.ReactElement) };
+  }
+
+  it('el mensaje usado es el que produjo el navegador de verdad', () => {
+    // Capturado ejecutando `import()` de un trozo borrado en producción:
+    //   TypeError: Failed to fetch dynamically imported module: https://…/a.js
+    // No está inventado, y es el que React entrega al límite.
+    eq(isChunkLoadError(CHUNK), true);
+    eq(CHUNK instanceof TypeError, true);
+  });
+
+  it('y un import que falla en Node no se confunde con uno del navegador', async () => {
+    // Node dice ERR_MODULE_NOT_FOUND, que no es un trozo que falta tras un
+    // despliegue. Que NO se reconozca es la prueba de que el detector mira
+    // lo que tiene que mirar.
+    let real: unknown = null;
+    try {
+      await import('./no-existe-este-modulo-' + Date.now() + '.js');
+    } catch (e) {
+      real = e;
+    }
+    eq(Boolean(real), true, 'el import falló de verdad');
+    eq(isChunkLoadError(real), false, 'y no se trata como trozo del navegador');
+  });
+
+  it('con un fallo de trozo y nada en marcha, recarga una vez', () => {
+    const { recargas } = conFallo(CHUNK);
+    eq(recargas.length, 1);
+  });
+
+  it('y la segunda vez ya no recarga: pinta el botón', () => {
+    const intentos = memoria();
+    eq(conFallo(CHUNK, { intentos }).recargas.length, 1);
+    const otra = conFallo(CHUNK, { intentos });
+    eq(otra.recargas.length, 0, 'no recargó');
+    const html = otra.html();
+    eq(html.includes('role="alert"'), true);
+    eq(html.includes('Recargar'), true);
+    eq(html.includes('Ya se intentó recargar por esta versión'), true);
+  });
+
+  it('durante una celebración no recarga: lo cuenta y espera', () => {
+    const { recargas, html } = conFallo(CHUNK, { datos: { genesaret_mass_session: sesion(AHORA) } });
+    eq(recargas.length, 0);
+    eq(html().includes('No se recarga sola para no cortarla'), true);
+  });
+
+  it('con un borrador sin guardar tampoco, y promete que no se pierde', () => {
+    const borradores = JSON.stringify({ version: 1, drafts: { 'a::b': { itemId: 'b' } } });
+    const { recargas, html } = conFallo(CHUNK, { datos: { genesaret_setlist_item_drafts: borradores } });
+    eq(recargas.length, 0);
+    eq(html().includes('Tus borradores no se pierden al recargar'), true);
+  });
+
+  it('el borrador sigue intacto después de todo esto', () => {
+    // La recuperación sólo lee los datos; no borra ni uno.
+    const borradores = JSON.stringify({ version: 1, drafts: { 'a::b': { itemId: 'b', changes: { notes: 'mío' } } } });
+    const datos = memoria({ inicial: { genesaret_setlist_item_drafts: borradores } });
+    const env: RecoveryEnv = { attempts: memoria().api, data: datos.api, buildId: 'x', now: () => AHORA };
+    const instancia = new LazyScreenBoundary({ env, reload() {} });
+    (instancia as unknown as { setState: (s: object) => void }).setState = () => {};
+    instancia.componentDidCatch(CHUNK);
+    eq(datos.datos.get('genesaret_setlist_item_drafts'), borradores, 'ni una letra cambiada');
+  });
+});
+
+describe('Un error normal de React no provoca ninguna recarga', () => {
+  function conFallo(error: unknown) {
+    const recargas: number[] = [];
+    const instancia = new LazyScreenBoundary({ children: null, env: entorno(), reload: () => recargas.push(1) });
+    instancia.state = LazyScreenBoundary.getDerivedStateFromError(error) as never;
+    (instancia as unknown as { setState: (s: object) => void }).setState = (s) => {
+      instancia.state = { ...instancia.state, ...s } as never;
+    };
+    instancia.componentDidCatch(error);
+    return { recargas, html: () => renderToStaticMarkup(instancia.render() as React.ReactElement) };
+  }
+
+  it('ni con un TypeError, ni con un error minificado, ni con un desbordamiento', () => {
+    for (const error of [
+      new TypeError('Cannot read properties of undefined (reading x)'),
+      new Error('Minified React error #310'),
+      new RangeError('Maximum call stack size exceeded'),
+    ]) {
+      const { recargas, html } = conFallo(error);
+      eq(recargas.length, 0, String(error));
+      eq(html().includes('Esta pantalla no se pudo abrir'), true, 'lo cuenta en vez de recargar');
+    }
   });
 });
 
@@ -278,11 +434,14 @@ describe('Nada de esto toca los datos ni el enrutado', () => {
     eq(config.includes('cleanupOutdatedCaches: true'), true, 'se mantiene, como se pidió');
   });
 
-  it('sin navegador no revienta: todo lo que falta se trata como ausente', () => {
+  it('sin navegador no revienta, y no se recarga a ciegas', () => {
+    // Sin almacenamiento no hay forma de anotar el intento, así que tampoco
+    // de garantizar que no haya bucle: se ofrece el botón.
     const sinNada: RecoveryEnv = { attempts: null, data: null, buildId: 'x', now: () => AHORA };
     eq(whatIsBusy(sinNada), { session: false, drafts: false });
-    eq(planRecovery(CHUNK, sinNada).action, 'reload');
-    markRecoveryAttempt(sinNada);
-    clearRecoveryMark(sinNada);
+    const plan = planRecovery(CHUNK, sinNada);
+    eq(plan.action, 'ask');
+    eq(plan.action === 'ask' && plan.reason, 'cannot-remember');
+    markRecoveryAttempt(sinNada, CHUNK);
   });
 });
