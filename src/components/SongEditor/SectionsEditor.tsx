@@ -28,6 +28,7 @@ import { ActionMenu } from '../Setlists/ActionMenu';
 import { ConfirmDialog } from '../Setlists/ConfirmDialog';
 import { iconButton, secondaryButton, textField } from '../Setlists/ui';
 import { LineEditor } from './LineEditor';
+import { useEditorViewport } from './useEditorViewport';
 
 interface SectionsEditorProps {
   doc: EditorDocument;
@@ -48,7 +49,9 @@ const numberOf = (label: string) => {
  * on it, or from each section's menu.
  */
 export const SectionsEditor: React.FC<SectionsEditorProps> = ({ doc, issues, suggestions, onChange }) => {
-  const inputs = useRef(new Map<string, HTMLInputElement>());
+  const inputs = useRef(new Map<string, HTMLInputElement | HTMLTextAreaElement>());
+  const viewport = useEditorViewport();
+  const [activeLine, setActiveLine] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<EditorSection | null>(null);
 
   const focusLine = (lineId: string, caret: number) =>
@@ -75,7 +78,7 @@ export const SectionsEditor: React.FC<SectionsEditorProps> = ({ doc, issues, sug
   const repeatTargets = doc.sections.filter((section) => !section.repeatOf && sectionKindOf(section.label) !== 'custom' && section.label.trim());
 
   return (
-    <div>
+    <div className="song-sections-editor" style={{ paddingBottom: viewport.mobile && activeLine ? 'var(--song-toolbar-height, 0px)' : undefined }}>
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
@@ -165,10 +168,12 @@ export const SectionsEditor: React.FC<SectionsEditorProps> = ({ doc, issues, sug
               {section.repeatOf ? (
                 <RepeatPreview doc={doc} section={section} />
               ) : (
-                <div className="space-y-2 px-3 pb-3">
+                <div className="space-y-0 px-2 pb-2 sm:space-y-2 sm:px-3 sm:pb-3">
                   {section.lines.map((line, lineIndex) => (
                     <div key={line.id}>
                       <LineEditor
+                        viewport={viewport} active={activeLine === line.id}
+                        onActivate={() => setActiveLine(line.id)} onFinish={() => setActiveLine(current => current === line.id ? null : current)}
                         line={line}
                         name={`${label || 'Sección'}, línea ${lineIndex + 1}`}
                         suggestions={suggestions}
@@ -326,7 +331,7 @@ const SectionHeader: React.FC<{
           onChange={(event) =>
             onChange((current) => updateSection(current, section.id, (entry) => ({ ...entry, repeatOf: event.target.value })))
           }
-          className="h-10 [@media(pointer:coarse)]:h-11 min-w-0 flex-1 rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-950 px-2 text-sm font-semibold text-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+          className="h-10 [@media(pointer:coarse)]:h-11 min-w-0 flex-1 rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-950 px-2 text-base sm:text-sm [@media(pointer:coarse)]:text-base font-semibold text-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
         >
           {targets.map((target) => (
             <option key={target.id} value={target.id}>
@@ -343,7 +348,7 @@ const SectionHeader: React.FC<{
   const option = SECTION_KIND_OPTIONS.find((entry) => entry.kind === kind);
   const number = numberOf(section.label);
   return (
-    <div className="flex items-center gap-1.5 px-1.5 py-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-1.5 sm:flex-nowrap">
       {dragHandle}
       <label htmlFor={kindId} className="sr-only">
         Tipo de sección
@@ -355,7 +360,7 @@ const SectionHeader: React.FC<{
           const next = event.target.value as EditorSectionKind;
           setLabel(next === 'custom' ? section.label || 'Sección' : defaultLabelFor(next, doc.sections, index));
         }}
-        className="h-10 [@media(pointer:coarse)]:h-11 min-w-0 flex-1 sm:flex-none rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-950 px-2 text-sm font-bold uppercase tracking-[0.06em] text-[#10203A] dark:text-white dark:[color-scheme:dark]"
+        className="h-10 [@media(pointer:coarse)]:h-11 min-w-0 flex-1 sm:flex-none rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-950 px-2 text-base sm:text-sm [@media(pointer:coarse)]:text-base font-bold uppercase tracking-[0.06em] text-[#10203A] dark:text-white dark:[color-scheme:dark]"
       >
         {SECTION_KIND_OPTIONS.map((entry) => (
           <option key={entry.kind} value={entry.kind}>
@@ -374,7 +379,7 @@ const SectionHeader: React.FC<{
             maxLength={40}
             onChange={(event) => setLabel(event.target.value.replace(/[[\]]/g, ''))}
             placeholder="Nombre de la sección"
-            className={`${textField} h-10 min-w-0 flex-1 py-0`}
+            className={`${textField} h-10 min-w-0 flex-1 basis-full order-last py-0 text-base sm:order-none sm:basis-auto sm:text-sm [@media(pointer:coarse)]:text-base`}
           />
         </>
       ) : (
@@ -396,7 +401,7 @@ const SectionHeader: React.FC<{
                 setLabel(Number.isInteger(value) && value > 0 ? `${base} ${Math.min(value, 20)}` : base);
               }}
               placeholder="N.º"
-              className="h-10 [@media(pointer:coarse)]:h-11 w-16 shrink-0 rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-950 px-2 text-sm text-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+              className="h-10 [@media(pointer:coarse)]:h-11 w-16 shrink-0 rounded-lg border border-slate-200 dark:border-dark-700 bg-white dark:bg-dark-950 px-2 text-base sm:text-sm [@media(pointer:coarse)]:text-base text-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
             />
           </>
         ) : null

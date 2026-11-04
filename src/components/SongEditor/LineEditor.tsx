@@ -18,14 +18,20 @@ import {
 import { ActionMenu } from '../Setlists/ActionMenu';
 import { iconButton } from '../Setlists/ui';
 import { ChordDialog } from './ChordDialog';
+import { MobileLineEditor } from './MobileLineEditor';
+import type { EditorViewport } from './useEditorViewport';
 
-interface LineEditorProps {
+export interface LineEditorProps {
+  viewport?: EditorViewport;
+  active?: boolean;
+  onActivate?: () => void;
+  onFinish?: () => void;
   line: EditorLine;
   /** "Verso 1, línea 2": the accessible name of the text field */
   name: string;
   suggestions: string[];
   canRemove: boolean;
-  registerInput: (lineId: string, element: HTMLInputElement | null) => void;
+  registerInput: (lineId: string, element: HTMLInputElement | HTMLTextAreaElement | null) => void;
   onChange: (line: EditorLine) => void;
   onSplit: (lineId: string, caret: number) => void;
   onMergeWithPrevious: (lineId: string) => void;
@@ -57,6 +63,7 @@ const DRAG_THRESHOLD = 4;
  * chord that has focus. All three end in the same thing: a character index.
  */
 export const LineEditor: React.FC<LineEditorProps> = ({
+  viewport, active, onActivate, onFinish,
   line,
   name,
   suggestions,
@@ -244,6 +251,12 @@ export const LineEditor: React.FC<LineEditorProps> = ({
       ]}
     />
   );
+
+  if (viewport?.mobile && !line.instrumental) return <MobileLineEditor
+    line={line} name={name} suggestions={suggestions} canRemove={canRemove} registerInput={registerInput}
+    onChange={onChange} onSplit={onSplit} onMergeWithPrevious={onMergeWithPrevious}
+    onFocusSibling={onFocusSibling} onPaste={onPaste} onRemove={onRemove}
+    viewport={viewport} active={Boolean(active)} onActivate={onActivate ?? (() => {})} onFinish={onFinish ?? (() => {})} menu={menu} />;
 
   return (
     <div className="group/line">
