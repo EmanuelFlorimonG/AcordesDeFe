@@ -8,6 +8,7 @@ import {
   cleanSetlistDetails,
   createId,
   readSetlistKind,
+  orderSetlistItems,
   type IdFactory,
 } from '../utils/setlists';
 
@@ -156,12 +157,12 @@ export function sanitizeSetlist(value: unknown, now = Date.now(), makeId: IdFact
   return {
     id: asString(value.id).trim() || makeId(),
     name: details.name || 'Setlist sin nombre',
-    // Lo que no es 'adoracion' es una misa, y una misa no lo dice.
+    // Los tipos reconocidos viajan; una misa conserva su formato histórico.
     ...(kind ? { kind } : {}),
     date: details.date,
     description: details.description,
     participantIds: normalizeMemberIds(value.participantIds),
-    items,
+    items: orderSetlistItems(kind, items),
     createdAt,
     updatedAt: asTimestamp(value.updatedAt, createdAt),
   };

@@ -61,7 +61,7 @@ export interface CloudSetlistItem extends Omit<SetlistItem, 'arrangement'> {
 export interface CloudSetlistWrite {
   id: string;
   name: string;
-  /** 'adoracion', o nada cuando es una misa: la columna acepta null. */
+  /** Modalidad explícita; una misa conserva null por compatibilidad. */
   kind: string | null;
   /** "YYYY-MM-DD", or null when the celebration has no date (the column is nullable, "" is not a date) */
   date: string | null;

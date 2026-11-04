@@ -159,7 +159,7 @@ export interface SetlistSongTransition {
  * dijeron otra cosa. Por eso no se guarda cuando es una misa (ver
  * canonicalSetlist): lo que ya estaba de acuerdo con la nube sigue estándolo.
  */
-export type SetlistKind = 'misa' | 'adoracion';
+export type SetlistKind = 'misa' | 'adoracion' | 'rosario-aurora';
 
 /** Lo que es un Setlist cuando nadie dijo nada: una misa. */
 export const DEFAULT_SETLIST_KIND: SetlistKind = 'misa';
@@ -167,7 +167,7 @@ export const DEFAULT_SETLIST_KIND: SetlistKind = 'misa';
 export interface Setlist {
   id: string;
   name: string;
-  /** Misa o adoración. Ausente es misa, que es lo que fueron todos hasta ahora. */
+  /** Modalidad de celebración. Ausente conserva Misa para los Setlists anteriores. */
   kind?: SetlistKind;
   /** Calendar date of the occasion as "YYYY-MM-DD", or "" when not set. */
   date: string;

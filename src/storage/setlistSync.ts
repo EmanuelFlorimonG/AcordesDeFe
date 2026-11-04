@@ -93,9 +93,9 @@ export function canonicalSetlist(setlist: Setlist): string {
   ];
   // Una misa escribe exactamente lo que escribía antes de que existieran los
   // tipos, así que los acuerdos ya guardados siguen valiendo y nadie ve sus
-  // Setlists marcados como cambiados sin haber tocado nada. Una adoración
-  // añade una palabra al final, que es lo que la distingue.
-  if (setlist.kind === 'adoracion') partes.push(setlist.kind);
+  // Setlists marcados como cambiados sin haber tocado nada. Las otras modalidades
+  // añaden su tipo al final para distinguirse.
+  if (setlist.kind && setlist.kind !== 'misa') partes.push(setlist.kind);
   return JSON.stringify(partes);
 }
 

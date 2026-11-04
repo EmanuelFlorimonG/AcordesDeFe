@@ -1,4 +1,5 @@
 import React, { useId, useState } from 'react';
+import { Church, Flame, Sunrise, type LucideIcon } from 'lucide-react';
 import type { SetlistDetails, SetlistKind } from '../../types/setlist';
 import { Dialog } from './Dialog';
 import { fieldLabel, primaryButton, secondaryButton, textField } from './ui';
@@ -9,7 +10,7 @@ export type SetlistFormMode = 'create' | 'edit' | 'duplicate';
 const COPY: Record<SetlistFormMode, { title: string; description?: string; submit: string }> = {
   create: {
     title: 'Nuevo Setlist',
-    description: 'Una misa, un ensayo, un retiro: las canciones de ese día en el orden en que se cantan.',
+    description: 'Prepara una Misa, una Adoración o un Rosario de la Aurora con las canciones en el orden en que se cantan.',
     submit: 'Crear Setlist',
   },
   edit: { title: 'Editar Setlist', submit: 'Guardar cambios' },
@@ -24,9 +25,10 @@ const COPY: Record<SetlistFormMode, { title: string; description?: string; submi
  * Lo único que cambia entre una y otra es cómo se llaman sus partes, y eso es
  * exactamente lo que dice cada opción. Nada más se comporta distinto.
  */
-const KINDS: Array<{ kind: SetlistKind; label: string; note: string }> = [
-  { kind: 'misa', label: 'Misa', note: 'Entrada, Ofertorio, Santo, Comunión…' },
-  { kind: 'adoracion', label: 'Adoración', note: 'Alabanza, peticiones, procesión…' },
+const KINDS: Array<{ kind: SetlistKind; label: string; note: string; icon: LucideIcon }> = [
+  { kind: 'misa', label: 'Misa', note: 'Entrada, Ofertorio, Santo, Comunión…', icon: Church },
+  { kind: 'adoracion', label: 'Adoración', note: 'Alabanza, peticiones, procesión…', icon: Flame },
+  { kind: 'rosario-aurora', label: 'Rosario de la Aurora', note: 'Llegada del Señor, cinco misterios y salida.', icon: Sunrise },
 ];
 
 interface SetlistFormDialogProps {
@@ -67,6 +69,7 @@ export const SetlistFormDialog: React.FC<SetlistFormDialogProps> = ({
 
   return (
     <Dialog
+      size={mode === 'create' ? 'lg' : 'md'}
       title={copy.title}
       description={copy.description}
       onClose={onClose}
@@ -88,22 +91,36 @@ export const SetlistFormDialog: React.FC<SetlistFormDialogProps> = ({
             <legend className={fieldLabel} id={kindId}>
               ¿Qué se prepara?
             </legend>
-            <div className="mt-1.5 flex flex-wrap gap-2" role="radiogroup" aria-labelledby={kindId}>
-              {KINDS.map((option) => (
+            <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-labelledby={kindId}>
+              {KINDS.map((option, index) => (
                 <button
                   key={option.kind}
                   type="button"
                   role="radio"
                   aria-checked={kind === option.kind}
+                  tabIndex={kind === option.kind ? 0 : -1}
                   onClick={() => setKind(option.kind)}
-                  className={`flex-1 min-w-[9rem] rounded-xl border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40 ${
+                  onKeyDown={(event) => {
+                    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
+                      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+                    if (!delta && event.key !== 'Home' && event.key !== 'End') return;
+                    event.preventDefault();
+                    const next = event.key === 'Home' ? 0 : event.key === 'End' ? KINDS.length - 1
+                      : (index + delta + KINDS.length) % KINDS.length;
+                    setKind(KINDS[next].kind);
+                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next]?.focus();
+                  }}
+                  className={`flex min-w-0 items-start gap-3 rounded-xl border p-3 text-left sm:flex-col sm:gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40 ${
                     kind === option.kind
                       ? 'border-[#2464ED] bg-[#EAF1FF] dark:border-sky-400 dark:bg-blue-500/10'
                       : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-dark-700 dark:bg-dark-900 dark:hover:bg-dark-800'
                   }`}
                 >
-                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{option.label}</span>
-                  <span className="block text-xs text-slate-500 dark:text-slate-400">{option.note}</span>
+                  <option.icon aria-hidden="true" className={`mt-0.5 h-5 w-5 shrink-0 ${kind === option.kind ? 'text-[#2464ED] dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'}`} />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{option.label}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">{option.note}</span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -126,7 +143,7 @@ export const SetlistFormDialog: React.FC<SetlistFormDialogProps> = ({
             }}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
-            placeholder="Misa del domingo"
+            placeholder={kind === 'rosario-aurora' ? 'Rosario de la Aurora' : 'Misa del domingo'}
             className={`${textField} ${error ? 'border-red-400 focus:border-red-500 focus:ring-red-500/15' : ''}`}
           />
           {error && (

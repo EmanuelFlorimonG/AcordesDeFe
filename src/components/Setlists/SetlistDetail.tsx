@@ -18,7 +18,7 @@ import {
 import type { Setlist, SetlistDetails, SetlistItem } from '../../types/setlist';
 import type { MinistryMember } from '../../types/ministry';
 import type { Song } from '../../types/song';
-import { formatSetlistDate, liveModeName } from '../../utils/setlists';
+import { formatSetlistDate, liveModeName, groupSetlistItems } from '../../utils/setlists';
 import type { SetlistItemChanges } from '../../utils/setlists';
 import { ActionMenu } from './ActionMenu';
 import { AddSongsDialog } from './AddSongsDialog';
@@ -100,7 +100,7 @@ type OpenDialog =
   | { kind: 'edit' }
   | { kind: 'duplicate' }
   | { kind: 'delete' }
-  | { kind: 'add' }
+  | { kind: 'add'; moment?: string }
   | { kind: 'item'; itemId: string }
   | { kind: 'remove-item'; itemId: string };
 
@@ -170,6 +170,32 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       </div>
     );
   }
+
+  const renderItems = (items: SetlistItem[]) => (
+    <SetlistSongList
+      items={items}
+      songsById={songsById}
+      onOpenItem={onOpenItem}
+      onEditItem={(item) => setDialog({ kind: 'item', itemId: item.id })}
+      onRemoveItem={(item) => {
+        // Confirm only when there is something to lose besides the order.
+        if (item.moment || item.notes || item.transposeSteps !== 0) {
+          setDialog({ kind: 'remove-item', itemId: item.id });
+        } else {
+          onRemoveItem(item.id);
+        }
+      }}
+      onMoveItem={setlist.kind !== 'rosario-aurora' ? onMoveItem : (itemId, toIndex) => {
+        const target = items[toIndex];
+        if (target) onMoveItem(itemId, setlist.items.findIndex(item => item.id === target.id));
+      }}
+      onMoveItemBy={setlist.kind !== 'rosario-aurora' ? onMoveItemBy : (itemId, delta) => {
+        const from = items.findIndex(item => item.id === itemId);
+        if (items[from + delta]) onMoveItemBy(itemId, delta);
+      }}
+      onArrangementNeedsReview={(itemId, arrangement) => onUpdateItem(itemId, { arrangement })}
+    />
+  );
 
   const dateLabel = formatSetlistDate(setlist.date, 'long');
   const playableCount = setlist.items.filter((item) => songsById.has(item.songId)).length;
@@ -329,7 +355,28 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
 
       {activities && <div className="mb-6">{activities}</div>}
 
-      {setlist.items.length === 0 ? (
+      {setlist.kind === 'rosario-aurora' ? (
+        <div className="space-y-6">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Reordena las canciones dentro de cada momento. Para cambiarlas de momento, edita la canción.
+          </p>
+          {groupSetlistItems(setlist).map(({ moment, items }) => (
+            <section key={moment} aria-label={moment || 'Sin momento'}>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-[#10203A] dark:text-slate-100">{moment || 'Sin momento'}</h2>
+                <button type="button" aria-label={`Añadir canción a ${moment || 'Sin momento'}`}
+                  onClick={() => setDialog({ kind: 'add', moment })}
+                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-[#2464ED] hover:bg-[#EAF1FF] dark:text-sky-400 dark:hover:bg-blue-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40">
+                  <Plus aria-hidden="true" className="h-4 w-4" /> Añadir
+                </button>
+              </div>
+              {items.length ? renderItems(items) : (
+                <p className="border-y border-dashed border-slate-200 py-3 text-sm text-slate-500 dark:border-dark-700 dark:text-slate-400">Sin canciones</p>
+              )}
+            </section>
+          ))}
+        </div>
+      ) : setlist.items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">
           <div className="w-12 h-12 rounded-xl bg-[#EAF1FF] dark:bg-blue-500/10 flex items-center justify-center mb-4">
             <ListOrdered className="w-6 h-6 text-[#2464ED]" />
@@ -345,27 +392,11 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
           </button>
         </div>
       ) : (
-        <SetlistSongList
-          items={setlist.items}
-          songsById={songsById}
-          onOpenItem={onOpenItem}
-          onEditItem={(item) => setDialog({ kind: 'item', itemId: item.id })}
-          onRemoveItem={(item) => {
-            // Confirm only when there is something to lose besides the order.
-            if (item.moment || item.notes || item.transposeSteps !== 0) {
-              setDialog({ kind: 'remove-item', itemId: item.id });
-            } else {
-              onRemoveItem(item.id);
-            }
-          }}
-          onMoveItem={onMoveItem}
-          onMoveItemBy={onMoveItemBy}
-          onArrangementNeedsReview={(itemId, arrangement) => onUpdateItem(itemId, { arrangement })}
-        />
+        renderItems(setlist.items)
       )}
 
       {dialog?.kind === 'add' && (
-        <AddSongsDialog songs={songs} setlist={setlist} onAdd={onAddSong} onClose={closeDialog} />
+        <AddSongsDialog songs={songs} setlist={setlist} initialMoment={dialog.moment} onAdd={onAddSong} onClose={closeDialog} />
       )}
 
       {dialog?.kind === 'edit' && (

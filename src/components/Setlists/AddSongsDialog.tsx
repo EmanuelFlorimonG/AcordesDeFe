@@ -24,6 +24,7 @@ interface AddSongsDialogProps {
   /** El momento de la celebración elegido para lo que se añade, o "" si ninguno */
   onAdd: (song: Song, moment: string) => void;
   onClose: () => void;
+  initialMoment?: string;
 }
 
 /** How well a song answers the query; 0 means it doesn't. */
@@ -38,7 +39,7 @@ function matchScore(song: Song, query: string, rawQuery: string): number {
   return 0;
 }
 
-export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, onAdd, onClose }) => {
+export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, onAdd, onClose, initialMoment }) => {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [season, setSeason] = useState<SpecificSeasonId | null>(null);
@@ -72,7 +73,7 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
    */
   const momentOptions = momentsFor(setlist.kind);
   const suggestedByFilter = category && momentOptions.includes(category) ? category : '';
-  const [chosenMoment, setChosenMoment] = useState<string | null>(null);
+  const [chosenMoment, setChosenMoment] = useState<string | null>(initialMoment ?? (setlist.kind === 'rosario-aurora' ? momentOptions[0] : null));
   const moment = chosenMoment ?? suggestedByFilter;
 
   const countsBySongId = useMemo(() => {
@@ -127,7 +128,7 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
     <Dialog
       size="lg"
       title="Añadir canciones"
-      description="Se añaden al final del Setlist. Puedes añadir varias sin cerrar esta ventana."
+      description={setlist.kind === 'rosario-aurora' ? 'Se añaden al momento elegido. Puedes añadir varias sin cerrar esta ventana.' : 'Se añaden al final del Setlist. Puedes añadir varias sin cerrar esta ventana.'}
       onClose={onClose}
       footer={
         <>

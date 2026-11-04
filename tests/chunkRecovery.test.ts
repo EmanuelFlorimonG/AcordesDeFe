@@ -266,7 +266,11 @@ describe('El límite de error pinta algo con lo que se puede seguir', () => {
     // texto y el botón existan en el componente.
     const fuente = readFileSync('src/components/Layout/LazyScreenBoundary.tsx', 'utf8');
     eq(fuente.includes('role="alert"'), true);
-    eq(fuente.includes('>\n          Recargar\n        </button>'), true, 'hay un botón de recargar');
+    // Git puede entregar el mismo componente con LF o CRLF según la plataforma.
+    for (const salto of ['\n', '\r\n']) {
+      const conSaltos = fuente.replace(/\r\n?/g, '\n').replace(/\n/g, salto);
+      eq(/>\r?\n          Recargar\r?\n        <\/button>/.test(conSaltos), true, 'hay un botón de recargar con LF o CRLF');
+    }
     eq(fuente.includes('getDerivedStateFromError'), true);
     eq(fuente.includes('componentDidCatch'), true);
   });

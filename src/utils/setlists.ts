@@ -57,6 +57,18 @@ export const ADORATION_MOMENTS = [
   'Salida',
 ];
 
+/** Los ocho momentos del Rosario de la Aurora, en su orden de celebración. */
+export const ROSARY_MOMENTS = [
+  'Llegada del Señor',
+  'Invocación del Espíritu Santo',
+  '1er Misterio',
+  '2do Misterio',
+  '3er Misterio',
+  '4to Misterio',
+  '5to Misterio',
+  'Salida',
+];
+
 /**
  * Las canciones de reserva de una celebración.
  *
@@ -79,7 +91,7 @@ export const isBackupItem = (item: Pick<SetlistItem, 'moment'>): boolean =>
  * adoración es decirle a alguien que está en otra cosa.
  */
 export const liveModeName = (kind: SetlistKind | undefined): string =>
-  kind === 'adoracion' ? 'Modo Adoración' : 'Modo Misa';
+  kind === 'rosario-aurora' ? 'Modo Rosario' : kind === 'adoracion' ? 'Modo Adoración' : 'Modo Misa';
 
 /**
  * Los momentos que se ofrecen, según lo que se esté preparando.
@@ -88,6 +100,7 @@ export const liveModeName = (kind: SetlistKind | undefined): string =>
  * parte más: es lo que se guarda para cuando la celebración lo pida.
  */
 export function momentsFor(kind: SetlistKind | undefined): string[] {
+  if (kind === 'rosario-aurora') return [...ROSARY_MOMENTS];
   return [...(kind === 'adoracion' ? ADORATION_MOMENTS : MASS_MOMENTS), BACKUP_MOMENT];
 }
 
@@ -98,7 +111,22 @@ export function momentsFor(kind: SetlistKind | undefined): string[] {
  * porque un ensayo o un retiro no son ninguna de las dos cosas.
  */
 export function suggestedMoments(kind: SetlistKind | undefined): string[] {
+  if (kind === 'rosario-aurora') return momentsFor(kind);
   return [...new Set([...momentsFor(kind), 'Apertura', 'Adoración', 'Reflexión', 'Dinámica', 'Cierre'])];
+}
+
+/** Stable within a moment; Mass and Adoration retain their manually chosen order. */
+export function orderSetlistItems(kind: SetlistKind | undefined, items: SetlistItem[]): SetlistItem[] {
+  if (kind !== 'rosario-aurora') return items;
+  const names = [...new Set([...ROSARY_MOMENTS, ...items.map(item => item.moment)])];
+  const rank = (moment: string) => names.indexOf(moment);
+  return [...items].sort((a, b) => rank(a.moment) - rank(b.moment));
+}
+
+/** Empty moments stay visible; custom/unassigned entries are never lost. */
+export function groupSetlistItems(setlist: Setlist): Array<{ moment: string; items: SetlistItem[] }> {
+  const names = [...new Set([...momentsFor(setlist.kind), ...setlist.items.map(item => item.moment)])];
+  return names.map(moment => ({ moment, items: setlist.items.filter(item => item.moment === moment) }));
 }
 
 export interface SongCategoryCount {
@@ -179,9 +207,9 @@ export function cleanSetlistDetails(details: Partial<SetlistDetails>): SetlistDe
   };
 }
 
-/** Misa, salvo que alguien diga adoración. Cualquier otra cosa no es un tipo. */
+/** Los tipos conocidos se conservan; misa y valores desconocidos mantienen el formato histórico. */
 export const readSetlistKind = (value: unknown): SetlistKind | undefined =>
-  value === 'adoracion' ? 'adoracion' : undefined;
+  value === 'adoracion' || value === 'rosario-aurora' ? value : undefined;
 
 export function createSetlist(details: Partial<SetlistDetails>, { now, createId: makeId = createId }: ChangeOptions): Setlist {
   const clean = cleanSetlistDetails(details);
@@ -362,7 +390,7 @@ export function addSongsToSetlist(
   if (songs.length === 0) return setlist;
   return {
     ...setlist,
-    items: [...setlist.items, ...songs.map((song) => createSetlistItem(song, makeId, moment))],
+    items: orderSetlistItems(setlist.kind, [...setlist.items, ...songs.map((song) => createSetlistItem(song, makeId, moment))]),
     updatedAt: now,
   };
 }
@@ -387,7 +415,7 @@ export function moveSetlistItem(setlist: Setlist, itemId: string, toIndex: numbe
   const items = [...setlist.items];
   const [moved] = items.splice(from, 1);
   items.splice(target, 0, moved);
-  return { ...setlist, items, updatedAt: now };
+  return { ...setlist, items: orderSetlistItems(setlist.kind, items), updatedAt: now };
 }
 
 /** Moves an entry up (-1) or down (+1). */
@@ -416,7 +444,7 @@ export function updateSetlistItem(
   if (!setlist.items.some((item) => item.id === itemId)) return setlist;
   return {
     ...setlist,
-    items: setlist.items.map((item) => {
+    items: orderSetlistItems(setlist.kind, setlist.items.map((item) => {
       if (item.id !== itemId) return item;
       const keySettings = normalizeKeySettings({
         transposeSteps: changes.transposeSteps ?? item.transposeSteps,
@@ -435,7 +463,7 @@ export function updateSetlistItem(
         ...(arrangement ? { arrangement } : {}),
         ...(transitionToNext ? { transitionToNext } : {}),
       };
-    }),
+    })),
     updatedAt: now,
   };
 }
