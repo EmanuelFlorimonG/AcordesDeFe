@@ -149,7 +149,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     <button
       type="button"
       onClick={onBack}
-      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors mb-6 text-sm font-medium"
+      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-dark-800 transition-colors mb-4 text-sm font-medium"
     >
       <ArrowLeft className="w-4 h-4 text-blue-600" />
       <span>Todos los Setlists</span>
@@ -174,6 +174,9 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   const renderItems = (items: SetlistItem[]) => (
     <SetlistSongList
       items={items}
+      numberingItems={setlist.items}
+      embedded={setlist.kind === 'rosario-aurora'}
+      onAddToMoment={setlist.kind === 'rosario-aurora' ? (moment) => setDialog({ kind: 'add', moment }) : undefined}
       songsById={songsById}
       onOpenItem={onOpenItem}
       onEditItem={(item) => setDialog({ kind: 'item', itemId: item.id })}
@@ -213,7 +216,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     <div className="w-full px-5 sm:px-10 py-6 sm:py-8">
       {backButton}
 
-      <header className="mb-6">
+      <header className="mb-4">
         <div className="flex items-start justify-between gap-3">
           <SetlistHeading setlist={setlist} dateLabel={dateLabel} durations={durations} />
 
@@ -304,7 +307,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
           </p>
         )}
 
-        <div className="mt-5 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onStartRehearsal}
@@ -356,25 +359,32 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       {activities && <div className="mb-6">{activities}</div>}
 
       {setlist.kind === 'rosario-aurora' ? (
-        <div className="space-y-6">
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+        <div>
+          <p className="mb-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
             Reordena las canciones dentro de cada momento. Para cambiarlas de momento, edita la canción.
           </p>
-          {groupSetlistItems(setlist).map(({ moment, items }) => (
-            <section key={moment} aria-label={moment || 'Sin momento'}>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-[#10203A] dark:text-slate-100">{moment || 'Sin momento'}</h2>
-                <button type="button" aria-label={`Añadir canción a ${moment || 'Sin momento'}`}
-                  onClick={() => setDialog({ kind: 'add', moment })}
-                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-[#2464ED] hover:bg-[#EAF1FF] dark:text-sky-400 dark:hover:bg-blue-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40">
-                  <Plus aria-hidden="true" className="h-4 w-4" /> Añadir
-                </button>
-              </div>
-              {items.length ? renderItems(items) : (
-                <p className="border-y border-dashed border-slate-200 py-3 text-sm text-slate-500 dark:border-dark-700 dark:text-slate-400">Sin canciones</p>
-              )}
-            </section>
-          ))}
+          <div className="border-t border-slate-200/70 dark:border-dark-700">
+            {groupSetlistItems(setlist).map(({ moment, items }) => (
+              <section key={moment} aria-label={moment || 'Sin momento'} className="border-b border-slate-200/70 dark:border-dark-700">
+                {items.length > 0 && <h2 className="sr-only">{moment || 'Sin momento'}</h2>}
+                {items.length > 0 ? renderItems(items) : (
+                  <div className="flex min-h-14 items-center gap-3 px-2 sm:px-3">
+                    <span aria-hidden="true" className="w-7 shrink-0 text-center text-slate-400 sm:w-9" />
+                    <h2 className="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-200 md:w-44 xl:w-60 xl:whitespace-nowrap md:shrink-0">
+                      <span className="inline-block rounded-full bg-blue-50 px-2 py-1 leading-tight dark:bg-blue-400/15">{moment || 'Sin momento'}</span>
+                    </h2>
+                    <span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:inline">Sin canciones</span>
+                    <button type="button" aria-label={`Añadir canción a ${moment || 'Sin momento'}`}
+                      onClick={() => setDialog({ kind: 'add', moment })}
+                      className="ml-auto inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 dark:text-sky-300 dark:hover:bg-blue-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                      <Plus aria-hidden="true" className="h-4 w-4" /> Añadir
+                    </button>
+                  </div>
+                )}
+
+              </section>
+            ))}
+          </div>
         </div>
       ) : setlist.items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center border border-dashed border-slate-200 dark:border-dark-700 rounded-xl">

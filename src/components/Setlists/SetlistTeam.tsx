@@ -39,8 +39,8 @@ export const SetlistTeam: React.FC<SetlistTeamProps> = ({
   };
 
   return (
-    <section aria-labelledby="setlist-equipo" className="mb-6">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <section aria-labelledby="setlist-equipo" className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="flex items-center gap-3">
         <h2 id="setlist-equipo" className={sectionHeading}>
           Equipo
         </h2>

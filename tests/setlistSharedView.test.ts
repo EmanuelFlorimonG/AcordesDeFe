@@ -332,3 +332,31 @@ describe('El detalle de cada canción, solo cuando se dijo algo', () => {
     eq(html.includes('Opciones de Huracán'), true, 'y conserva sus controles');
   });
 });
+
+
+describe('Numeración continua en las filas de momentos', () => {
+  it('conserva la posición y el total del repertorio al renderizar un grupo', () => {
+    const html = lista({ items: [ENTRADAS[1]], numberingItems: ENTRADAS });
+    eq(html.includes('Canción 2 de 2:'), true);
+    eq(html.includes('Canción 1 de 1:'), false);
+  });
+
+  it('mantiene la numeración habitual cuando se muestra una lista independiente', () => {
+    const html = lista({ items: [ENTRADAS[1]] });
+    eq(html.includes('Canción 1 de 1:'), true);
+  });
+});
+
+
+describe('Añadir canciones sin filas adicionales', () => {
+  it('ofrece un solo control por grupo con su momento completo como nombre accesible', () => {
+    const items = ENTRADAS.map(item => ({ ...item, moment: 'Invocación del Espíritu Santo' }));
+    const html = lista({ items, onAddToMoment: nada });
+    eq((html.match(/aria-label="Añadir canción a Invocación del Espíritu Santo"/g) ?? []).length, 1);
+    eq((html.match(/<li/g) ?? []).length, 2);
+  });
+
+  it('no introduce acciones de añadir en las listas de solo lectura', () => {
+    eq(lista().includes('aria-label="Añadir canción a'), false);
+  });
+});

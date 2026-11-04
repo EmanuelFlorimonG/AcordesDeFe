@@ -9,6 +9,7 @@ import {
   Music4,
   Pencil,
   Play,
+  Plus,
   StickyNote,
   Trash2,
   TriangleAlert,
@@ -30,6 +31,10 @@ import { isBackupItem } from '../../utils/setlists';
 
 interface SetlistSongListProps {
   items: SetlistItem[];
+  /** Full playing order when this list is one moment of the celebration. */
+  numberingItems?: SetlistItem[];
+  embedded?: boolean;
+  onAddToMoment?: (moment: string) => void;
   songsById: Map<string, Song>;
   onOpenItem: (item: SetlistItem) => void;
   /**
@@ -76,6 +81,9 @@ interface SetlistSongListProps {
  */
 export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   items,
+  numberingItems = items,
+  embedded = false,
+  onAddToMoment,
   songsById,
   onOpenItem,
   onEditItem,
@@ -144,7 +152,7 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
   const numbering = new Map<string, { backup: boolean; number: number }>();
   let sung = 0;
   let spare = 0;
-  for (const item of items) {
+  for (const item of numberingItems) {
     const backup = isBackupItem(item);
     numbering.set(item.id, { backup, number: backup ? ++spare : ++sung });
   }
@@ -161,7 +169,7 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
 
       <ol
         ref={canReorder ? attachList : undefined}
-        className={`border-y border-slate-100 dark:border-dark-800 ${draggingId ? 'select-none' : ''}`}
+        className={`${embedded ? '' : 'border-y border-slate-200/70 dark:border-dark-700'} ${draggingId ? 'select-none' : ''}`}
       >
         {items.map((item, index) => {
           const song = songsById.get(item.songId);
@@ -217,7 +225,7 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
               key={item.id}
               ref={attachRow(item.id)}
               style={rowStyle(index, item.id)}
-              className={`relative border-b border-slate-100 dark:border-dark-800 last:border-b-0 ${
+              className={`relative border-b border-slate-200/70 dark:border-dark-700 last:border-b-0 ${
                 backup ? 'bg-amber-50/40 dark:bg-amber-500/[0.04]' : ''
               } ${
                 isDragged
@@ -231,26 +239,26 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
               <span
                 aria-hidden="true"
                 className={`w-7 sm:w-9 shrink-0 text-center font-mono text-xs sm:text-sm font-bold tabular-nums ${
-                  backup ? 'text-amber-600 dark:text-amber-500' : 'text-slate-300 dark:text-dark-600'
+                  backup ? 'text-amber-600 dark:text-amber-500' : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {backup ? `R${number}` : String(number).padStart(2, '0')}
               </span>
 
               <span
-                className={`hidden md:flex w-28 shrink-0 items-center gap-1 truncate text-[11px] font-semibold uppercase tracking-[0.1em] ${
-                  backup ? 'text-amber-700 dark:text-amber-400' : 'text-[#2464ED] dark:text-sky-400'
+                className={`hidden md:flex w-44 xl:w-60 xl:whitespace-nowrap shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide ${
+                  backup ? 'text-amber-800 dark:text-amber-300' : 'text-blue-700 dark:text-blue-200'
                 }`}
               >
                 {backup && <LifeBuoy aria-hidden="true" className="w-3 h-3 shrink-0" />}
-                <span className="truncate">{item.moment}</span>
+                <span className={`inline-block max-w-full rounded-full px-2 py-1 leading-tight ${backup ? 'bg-amber-100 dark:bg-amber-500/15' : 'bg-blue-50 dark:bg-blue-400/15'}`}>{item.moment}</span>
               </span>
 
               {song ? (
                 <button
                   type="button"
                   onClick={() => onOpenItem(item)}
-                  className="min-w-0 flex-1 py-2.5 sm:py-3 pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40 rounded-lg"
+                  className="min-w-0 flex-1 py-2.5 pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2464ED]/40 rounded-lg"
                 >
                   <span className="sr-only">
                     {backup
@@ -259,19 +267,19 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
                   </span>
                   {item.moment && (
                     <span
-                      className={`md:hidden flex items-center gap-1 truncate text-[10px] font-semibold uppercase tracking-[0.1em] ${
-                        backup ? 'text-amber-700 dark:text-amber-400' : 'text-[#2464ED] dark:text-sky-400'
+                      className={`md:hidden mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide ${
+                        backup ? 'text-amber-800 dark:text-amber-300' : 'text-blue-700 dark:text-blue-200'
                       }`}
                     >
                       {backup && <LifeBuoy aria-hidden="true" className="w-3 h-3 shrink-0" />}
-                      <span className="truncate">{item.moment}</span>
+                      <span className={`inline-block max-w-full rounded-full px-2 py-1 leading-tight ${backup ? 'bg-amber-100 dark:bg-amber-500/15' : 'bg-blue-50 dark:bg-blue-400/15'}`}>{item.moment}</span>
                     </span>
                   )}
                   <span className="block truncate text-sm font-semibold text-[#10203A] dark:text-white">
                     {song.title}
                   </span>
                   {song.artist && (
-                    <span className="hidden sm:block truncate text-xs text-slate-500 dark:text-slate-400">
+                    <span className="sr-only">
                       {song.artist}
                     </span>
                   )}
@@ -288,7 +296,13 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
                       </span>
                     )
                   )}
-                  <span className="sm:hidden mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                  {item.notes && (
+                    <span className="mt-0.5 hidden min-w-0 items-center gap-1.5 text-xs italic text-slate-500 dark:text-slate-400 md:flex">
+                      <StickyNote aria-hidden="true" className="h-3 w-3 shrink-0" />
+                      <span className="truncate" title={item.notes}>{item.notes}</span>
+                    </span>
+                  )}
+                  <span className="md:hidden mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
                     {keyDescription && (
                       <span
                         className={`font-mono font-bold ${
@@ -326,31 +340,32 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
               {keyDescription && (
                 <span
                   title={`Original: ${song?.originalKey}`}
-                  className={`hidden sm:block w-12 shrink-0 text-right font-mono text-sm font-bold ${
+                  className={`hidden md:block w-12 shrink-0 text-right font-mono text-sm font-bold ${
                     keyDescription.isModified ? 'text-[#2464ED] dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
                   {keyDescription.shape ?? keyDescription.sounding}
                 </span>
               )}
-              {item.capoFret > 0 && (
-                <span className="hidden lg:block w-14 shrink-0 text-right text-xs text-slate-400 dark:text-slate-500">
-                  Cej. {item.capoFret}
-                </span>
-              )}
-              <span className="hidden lg:block w-16 shrink-0 text-right text-xs tabular-nums text-slate-400 dark:text-slate-500">
+              <span className="hidden md:block w-14 shrink-0 text-right text-xs text-slate-500 dark:text-slate-400">
+                {item.capoFret > 0 ? `Cej. ${item.capoFret}` : ''}
+              </span>
+              <span className="hidden md:block w-16 shrink-0 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
                 {song?.tempo ? `${song.tempo} BPM` : ''}
               </span>
-              <span className="hidden xl:flex min-w-0 max-w-[13rem] shrink-0 items-center gap-1.5 pl-2 text-xs italic text-slate-500 dark:text-slate-400">
-                {item.notes && (
-                  <>
-                    <StickyNote className="w-3.5 h-3.5 shrink-0 text-slate-300 dark:text-dark-600" />
-                    <span className="truncate" title={item.notes}>
-                      {item.notes}
-                    </span>
-                  </>
-                )}
-              </span>
+
+
+              {onAddToMoment && (
+                index === 0 ? (
+                  <button type="button" onClick={() => onAddToMoment(item.moment)}
+                    aria-label={`Añadir canción a ${item.moment || 'Sin momento'}`}
+                    title={`Añadir canción a ${item.moment || 'Sin momento'}`}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-blue-700 hover:bg-blue-50 dark:text-sky-300 dark:hover:bg-blue-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 lg:w-20 lg:gap-1 touch-manipulation">
+                    <Plus aria-hidden="true" className="h-4 w-4" />
+                    <span className="hidden text-xs font-semibold lg:inline">Añadir</span>
+                  </button>
+                ) : <span aria-hidden="true" className="w-10 shrink-0 [@media(pointer:coarse)]:w-11 lg:w-20" />
+              )}
 
               {opciones.length > 0 && (
                 <ActionMenu
@@ -370,7 +385,7 @@ export const SetlistSongList: React.FC<SetlistSongListProps> = ({
                   }, posición ${index + 1} de ${items.length}. Usa las flechas arriba y abajo.`}
                   title="Arrastra para reordenar, o usa las flechas"
                   className={`${iconButton} touch-none cursor-grab active:cursor-grabbing ${
-                    isDragged ? 'text-[#2464ED] dark:text-sky-400' : 'text-slate-300 dark:text-dark-600'
+                    isDragged ? 'text-[#2464ED] dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'
                   } disabled:cursor-default`}
                 >
                   <GripVertical className="w-[18px] h-[18px]" />

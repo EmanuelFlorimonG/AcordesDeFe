@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, Church, Flame, Sunrise } from 'lucide-react';
 import type { Setlist } from '../../types/setlist';
 import {
   formatDurationSummary,
@@ -41,6 +41,7 @@ export const SetlistHeading: React.FC<SetlistHeadingProps> = ({
   durations,
   action,
 }) => {
+  const Icon = setlist.kind === 'rosario-aurora' ? Sunrise : setlist.kind === 'adoracion' ? Flame : Church;
   const summary = summarizeSetlistDuration(setlist, durations ?? {});
   // La reserva se nombra aparte: no es parte de lo que dura la celebración.
   const backupCount = setlist.items.filter(isBackupItem).length;
@@ -52,7 +53,12 @@ export const SetlistHeading: React.FC<SetlistHeadingProps> = ({
         <CalendarDays className="w-3.5 h-3.5" />
         {dateLabel ? capitalize(dateLabel) : 'Sin fecha'}
       </p>
-      <h1 className="mt-1.5 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#10203A] dark:text-white break-words">
+      <div className="mt-2 flex items-center gap-3 sm:gap-4">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-sky-300 sm:h-14 sm:w-14">
+          <Icon aria-hidden="true" className="h-6 w-6 sm:h-7 sm:w-7" />
+        </span>
+        <div className="min-w-0">
+      <h1 className=" text-2xl sm:text-3xl font-extrabold tracking-tight text-[#10203A] dark:text-white break-words">
         {setlist.name}
       </h1>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -60,6 +66,8 @@ export const SetlistHeading: React.FC<SetlistHeadingProps> = ({
         {backupCount > 0 && ` · ${backupCount} de reserva`}
         {durationLabel && ` · ${durationLabel}`}
       </p>
+        </div>
+      </div>
     </div>
   );
 
