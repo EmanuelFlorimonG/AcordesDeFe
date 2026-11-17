@@ -1,10 +1,11 @@
 import React from 'react';
-import { CalendarDays, Church, Flame, Sunrise } from 'lucide-react';
+import { CalendarDays, Church, Flame, Heart, Sunrise } from 'lucide-react';
 import type { Setlist } from '../../types/setlist';
 import {
   formatDurationSummary,
   formatSongCount,
   isBackupItem,
+  isWeddingKind,
   summarizeSetlistDuration,
 } from '../../utils/setlists';
 
@@ -41,7 +42,13 @@ export const SetlistHeading: React.FC<SetlistHeadingProps> = ({
   durations,
   action,
 }) => {
-  const Icon = setlist.kind === 'rosario-aurora' ? Sunrise : setlist.kind === 'adoracion' ? Flame : Church;
+  const Icon = isWeddingKind(setlist.kind)
+    ? Heart
+    : setlist.kind === 'rosario-aurora'
+      ? Sunrise
+      : setlist.kind === 'adoracion'
+        ? Flame
+        : Church;
   const summary = summarizeSetlistDuration(setlist, durations ?? {});
   // La reserva se nombra aparte: no es parte de lo que dura la celebración.
   const backupCount = setlist.items.filter(isBackupItem).length;

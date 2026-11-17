@@ -96,6 +96,10 @@ export function canonicalSetlist(setlist: Setlist): string {
   // Setlists marcados como cambiados sin haber tocado nada. Las otras modalidades
   // añaden su tipo al final para distinguirse.
   if (setlist.kind && setlist.kind !== 'misa') partes.push(setlist.kind);
+  // Y las secciones propias, sólo si las hay, con su nombre delante para que
+  // no se confundan con el tipo cuando un Setlist tiene las unas y no el otro.
+  // Un Setlist que nunca las tocó escribe lo mismo que escribía ayer.
+  if (setlist.moments) partes.push({ secciones: setlist.moments });
   return JSON.stringify(partes);
 }
 

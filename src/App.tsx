@@ -1422,6 +1422,12 @@ export function App() {
         onMoveItem={(itemId, toIndex) => setlists.moveItem(setlistId, itemId, toIndex)}
         onMoveItemBy={(itemId, delta) => setlists.moveItemBy(setlistId, itemId, delta)}
         onUpdateItem={(itemId, changes) => setlists.updateItem(setlistId, itemId, changes)}
+        onEditSections={{
+          add: (name) => setlists.addSection(setlistId, name),
+          rename: (from, to) => setlists.renameSection(setlistId, from, to),
+          move: (name, delta) => setlists.moveSection(setlistId, name, delta),
+          remove: (name) => setlists.removeSection(setlistId, name),
+        }}
         members={ministry.members}
         membersById={ministry.membersById}
         onSetParticipants={(memberIds) => setlists.setParticipants(setlistId, memberIds)}

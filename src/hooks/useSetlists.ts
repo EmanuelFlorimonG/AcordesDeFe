@@ -13,14 +13,18 @@ import { createSetlistDeletionRepository, type SetlistDeletionRepository } from 
 import { createSetlistSyncStore } from '../storage/setlistSync';
 import {
   addSetlistParticipants,
+  addSetlistSection,
   addSongsToSetlist,
   createSetlist,
   duplicateSetlist,
   moveSetlistItem,
   moveSetlistItemBy,
   moveSetlistItemCapo,
+  moveSetlistSection,
   removeMemberFromSetlist,
   removeSetlistItem,
+  removeSetlistSection,
+  renameSetlistSection,
   setSetlistParticipants,
   transposeSetlistItem,
   updateSetlistDetails,
@@ -54,6 +58,18 @@ export interface SetlistsStore {
    * losing it would mean the setlist coming back on the next device.
    */
   remove: (id: string) => boolean;
+  /**
+   * Las secciones de un Setlist: añadir una al final, cambiarle el nombre
+   * (y el de las canciones escritas en ella), moverla y quitarla.
+   *
+   * Sólo las usan las celebraciones que se preparan por secciones. Al tocar
+   * la primera, el Setlist deja de seguir la plantilla de su tipo y pasa a
+   * tener las suyas.
+   */
+  addSection: (id: string, name: string) => void;
+  renameSection: (id: string, from: string, to: string) => void;
+  moveSection: (id: string, name: string, delta: number) => void;
+  removeSection: (id: string, name: string) => void;
   /** `moment` marks the songs as added for a part of the Mass. */
   addSongs: (id: string, songs: Array<Pick<Song, 'id' | 'recommendedCapo'>>, moment?: string) => void;
   removeItem: (id: string, itemId: string) => void;
@@ -225,6 +241,10 @@ export function useSetlists(
       setSetlists((current) => current.filter((setlist) => setlist.id !== id));
       return true;
     },
+    addSection: (id, name) => change(id, (setlist, now) => addSetlistSection(setlist, name, now)),
+    renameSection: (id, from, to) => change(id, (setlist, now) => renameSetlistSection(setlist, from, to, now)),
+    moveSection: (id, name, delta) => change(id, (setlist, now) => moveSetlistSection(setlist, name, delta, now)),
+    removeSection: (id, name) => change(id, (setlist, now) => removeSetlistSection(setlist, name, now)),
     addSongs: (id, songs, moment) =>
       change(id, (setlist, now) => addSongsToSetlist(setlist, songs, { now, moment })),
     removeItem: (id, itemId) => change(id, (setlist, now) => removeSetlistItem(setlist, itemId, now)),

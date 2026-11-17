@@ -70,6 +70,50 @@ export const ROSARY_MOMENTS = [
 ];
 
 /**
+ * Las partes de una boda celebrada dentro de una misa, en su orden real.
+ *
+ * No es una misa con dos añadidos: es el orden con el que se prepara una boda,
+ * tal como se vivió en la que sirvió de modelo. Por eso el Evangelio aparece
+ * aquí y no en MASS_MOMENTS —en una boda hay que cantar antes de los votos, y
+ * ese momento tiene nombre—, y por eso la firma y el ramo a la Virgen están
+ * entre la comunión y la salida, que es donde ocurren.
+ *
+ * Es el punto de partida, no una obligación: cada boda puede renombrar, mover,
+ * añadir y quitar sus secciones (ver `sectionsOf`).
+ */
+export const WEDDING_MOMENTS = [
+  'Entrada',
+  'Piedad',
+  'Gloria',
+  'Evangelio',
+  'Votos',
+  'Ofertorio',
+  'Santo',
+  'Cordero',
+  'Comunión',
+  'Firmadera',
+  'Ofrecer el ramo a la Virgen',
+  'Salida',
+];
+
+/**
+ * Las de una boda sin misa.
+ *
+ * Son las mismas quitando lo que sólo existe dentro de una misa: el Piedad y
+ * el Gloria del ordinario, y el Ofertorio, el Santo, el Cordero y la Comunión,
+ * que son la liturgia eucarística. No se inventa nada para rellenar su hueco:
+ * lo que queda es la palabra, el consentimiento y lo que lo rodea.
+ */
+export const WEDDING_NO_MASS_MOMENTS = [
+  'Entrada',
+  'Evangelio',
+  'Votos',
+  'Firmadera',
+  'Ofrecer el ramo a la Virgen',
+  'Salida',
+];
+
+/**
  * Las canciones de reserva de una celebración.
  *
  * No es una parte de la misa ni de una adoración: es lo que se tiene a mano
@@ -79,9 +123,27 @@ export const ROSARY_MOMENTS = [
  */
 export const BACKUP_MOMENT = 'Backup';
 
-/** Si una entrada del Setlist es de reserva. Lo dice su momento, nada más. */
-export const isBackupItem = (item: Pick<SetlistItem, 'moment'>): boolean =>
-  item.moment === BACKUP_MOMENT;
+/**
+ * Si una entrada del Setlist es de reserva.
+ *
+ * Lo dice la entrada (`backup`), no cómo se llame su sección hoy. Así,
+ * renombrar la sección de reserva, moverla a otro sitio o quitarla no mete sus
+ * canciones en el recorrido, ni en la duración, ni en la numeración.
+ *
+ * El nombre sigue valiendo como segunda vía, y por dos motivos: los Setlists
+ * guardados antes de que esto existiera no tienen la marca, y una sección que
+ * alguien llama «Backup» es una reserva lo diga quien lo diga.
+ */
+export const isBackupItem = (item: Pick<SetlistItem, 'moment' | 'backup'>): boolean =>
+  item.backup === true || item.moment === BACKUP_MOMENT;
+
+/** Cuál de las secciones de este Setlist es la reserva. */
+export const backupMomentOf = (setlist: Pick<Setlist, 'backupMoment'>): string =>
+  setlist.backupMoment ?? BACKUP_MOMENT;
+
+/** Lo que una entrada añadida a este momento es: reserva, o no. */
+const backupFlagFor = (setlist: Pick<Setlist, 'backupMoment'>, moment: string) =>
+  moment === backupMomentOf(setlist) ? ({ backup: true } as const) : {};
 
 /**
  * Cómo se llama el modo en vivo de este Setlist.
@@ -91,18 +153,51 @@ export const isBackupItem = (item: Pick<SetlistItem, 'moment'>): boolean =>
  * adoración es decirle a alguien que está en otra cosa.
  */
 export const liveModeName = (kind: SetlistKind | undefined): string =>
-  kind === 'rosario-aurora' ? 'Modo Rosario' : kind === 'adoracion' ? 'Modo Adoración' : 'Modo Misa';
+  isWeddingKind(kind)
+    ? 'Modo Boda'
+    : kind === 'rosario-aurora'
+      ? 'Modo Rosario'
+      : kind === 'adoracion'
+        ? 'Modo Adoración'
+        : 'Modo Misa';
+
+/** Las dos modalidades de boda, que comparten todo menos qué partes traen. */
+export const isWeddingKind = (kind: SetlistKind | undefined): boolean =>
+  kind === 'boda' || kind === 'boda-sin-misa';
 
 /**
- * Los momentos que se ofrecen, según lo que se esté preparando.
+ * Si esta celebración se prepara por secciones.
  *
- * La reserva va detrás de todos, en las dos celebraciones, porque no es una
- * parte más: es lo que se guarda para cuando la celebración lo pida.
+ * Las que sí traen un orden propio: las canciones se añaden a una sección y se
+ * leen agrupadas bajo ella, y una sección sin canciones se sigue viendo. Las
+ * que no —una misa, una adoración— son una lista seguida, como siempre.
+ */
+export const hasSections = (kind: SetlistKind | undefined): boolean =>
+  kind === 'rosario-aurora' || isWeddingKind(kind);
+
+/**
+ * Los momentos que trae cada tipo de celebración.
+ *
+ * La reserva va detrás de todos, porque no es una parte más: es lo que se
+ * guarda para cuando la celebración lo pida.
  */
 export function momentsFor(kind: SetlistKind | undefined): string[] {
   if (kind === 'rosario-aurora') return [...ROSARY_MOMENTS];
+  if (isWeddingKind(kind)) {
+    return [...(kind === 'boda-sin-misa' ? WEDDING_NO_MASS_MOMENTS : WEDDING_MOMENTS), BACKUP_MOMENT];
+  }
   return [...(kind === 'adoracion' ? ADORATION_MOMENTS : MASS_MOMENTS), BACKUP_MOMENT];
 }
+
+/**
+ * Las secciones de un Setlist concreto, en orden.
+ *
+ * Las suyas si alguien las ha tocado, y si no las de su tipo. Todo lo que
+ * agrupa, ordena y ofrece momentos pasa por aquí, para que una sección
+ * renombrada lo esté en todas partes a la vez.
+ */
+export const sectionsOf = (setlist: Pick<Setlist, 'kind' | 'moments'>): string[] =>
+  setlist.moments ? [...setlist.moments] : momentsFor(setlist.kind);
 
 /**
  * Moments offered as suggestions; any other text can be typed.
@@ -111,23 +206,139 @@ export function momentsFor(kind: SetlistKind | undefined): string[] {
  * porque un ensayo o un retiro no son ninguna de las dos cosas.
  */
 export function suggestedMoments(kind: SetlistKind | undefined): string[] {
-  if (kind === 'rosario-aurora') return momentsFor(kind);
+  if (hasSections(kind)) return momentsFor(kind);
   return [...new Set([...momentsFor(kind), 'Apertura', 'Adoración', 'Reflexión', 'Dinámica', 'Cierre'])];
 }
 
 /** Stable within a moment; Mass and Adoration retain their manually chosen order. */
-export function orderSetlistItems(kind: SetlistKind | undefined, items: SetlistItem[]): SetlistItem[] {
-  if (kind !== 'rosario-aurora') return items;
-  const names = [...new Set([...ROSARY_MOMENTS, ...items.map(item => item.moment)])];
+export function orderSetlistItems(
+  setlist: Pick<Setlist, 'kind' | 'moments'> | undefined,
+  items: SetlistItem[]
+): SetlistItem[] {
+  if (!setlist || !hasSections(setlist.kind)) return items;
+  const names = [...new Set([...sectionsOf(setlist), ...items.map((item) => item.moment)])];
   const rank = (moment: string) => names.indexOf(moment);
   return [...items].sort((a, b) => rank(a.moment) - rank(b.moment));
 }
 
 /** Empty moments stay visible; custom/unassigned entries are never lost. */
 export function groupSetlistItems(setlist: Setlist): Array<{ moment: string; items: SetlistItem[] }> {
-  const names = [...new Set([...momentsFor(setlist.kind), ...setlist.items.map(item => item.moment)])];
+  const names = [...new Set([...sectionsOf(setlist), ...setlist.items.map(item => item.moment)])];
   return names.map(moment => ({ moment, items: setlist.items.filter(item => item.moment === moment) }));
 }
+
+// ---------------------------------------------------------------------------
+// Las secciones de un Setlist
+// ---------------------------------------------------------------------------
+
+/** Cuántas secciones admite un Setlist. De sobra para una boda larga. */
+export const MAX_SECTIONS = 40;
+
+/** Una sección es un texto corto, sin repetirse y sin huecos. */
+export function cleanSections(names: unknown): string[] {
+  if (!Array.isArray(names)) return [];
+  const clean: string[] = [];
+  for (const name of names) {
+    if (typeof name !== 'string') continue;
+    const value = name.trim().slice(0, MAX_MOMENT_LENGTH);
+    // Dos secciones con el mismo nombre serían el mismo grupo: agrupar es por
+    // el texto. La segunda no se pierde, simplemente ya estaba.
+    if (value && !clean.includes(value)) clean.push(value);
+    if (clean.length === MAX_SECTIONS) break;
+  }
+  return clean;
+}
+
+/**
+ * Deja escritas estas secciones, en este orden.
+ *
+ * A partir de aquí el Setlist tiene las suyas: lo que diga su tipo deja de
+ * importarle. Las canciones no se tocan —una canción de una sección que ya no
+ * está sigue en el Setlist, con su momento escrito— y se reordenan para que la
+ * lista siga el orden nuevo.
+ */
+export function setSetlistSections(setlist: Setlist, names: string[], now: number): Setlist {
+  const moments = cleanSections(names);
+  if (moments.length === 0) throw new Error('Un Setlist necesita al menos una sección.');
+  const next = { ...setlist, moments };
+  return { ...next, items: orderSetlistItems(next, setlist.items), updatedAt: now };
+}
+
+/** Una sección más, al final. Si ya existía, no hay nada que hacer. */
+export function addSetlistSection(setlist: Setlist, name: string, now: number): Setlist {
+  const sections = sectionsOf(setlist);
+  const value = name.trim().slice(0, MAX_MOMENT_LENGTH);
+  if (!value || sections.includes(value)) return setlist;
+  return setSetlistSections(setlist, [...sections, value], now);
+}
+
+/**
+ * Cambia el nombre de una sección, y con ella el de las canciones que estaban
+ * escritas en ella: son la misma sección, sólo que ahora se llama de otra forma.
+ */
+export function renameSetlistSection(setlist: Setlist, from: string, to: string, now: number): Setlist {
+  const sections = sectionsOf(setlist);
+  const value = to.trim().slice(0, MAX_MOMENT_LENGTH);
+  if (!value || from === value || !sections.includes(from)) return setlist;
+  // Renombrar a una que ya existe uniría dos secciones sin decirlo.
+  if (sections.includes(value)) return setlist;
+  const renamed = setSetlistSections(setlist, sections.map((name) => (name === from ? value : name)), now);
+  // La reserva sigue siendo la reserva aunque pase a llamarse de otra forma.
+  // Y si la que se renombra es otra, la reserva tampoco se mueve de sitio.
+  const conReserva: Setlist =
+    backupMomentOf(setlist) === from ? { ...renamed, backupMoment: value } : renamed;
+  return {
+    ...conReserva,
+    items: orderSetlistItems(
+      conReserva,
+      conReserva.items.map((item) =>
+        item.moment === from
+          ? { ...item, moment: value, ...backupFlagFor(conReserva, value) }
+          : item
+      )
+    ),
+  };
+}
+
+/** Mueve una sección arriba (-1) o abajo (+1), con las canciones que lleve dentro. */
+export function moveSetlistSection(setlist: Setlist, name: string, delta: number, now: number): Setlist {
+  const sections = sectionsOf(setlist);
+  const from = sections.indexOf(name);
+  if (from < 0) return setlist;
+  const to = from + Math.round(delta);
+  if (to < 0 || to >= sections.length || to === from) return setlist;
+  const moved = [...sections];
+  moved.splice(to, 0, ...moved.splice(from, 1));
+  return setSetlistSections(setlist, moved, now);
+}
+
+/**
+ * Quita una sección.
+ *
+ * Sus canciones se quedan en el Setlist, sin sección: quitar una parte de la
+ * celebración no es quitar lo que se iba a cantar en ella, y recuperarlas sería
+ * imposible. Aparecen agrupadas bajo «Sin momento» hasta que alguien las mueva.
+ *
+ * Y lo que eran lo siguen siendo: las reservas de una sección de reserva que se
+ * quita siguen fuera del recorrido, porque quitar una sección no es decidir que
+ * esas canciones ahora se cantan.
+ */
+export function removeSetlistSection(setlist: Setlist, name: string, now: number): Setlist {
+  const sections = sectionsOf(setlist);
+  if (!sections.includes(name) || sections.length === 1) return setlist;
+  const left = setSetlistSections(setlist, sections.filter((section) => section !== name), now);
+  return {
+    ...left,
+    items: orderSetlistItems(
+      left,
+      left.items.map((item) => (item.moment === name ? { ...item, moment: '' } : item))
+    ),
+  };
+}
+
+/** Cuántas canciones hay escritas en una sección. */
+export const countSectionItems = (setlist: Setlist, name: string): number =>
+  setlist.items.filter((item) => item.moment === name).length;
 
 export interface SongCategoryCount {
   name: string;
@@ -209,7 +420,9 @@ export function cleanSetlistDetails(details: Partial<SetlistDetails>): SetlistDe
 
 /** Los tipos conocidos se conservan; misa y valores desconocidos mantienen el formato histórico. */
 export const readSetlistKind = (value: unknown): SetlistKind | undefined =>
-  value === 'adoracion' || value === 'rosario-aurora' ? value : undefined;
+  value === 'adoracion' || value === 'rosario-aurora' || value === 'boda' || value === 'boda-sin-misa'
+    ? value
+    : undefined;
 
 export function createSetlist(details: Partial<SetlistDetails>, { now, createId: makeId = createId }: ChangeOptions): Setlist {
   const clean = cleanSetlistDetails(details);
@@ -344,8 +557,12 @@ export function duplicateSetlist(
   );
   return {
     ...copy,
-    // La copia de una adoración sigue siendo una adoración.
+    // La copia de una adoración sigue siendo una adoración, y la de una boda
+    // conserva las secciones que alguien preparó para ella: duplicar un Setlist
+    // es sobre todo reaprovechar su orden.
     ...(setlist.kind ? { kind: setlist.kind } : {}),
+    ...(setlist.moments ? { moments: [...setlist.moments] } : {}),
+    ...(setlist.backupMoment ? { backupMoment: setlist.backupMoment } : {}),
     // Same ministry, same people: the team is kept (as a list of its own).
     participantIds: [...setlist.participantIds],
     items: setlist.items.map((item) => ({
@@ -369,12 +586,16 @@ export function duplicateSetlist(
 export function createSetlistItem(
   song: SongForSetlist,
   makeId: IdFactory = createId,
-  moment = ''
+  moment = '',
+  // Qué Setlist la recibe, que es lo que dice si ese momento es la reserva.
+  setlist: Pick<Setlist, 'backupMoment'> = {}
 ): SetlistItem {
+  const clean = moment.trim().slice(0, MAX_MOMENT_LENGTH);
   return {
     id: makeId(),
     songId: song.id,
-    moment: moment.trim().slice(0, MAX_MOMENT_LENGTH),
+    moment: clean,
+    ...backupFlagFor(setlist, clean),
     ...normalizeKeySettings({ transposeSteps: 0, capoFret: song.recommendedCapo ?? 0 }),
     notes: '',
   };
@@ -390,7 +611,7 @@ export function addSongsToSetlist(
   if (songs.length === 0) return setlist;
   return {
     ...setlist,
-    items: orderSetlistItems(setlist.kind, [...setlist.items, ...songs.map((song) => createSetlistItem(song, makeId, moment))]),
+    items: orderSetlistItems(setlist, [...setlist.items, ...songs.map((song) => createSetlistItem(song, makeId, moment, setlist))]),
     updatedAt: now,
   };
 }
@@ -415,7 +636,7 @@ export function moveSetlistItem(setlist: Setlist, itemId: string, toIndex: numbe
   const items = [...setlist.items];
   const [moved] = items.splice(from, 1);
   items.splice(target, 0, moved);
-  return { ...setlist, items: orderSetlistItems(setlist.kind, items), updatedAt: now };
+  return { ...setlist, items: orderSetlistItems(setlist, items), updatedAt: now };
 }
 
 /** Moves an entry up (-1) or down (+1). */
@@ -444,20 +665,25 @@ export function updateSetlistItem(
   if (!setlist.items.some((item) => item.id === itemId)) return setlist;
   return {
     ...setlist,
-    items: orderSetlistItems(setlist.kind, setlist.items.map((item) => {
+    items: orderSetlistItems(setlist, setlist.items.map((item) => {
       if (item.id !== itemId) return item;
       const keySettings = normalizeKeySettings({
         transposeSteps: changes.transposeSteps ?? item.transposeSteps,
         capoFret: changes.capoFret ?? item.capoFret,
       });
-      const { arrangement: current, transitionToNext: currentTransition, ...rest } = item;
+      const { arrangement: current, transitionToNext: currentTransition, backup: _era, ...rest } = item;
       const arrangement = changes.arrangement === undefined ? current : changes.arrangement;
       const transitionToNext =
         changes.transitionToNext === undefined ? currentTransition : changes.transitionToNext;
+      const moment = (changes.moment ?? item.moment).trim().slice(0, MAX_MOMENT_LENGTH);
       return {
         ...rest,
         ...keySettings,
-        moment: (changes.moment ?? item.moment).trim().slice(0, MAX_MOMENT_LENGTH),
+        moment,
+        // Cambiar de sección es lo único que cambia si una canción es reserva
+        // o no. Sacarla de la reserva la devuelve al recorrido, y meterla la
+        // saca, diga lo que diga lo que estaba escrito antes.
+        ...backupFlagFor(setlist, moment),
         notes: (changes.notes ?? item.notes).trim().slice(0, MAX_NOTES_LENGTH),
         // Absent, not empty: an entry with no arrangement is played as written.
         ...(arrangement ? { arrangement } : {}),

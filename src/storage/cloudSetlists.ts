@@ -63,6 +63,13 @@ export interface CloudSetlistWrite {
   name: string;
   /** Modalidad explícita; una misa conserva null por compatibilidad. */
   kind: string | null;
+  /**
+   * Las secciones propias de este Setlist, o null cuando usa las de su tipo,
+   * que es lo que dicen todas las filas anteriores.
+   */
+  moments: string[] | null;
+  /** Cuál de las secciones es la reserva, cuando no se llama «Backup». */
+  backup_moment: string | null;
   /** "YYYY-MM-DD", or null when the celebration has no date (the column is nullable, "" is not a date) */
   date: string | null;
   description: string | null;
@@ -78,6 +85,8 @@ export interface CloudSetlistRow {
   id?: unknown;
   name?: unknown;
   kind?: unknown;
+  moments?: unknown;
+  backup_moment?: unknown;
   date?: unknown;
   description?: unknown;
   items?: unknown;
@@ -126,6 +135,8 @@ function cloudItem(item: SetlistItem): CloudSetlistItem {
     id: item.id,
     songId: item.songId,
     moment: item.moment,
+    // Que es una reserva viaja con la entrada, no con el nombre de su sección.
+    ...(item.backup ? { backup: true as const } : {}),
     transposeSteps: item.transposeSteps,
     capoFret: item.capoFret,
     notes: item.notes,
@@ -150,6 +161,10 @@ export function setlistToCloud(setlist: Setlist, revision: number): CloudSetlist
     // Una misa no manda nada: las filas de antes tienen null y significan lo
     // mismo, así que una columna nueva no convierte en distinto lo que no lo es.
     kind: setlist.kind ?? null,
+    // Igual que el tipo: lo que no se tocó no manda nada, así que las filas de
+    // antes siguen diciendo exactamente lo mismo que decían.
+    moments: setlist.moments ?? null,
+    backup_moment: setlist.backupMoment ?? null,
     date: setlist.date || null,
     description: setlist.description || null,
     items: setlist.items.map(cloudItem),
@@ -331,6 +346,8 @@ export function cloudToSetlist(row: CloudSetlistRow, localExisting?: Setlist | n
   const setlist = sanitizeSetlist({
     id,
     kind: row.kind,
+    moments: row.moments,
+    backupMoment: row.backup_moment,
     name: text(row.name),
     date: text(row.date),
     description: text(row.description),
@@ -397,7 +414,7 @@ export interface CloudSetlistRepository {
 }
 
 const COLUMNS =
-  'id,name,kind,date,description,items,payload_version,revision,client_created_at,client_updated_at,created_at,updated_at,deleted_at';
+  'id,name,kind,moments,backup_moment,date,description,items,payload_version,revision,client_created_at,client_updated_at,created_at,updated_at,deleted_at';
 
 /**
  * The cloud setlists of whoever is signed in.

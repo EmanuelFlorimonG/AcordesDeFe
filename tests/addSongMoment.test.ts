@@ -355,7 +355,7 @@ describe('Los momentos que se ofrecen son los de esta celebración', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/[^\n]*/g, '');
 
-    eq(codigo.includes('momentsFor(setlist.kind)'), true, 'se piden al proyecto');
+    eq(codigo.includes('sectionsOf(setlist)'), true, 'se piden al proyecto');
     for (const copiado of ['Ofertorio', 'PostComunión', 'Peticiones al Espíritu Santo']) {
       eq(codigo.includes(copiado), false, `${copiado} escrito a mano`);
     }

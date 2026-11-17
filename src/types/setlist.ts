@@ -106,6 +106,20 @@ export interface SetlistItem {
   songId: string;
   /** Moment of the occasion, written freely: "Entrada", "Comunión", "Dinámica"… */
   moment: string;
+  /**
+   * Que esta entrada es una reserva: algo que se tiene a mano por si hace
+   * falta, no una parte de la celebración.
+   *
+   * Lo dice la entrada, no cómo se llame su sección. Renombrar la sección de
+   * reserva, moverla o incluso quitarla no convierte sus canciones en parte
+   * del recorrido: lo que son va escrito aquí, y sólo cambia cuando alguien
+   * cambia la canción de sección.
+   *
+   * Ausente en todo lo guardado antes de que esto existiera, donde la reserva
+   * se reconocía por el nombre «Backup» —y se sigue reconociendo, ver
+   * isBackupItem—. Nunca se escribe `false`: no ser reserva es no decir nada.
+   */
+  backup?: true;
   /** Semitones from the song as written, for this occasion only. */
   transposeSteps: number;
   /** Capo fret for this occasion only. */
@@ -155,11 +169,15 @@ export interface SetlistSongTransition {
  * la otra tiene peticiones al Espíritu Santo y procesión. Lo único que cambia
  * es qué momentos se ofrecen al escribirlos.
  *
+ * Una boda son dos: `boda` es la que se celebra dentro de una misa y `boda-sin-misa`
+ * la que no, y lo que las separa son exactamente las partes eucarísticas.
+ * Las dos se llaman «Boda» en pantalla.
+ *
  * Ausente significa misa: es lo que fue siempre, y los Setlists de antes no
  * dijeron otra cosa. Por eso no se guarda cuando es una misa (ver
  * canonicalSetlist): lo que ya estaba de acuerdo con la nube sigue estándolo.
  */
-export type SetlistKind = 'misa' | 'adoracion' | 'rosario-aurora';
+export type SetlistKind = 'misa' | 'adoracion' | 'rosario-aurora' | 'boda' | 'boda-sin-misa';
 
 /** Lo que es un Setlist cuando nadie dijo nada: una misa. */
 export const DEFAULT_SETLIST_KIND: SetlistKind = 'misa';
@@ -169,6 +187,30 @@ export interface Setlist {
   name: string;
   /** Modalidad de celebración. Ausente conserva Misa para los Setlists anteriores. */
   kind?: SetlistKind;
+  /**
+   * Las secciones de este Setlist, en el orden en que se celebran.
+   *
+   * Ausente significa «las de su tipo»: es lo que son todos los Setlists
+   * anteriores y los que nadie ha tocado, y por eso no se guarda hasta que
+   * alguien cambia algo. En cuanto se escribe, manda ella: es la plantilla de
+   * esta boda concreta, no la del tipo, y deja de moverse si la plantilla del
+   * tipo cambia algún día.
+   *
+   * Una sección vacía es tan válida como una con canciones: se prepara el
+   * orden antes de tener las canciones.
+   */
+  moments?: string[];
+  /**
+   * Cuál de sus secciones es la reserva, cuando no se llama «Backup».
+   *
+   * Es lo que permite renombrarla sin que deje de serlo: la sección cambia de
+   * nombre y esto cambia con ella, así que lo que se añada ahí sigue entrando
+   * como reserva aunque la sección estuviera vacía al renombrarla.
+   *
+   * Ausente significa «la que se llame Backup, si la hay», que es lo que son
+   * todos los Setlists anteriores.
+   */
+  backupMoment?: string;
   /** Calendar date of the occasion as "YYYY-MM-DD", or "" when not set. */
   date: string;
   description: string;

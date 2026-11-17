@@ -165,7 +165,8 @@ describe('Rosary in the existing dialogs', () => {
     let submitted: SetlistDetails | undefined;
     const run = runHook(() => SetlistFormDialog({ mode: 'create', initialDetails: { name: 'Rosario del sábado' }, onSubmit: d => { submitted = d; }, onClose() {} }) as ReactElement);
     let radios = elements(run.current).filter(e => e.props.role === 'radio');
-    assert.equal(radios.length, 3);
+    // Cuatro celebraciones; la boda añade además sus dos modalidades al elegirla.
+    assert.equal(radios.length, 4);
     (radios[2].props.onClick as () => void)();
     run.flush();
     radios = elements(run.current).filter(e => e.props.role === 'radio');

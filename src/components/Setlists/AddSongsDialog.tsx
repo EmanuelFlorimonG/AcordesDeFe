@@ -3,7 +3,7 @@ import { Check, Plus, Search, X } from 'lucide-react';
 import type { Setlist } from '../../types/setlist';
 import type { Song } from '../../types/song';
 import { normalizeText } from '../../utils/normalizeText';
-import { formatSongCount, listSongCategories, momentsFor } from '../../utils/setlists';
+import { formatSongCount, hasSections, listSongCategories, sectionsOf } from '../../utils/setlists';
 import type { SpecificSeasonId } from '../../data/liturgicalSeasons';
 import {
   SEASON_FILTER_OPTIONS,
@@ -71,9 +71,9 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
    * cuanto alguien lo elige a mano —incluido «Sin momento»— manda su elección
    * y ningún chip vuelve a cambiarla por sorpresa.
    */
-  const momentOptions = momentsFor(setlist.kind);
+  const momentOptions = sectionsOf(setlist);
   const suggestedByFilter = category && momentOptions.includes(category) ? category : '';
-  const [chosenMoment, setChosenMoment] = useState<string | null>(initialMoment ?? (setlist.kind === 'rosario-aurora' ? momentOptions[0] : null));
+  const [chosenMoment, setChosenMoment] = useState<string | null>(initialMoment ?? (hasSections(setlist.kind) ? momentOptions[0] : null));
   const moment = chosenMoment ?? suggestedByFilter;
 
   const countsBySongId = useMemo(() => {
@@ -128,7 +128,7 @@ export const AddSongsDialog: React.FC<AddSongsDialogProps> = ({ songs, setlist, 
     <Dialog
       size="lg"
       title="Añadir canciones"
-      description={setlist.kind === 'rosario-aurora' ? 'Se añaden al momento elegido. Puedes añadir varias sin cerrar esta ventana.' : 'Se añaden al final del Setlist. Puedes añadir varias sin cerrar esta ventana.'}
+      description={hasSections(setlist.kind) ? 'Se añaden a la sección elegida. Puedes añadir varias sin cerrar esta ventana.' : 'Se añaden al final del Setlist. Puedes añadir varias sin cerrar esta ventana.'}
       onClose={onClose}
       footer={
         <>

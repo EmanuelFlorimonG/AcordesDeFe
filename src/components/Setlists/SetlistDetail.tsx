@@ -18,7 +18,7 @@ import {
 import type { Setlist, SetlistDetails, SetlistItem } from '../../types/setlist';
 import type { MinistryMember } from '../../types/ministry';
 import type { Song } from '../../types/song';
-import { formatSetlistDate, liveModeName, groupSetlistItems } from '../../utils/setlists';
+import { formatSetlistDate, hasSections, liveModeName, groupSetlistItems, sectionsOf } from '../../utils/setlists';
 import type { SetlistItemChanges } from '../../utils/setlists';
 import { ActionMenu } from './ActionMenu';
 import { AddSongsDialog } from './AddSongsDialog';
@@ -26,6 +26,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { SetlistFormDialog } from './SetlistFormDialog';
 import { SetlistHeading } from './SetlistHeading';
 import { SetlistItemEditor } from './SetlistItemEditor';
+import { SetlistSectionsDialog } from './SetlistSectionsDialog';
 import { createSetlistDraftStore, type SetlistDraftStore } from '../../storage/setlistDraftStorage';
 import { getBrowserStorage } from '../../storage/setlistStorage';
 import { SetlistSongList } from './SetlistSongList';
@@ -86,6 +87,17 @@ interface SetlistDetailProps {
   onMoveItemBy: (itemId: string, delta: number) => void;
   /** Devuelve si el cambio quedó escrito: de eso depende retirar el borrador. */
   onUpdateItem: (itemId: string, changes: SetlistItemChanges) => boolean;
+  /**
+   * Las cuatro cosas que se le pueden hacer a las secciones de la celebración.
+   * Ausente en una pantalla que sólo lee —un enlace compartido—, donde no se
+   * ofrece el botón siquiera.
+   */
+  onEditSections?: {
+    add: (name: string) => void;
+    rename: (from: string, to: string) => void;
+    move: (name: string, delta: number) => void;
+    remove: (name: string) => void;
+  };
   /** The people of the ministry, to choose the team from */
   members: MinistryMember[];
   membersById: Map<string, MinistryMember>;
@@ -101,6 +113,7 @@ type OpenDialog =
   | { kind: 'duplicate' }
   | { kind: 'delete' }
   | { kind: 'add'; moment?: string }
+  | { kind: 'sections' }
   | { kind: 'item'; itemId: string }
   | { kind: 'remove-item'; itemId: string };
 
@@ -128,6 +141,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   onMoveItem,
   onMoveItemBy,
   onUpdateItem,
+  onEditSections,
   members,
   membersById,
   onSetParticipants,
@@ -175,8 +189,8 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     <SetlistSongList
       items={items}
       numberingItems={setlist.items}
-      embedded={setlist.kind === 'rosario-aurora'}
-      onAddToMoment={setlist.kind === 'rosario-aurora' ? (moment) => setDialog({ kind: 'add', moment }) : undefined}
+      embedded={hasSections(setlist.kind)}
+      onAddToMoment={hasSections(setlist.kind) ? (moment) => setDialog({ kind: 'add', moment }) : undefined}
       songsById={songsById}
       onOpenItem={onOpenItem}
       onEditItem={(item) => setDialog({ kind: 'item', itemId: item.id })}
@@ -188,11 +202,11 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
           onRemoveItem(item.id);
         }
       }}
-      onMoveItem={setlist.kind !== 'rosario-aurora' ? onMoveItem : (itemId, toIndex) => {
+      onMoveItem={!hasSections(setlist.kind) ? onMoveItem : (itemId, toIndex) => {
         const target = items[toIndex];
         if (target) onMoveItem(itemId, setlist.items.findIndex(item => item.id === target.id));
       }}
-      onMoveItemBy={setlist.kind !== 'rosario-aurora' ? onMoveItemBy : (itemId, delta) => {
+      onMoveItemBy={!hasSections(setlist.kind) ? onMoveItemBy : (itemId, delta) => {
         const from = items.findIndex(item => item.id === itemId);
         if (items[from + delta]) onMoveItemBy(itemId, delta);
       }}
@@ -358,11 +372,19 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
 
       {activities && <div className="mb-6">{activities}</div>}
 
-      {setlist.kind === 'rosario-aurora' ? (
+      {hasSections(setlist.kind) ? (
         <div>
-          <p className="mb-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-            Reordena las canciones dentro de cada momento. Para cambiarlas de momento, edita la canción.
-          </p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="max-w-xl text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Reordena las canciones dentro de cada sección. Para cambiarlas de sección, edita la canción.
+            </p>
+            {onEditSections && (
+              <button type="button" onClick={() => setDialog({ kind: 'sections' })} className={secondaryButton}>
+                <ListOrdered className="w-4 h-4" />
+                Secciones
+              </button>
+            )}
+          </div>
           <div className="border-t border-slate-200/70 dark:border-dark-700">
             {groupSetlistItems(setlist).map(({ moment, items }) => (
               <section key={moment} aria-label={moment || 'Sin momento'} className="border-b border-slate-200/70 dark:border-dark-700">
@@ -407,6 +429,17 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
 
       {dialog?.kind === 'add' && (
         <AddSongsDialog songs={songs} setlist={setlist} initialMoment={dialog.moment} onAdd={onAddSong} onClose={closeDialog} />
+      )}
+
+      {dialog?.kind === 'sections' && onEditSections && (
+        <SetlistSectionsDialog
+          setlist={setlist}
+          onAdd={onEditSections.add}
+          onRename={onEditSections.rename}
+          onMove={onEditSections.move}
+          onRemove={onEditSections.remove}
+          onClose={closeDialog}
+        />
       )}
 
       {dialog?.kind === 'edit' && (
@@ -464,6 +497,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
           }
           participantIds={setlist.participantIds}
           setlistKind={setlist.kind}
+          setlistSections={hasSections(setlist.kind) ? sectionsOf(setlist) : undefined}
           setlistId={setlist.id}
           draftStore={draftStore}
           savedDraft={draftStore.read(setlist.id, openItem.id)}

@@ -5,6 +5,8 @@ import { sanitizeSongTransition } from '../utils/songTransition';
 import {
   MAX_MOMENT_LENGTH,
   MAX_NOTES_LENGTH,
+  BACKUP_MOMENT,
+  cleanSections,
   cleanSetlistDetails,
   createId,
   readSetlistKind,
@@ -125,6 +127,9 @@ export function sanitizeSetlistItem(value: unknown, makeId: IdFactory = createId
     id: asString(value.id).trim() || makeId(),
     songId,
     moment: asString(value.moment).trim().slice(0, MAX_MOMENT_LENGTH),
+    // Reserva lo dice la entrada. Lo guardado antes no lo dice y se reconoce
+    // por el nombre de su sección, como siempre (ver isBackupItem).
+    ...(value.backup === true ? { backup: true as const } : {}),
     ...normalizeKeySettings(value),
     notes: asString(value.notes).trim().slice(0, MAX_NOTES_LENGTH),
     ...(arrangement ? { arrangement } : {}),
@@ -154,15 +159,28 @@ export function sanitizeSetlist(value: unknown, now = Date.now(), makeId: IdFact
 
   const createdAt = asTimestamp(value.createdAt, now);
   const kind = readSetlistKind(value.kind);
+  // Las secciones propias, si las hay. Ausentes, el Setlist usa las de su tipo:
+  // es lo que son todos los anteriores, y lo que sigue significando lo mismo.
+  const moments = cleanSections(value.moments);
+  const sections = moments.length > 0 ? { moments } : {};
+  // La sección de reserva, cuando la han renombrado. Sólo cuenta si sigue
+  // siendo una de las secciones: un nombre suelto no es una sección.
+  const reserva = asString(value.backupMoment).trim().slice(0, MAX_MOMENT_LENGTH);
+  const backup =
+    reserva && reserva !== BACKUP_MOMENT && (moments.length === 0 || moments.includes(reserva))
+      ? { backupMoment: reserva }
+      : {};
   return {
     id: asString(value.id).trim() || makeId(),
     name: details.name || 'Setlist sin nombre',
     // Los tipos reconocidos viajan; una misa conserva su formato histórico.
     ...(kind ? { kind } : {}),
+    ...sections,
+    ...backup,
     date: details.date,
     description: details.description,
     participantIds: normalizeMemberIds(value.participantIds),
-    items: orderSetlistItems(kind, items),
+    items: orderSetlistItems({ kind, ...sections }, items),
     createdAt,
     updatedAt: asTimestamp(value.updatedAt, createdAt),
   };

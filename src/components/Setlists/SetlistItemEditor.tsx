@@ -84,6 +84,12 @@ interface SetlistItemEditorProps {
   participantIds?: string[];
   /** Qué se está preparando, que es lo que decide qué momentos se ofrecen. */
   setlistKind?: SetlistKind;
+  /**
+   * Las secciones de este Setlist, cuando tiene las suyas. Se ofrecen antes
+   * que las del tipo: en una boda con las secciones ya preparadas, lo que vale
+   * es cómo se llaman aquí.
+   */
+  setlistSections?: string[];
   /** El Setlist al que pertenece: con el id del ítem, identifica el borrador. */
   setlistId: string;
   onSave: (changes: SetlistItemDraft) => void;
@@ -134,6 +140,7 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
   nextSongTitle,
   participantIds = [],
   setlistKind,
+  setlistSections,
   setlistId,
   onSave,
   onClose,
@@ -341,7 +348,7 @@ export const SetlistItemEditor: React.FC<SetlistItemEditorProps> = ({
     new Set(membersById.keys())
   );
 
-  const suggestions = suggestedMoments(setlistKind).filter((suggestion: string) => {
+  const suggestions = (setlistSections ?? suggestedMoments(setlistKind)).filter((suggestion: string) => {
     const typed = normalizeText(moment.trim());
     return !typed || (normalizeText(suggestion).includes(typed) && normalizeText(suggestion) !== typed);
   }).slice(0, MAX_SUGGESTIONS);
