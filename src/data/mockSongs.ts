@@ -3602,5 +3602,80 @@ Con todos sus santos, cantamos para ti (x2)
 Osanna
 Osanna
 Osanna oh Señor (x2)`
+  },
+  {
+    id: 'primero-el-cielo',
+    title: 'Primero el Cielo',
+    artist: 'Tuyo',
+    originalKey: 'G',
+    categories: ['Adoración'],
+    liturgicalSeasons: ['todo-el-ano'],
+    tags: [],
+    chordsUsed: ['G', 'C', 'Em', 'D', 'Am', 'D/F#'],
+    content: `[Estrofa 1]
+[G]Quiero escuchar tu voz
+y poner [C]en ti Señor mi co[Em]razón
+[C]servirte solo a ti e[Em]l único Dios
+Que [C]esta sea siempre[D] mi decisión.
+
+[Coro]
+[G]Primer[D]o el cie[C]lo
+[G]y lo demás [D]está de [C]más
+[G]Primero bus[D]caré tu [C]reino
+[Em]no me voy a preocupar
+[D]sé que tú me cuid[C]arás
+
+[Estrofa 2]
+[C]Quiero escuc[D]har tu v[G]oz
+y diga[C]s lo que digas con[Em]fiar
+[C]tú lo sabes todo, sab[Em]es más
+[C]siempre es mejor tu [D]plan
+
+[Coro]
+[G]Primer[D]o el cie[C]lo
+[G]y lo demás [D]está de [C]más
+[G]Primero bus[D]caré tu [C]reino
+[Em]no me voy a preocupar
+[D]sé que tú me cuid[C]arás
+
+[Puente]
+[C]solo quiero hacer [D]tu voluntad
+[C]no me preocupo, el mañan[D]a ya vendrá
+
+[C]solo quiero hacer [D]tu voluntad
+[Am]Tú tienes un plan
+[D]que no puede fallar
+
+[Coro]
+[G]Primer[D]o el cie[C]lo
+[G]y lo demás [D]está de [C]más
+[G]Primero bus[D]caré tu [C]reino
+[Em]no me voy a preocupar
+[D]sé que tú me cuid[C]arás
+
+[Coro]
+[G]Primer[D]o el cie[C]lo
+[G]y lo demás [D]está de [C]más
+[G]Primero bus[D]caré tu [C]reino
+[Em]no me voy a preocupar
+[D]sé que tú me cuid[C]arás
+
+[Final]
+No tengo miedo
+[G]No temeré
+[D/F#]El Dios del universo [Em]
+Es mi padre [D]
+
+[Am]No tengo miedo
+No temeré [Em]
+El Dios del univ[C]erso
+Es mi padre [D]
+
+[C]Y no tengo miedo
+[G]No temeré
+El Dios del univ[Em]erso [D]
+Es mi padre [Am] [Em]
+El Dios [C]del universo
+Es mi pa[D]dre`
   }
 ];

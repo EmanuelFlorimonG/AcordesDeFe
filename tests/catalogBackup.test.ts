@@ -49,7 +49,7 @@ const cancion = (extra: Partial<Song> = {}): Song => ({
 
 describe('El archivo exportado se escribe como el que ya hay', () => {
   it('reproduce el cancionero entero, salvo dos irregularidades escritas a mano', () => {
-    // Es la prueba más fuerte que se puede hacer sin red: serializar las 115
+    // Es la prueba más fuerte que se puede hacer sin red: serializar las 116
     // canciones incluidas tiene que devolver el archivo del que salieron.
     //
     // Las dos excepciones son erratas de formato que alguien dejó al editar a
@@ -135,7 +135,7 @@ describe('No se pierde ningún dato aprobado', () => {
   });
 
   it('la versión publicada no se guarda: el respaldo no la lleva en ninguna canción', () => {
-    // songFromRow la rellena desde current_version, pero ninguna de las 115
+    // songFromRow la rellena desde current_version, pero ninguna de las 116
     // incluidas la tiene, y caducaría en cuanto alguien editara en producción.
     eq(forBackup(cancion({ version: 7 })).version, undefined);
     eq(MOCK_SONGS.some((song) => song.version !== undefined), false, 'ninguna incluida la lleva hoy');
